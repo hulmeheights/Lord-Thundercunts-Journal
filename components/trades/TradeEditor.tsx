@@ -99,7 +99,7 @@ export function TradeEditor({ trade, vocab, defaultRisk }: { trade: Trade; vocab
             ))}
           </div>
         </section>
-        <section className="flex items-center justify-between gap-4 rounded-2xl border border-line bg-fill px-4 py-3">
+        <section className="flex items-center justify-between gap-4 rounded-[3px] border border-line bg-fill px-4 py-3">
           <div>
             <div className="text-[14px] font-semibold">Followed my plan</div>
             <div className="text-[12px] text-ink-3">Be honest — it compounds.</div>

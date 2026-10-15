@@ -127,7 +127,7 @@ export function Ritual({ day, items, checklist, tasks: initialTasks }: { day: st
             }}
             className="mt-2 flex items-center gap-2"
           >
-            <input value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="Add something for today…" className="field h-10 rounded-full text-[14px]" maxLength={200} />
+            <input value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="Add something for today…" className="field h-10 text-[14px]" maxLength={200} />
             <button type="submit" className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-line-2 text-ink-2 transition-colors hover:text-ink" aria-label="Add">
               <Plus size={18} />
             </button>

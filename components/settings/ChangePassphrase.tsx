@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/Button";
 export function ChangePassphrase() {
   const [state, action, pending] = useActionState<UnlockState & { ok?: boolean }, FormData>(updatePassphrase, {});
   return (
-    <form action={action} className="rounded-2xl border border-line bg-fill p-4">
+    <form action={action} className="rounded-[3px] border border-line bg-fill p-4">
       <div className="mb-3">
         <div className="text-[15px] font-semibold">Change passphrase</div>
         <div className="text-[12.5px] text-ink-3">Stored only as a salted scrypt hash.</div>

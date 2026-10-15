@@ -84,7 +84,7 @@ export function RuleLab({ trades, tz }: { trades: Trade[]; tz: string }) {
             </div>
             <div className="space-y-2">
               {suggestions.map((s) => (
-                <button key={s.label} onClick={() => setO(s.opts)} className="flex w-full items-center justify-between gap-3 rounded-2xl border border-line bg-fill px-4 py-3 text-left transition-colors hover:bg-fill-2">
+                <button key={s.label} onClick={() => setO(s.opts)} className="flex w-full items-center justify-between gap-3 rounded-[3px] border border-line bg-fill px-4 py-3 text-left transition-colors hover:bg-fill-2">
                   <span className="text-[14px] font-medium">{s.label}</span>
                   <span className="num shrink-0 text-[13.5px] font-semibold text-pos">{fmtMoney(s.delta, { sign: true })}</span>
                 </button>
@@ -94,7 +94,7 @@ export function RuleLab({ trades, tz }: { trades: Trade[]; tz: string }) {
         )}
       </div>
       <div className="lg:col-span-5">
-        <div className="rounded-[22px] border border-line bg-fill px-4 py-2">
+        <div className="rounded-[3px] border border-line bg-fill px-4 py-2">
           <div className="flex items-center gap-2 border-b border-line py-2.5 text-[13px] font-semibold text-ink-2">
             <FlaskConical size={15} className="text-purple" /> Test a rule set
             {active && (

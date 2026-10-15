@@ -29,7 +29,7 @@ export function KeyGenerator({ encryptionKeySet }: { encryptionKeySet: boolean }
 
   return (
     <div className="space-y-4">
-      <div className="glass rounded-[24px] p-5">
+      <div className="glass rounded-[3px] p-5">
         <div className="mb-3 flex items-center justify-between gap-3">
           <div>
             <div className="text-[15px] font-semibold">Your secrets block</div>
@@ -39,7 +39,7 @@ export function KeyGenerator({ encryptionKeySet }: { encryptionKeySet: boolean }
             {copied === "block" ? <Check size={14} /> : <Copy size={14} />} {copied === "block" ? "Copied" : "Copy block"}
           </Button>
         </div>
-        <pre className="overflow-x-auto rounded-2xl border border-line bg-fill-2 p-4 text-[12.5px] leading-relaxed text-ink">
+        <pre className="overflow-x-auto rounded-[3px] border border-line bg-fill-2 p-4 text-[12.5px] leading-relaxed text-ink">
           {v ? block : "Generating…"}
         </pre>
         {!encryptionKeySet && (
@@ -54,7 +54,7 @@ export function KeyGenerator({ encryptionKeySet }: { encryptionKeySet: boolean }
         )}
       </div>
       {v && (
-        <div className="flex items-center gap-3 rounded-[20px] border border-cyan/25 bg-cyan/[0.06] p-4">
+        <div className="flex items-center gap-3 rounded-[3px] border border-cyan/25 bg-cyan/[0.06] p-4">
           <KeyRound size={18} className="shrink-0 text-cyan" />
           <div className="min-w-0 flex-1 text-[13px] leading-relaxed text-ink-2">
             Your one-time setup code is <span className="num font-semibold tracking-wider text-ink">{v.code}</span>. This device remembers it and fills it in

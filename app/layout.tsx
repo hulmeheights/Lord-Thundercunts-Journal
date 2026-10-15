@@ -16,6 +16,15 @@ const inter = localFont({
   weight: "100 900",
   display: "swap",
 });
+const serif = localFont({
+  src: [
+    { path: "../node_modules/@fontsource-variable/fraunces/files/fraunces-latin-wght-normal.woff2", style: "normal" },
+    { path: "../node_modules/@fontsource-variable/fraunces/files/fraunces-latin-wght-italic.woff2", style: "italic" },
+  ],
+  variable: "--font-fraunces",
+  weight: "100 900",
+  display: "swap",
+});
 const mono = localFont({
   src: "../node_modules/@fontsource-variable/jetbrains-mono/files/jetbrains-mono-latin-wght-normal.woff2",
   variable: "--font-jbm",
@@ -50,7 +59,7 @@ export async function generateViewport(): Promise<Viewport> {
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const prefs = parseUiPrefs((await cookies()).get(UI_COOKIE)?.value);
   return (
-    <html lang="en" data-theme={prefs.theme} data-loss={prefs.loss} className={`${inter.variable} ${mono.variable}`} suppressHydrationWarning>
+    <html lang="en" data-theme={prefs.theme} data-loss={prefs.loss} className={`${inter.variable} ${serif.variable} ${mono.variable}`} suppressHydrationWarning>
       <body className="min-h-dvh bg-bg text-ink antialiased">
         <SmoothScroll />
         <MagneticLayer />

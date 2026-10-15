@@ -61,7 +61,7 @@ export function BarChart({
       )}
       {hover !== null && data[hover] && (
         <div
-          className="glass-strong pointer-events-none absolute top-0 z-10 rounded-xl px-3 py-2 text-[12px]"
+          className="glass-strong pointer-events-none absolute top-0 z-10 rounded-[3px] px-3 py-2 text-[12px]"
           style={{ left: Math.min(Math.max(hover * (bw + gap) + bw / 2 - 60, 0), Math.max(width - 130, 0)) }}
         >
           <div className="text-ink-3">{data[hover]!.label}</div>

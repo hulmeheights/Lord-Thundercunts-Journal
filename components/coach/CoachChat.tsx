@@ -127,7 +127,7 @@ export function CoachChat() {
             </p>
             <div className="mt-7 grid w-full max-w-2xl gap-2 sm:grid-cols-2">
               {SUGGESTIONS.map((s) => (
-                <button key={s} onClick={() => send(s)} className="glass rounded-2xl px-4 py-3 text-left text-[13.5px] leading-snug text-ink-2 transition-colors hover:text-ink">
+                <button key={s} onClick={() => send(s)} className="glass rounded-[3px] px-4 py-3 text-left text-[13.5px] leading-snug text-ink-2 transition-colors hover:text-ink">
                   {s}
                 </button>
               ))}
@@ -145,7 +145,7 @@ export function CoachChat() {
                 {m.role === "assistant" && <LogoMark size={28} className="mt-1" />}
                 <div
                   className={cn(
-                    "max-w-[85%] rounded-[22px] px-4 py-3 text-[14.5px] leading-relaxed",
+                    "max-w-[85%] rounded-[3px] px-4 py-3 text-[14.5px] leading-relaxed",
                     m.role === "user" ? "rounded-br-md bg-ink text-bg" : "glass rounded-bl-md text-ink-2",
                   )}
                 >
@@ -176,7 +176,7 @@ export function CoachChat() {
             e.preventDefault();
             void send(input);
           }}
-          className="glass-strong flex items-end gap-2 rounded-[26px] p-2 shadow-[0_20px_60px_-20px_rgba(0,0,0,0.9)]"
+          className="glass-strong flex items-end gap-2 rounded-[3px] p-2 shadow-[0_20px_60px_-20px_rgba(0,0,0,0.9)]"
         >
           {messages.length > 0 && !busy && (
             <button type="button" onClick={() => setMessages([])} className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-ink-3 hover:text-ink" aria-label="New chat">

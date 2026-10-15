@@ -30,10 +30,10 @@ const rise = (i: number) => ({
 
 function Tile({ i, label, children, sub, className }: { i: number; label: string; children: React.ReactNode; sub?: React.ReactNode; className?: string }) {
   return (
-    <motion.div {...rise(i)} className={cn("glass lift flex min-h-[176px] flex-col rounded-[24px] p-6", className)}>
-      <div className="eyebrow">{label}</div>
-      <div className="mt-auto pt-6">{children}</div>
-      {sub && <div className="mt-2 text-[13px] leading-snug text-ink-3">{sub}</div>}
+    <motion.div {...rise(i)} className={cn("flex flex-col", className)}>
+      <div>{children}</div>
+      <div className="eyebrow mt-4 !text-[10px] !tracking-[0.18em]">{label}</div>
+      {sub && <div className="mt-1.5 text-[11.5px] leading-relaxed text-ink-4">{sub}</div>}
     </motion.div>
   );
 }
@@ -99,7 +99,7 @@ function Thread({ days }: { days: ThreadDay[] }) {
 export function Bento({ s }: { s: BentoStats }) {
   const delta = s.winRatePrev === null ? null : Math.round((s.winRate - s.winRatePrev) * 100);
   return (
-    <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+    <div className="grid grid-cols-2 gap-x-6 gap-y-14 border-t border-line pt-12 lg:grid-cols-4">
       <Tile
         i={0}
         label="Win rate · 30 days"
@@ -111,29 +111,29 @@ export function Bento({ s }: { s: BentoStats }) {
           )
         }
       >
-        <Odometer value={s.winRate} format="percent" tone={false} face="display" className="text-[46px] leading-none font-semibold" />
+        <Odometer value={s.winRate} format="percent" tone={false} face="display" className="text-[clamp(40px,5.6vw,72px)] leading-none font-light" />
       </Tile>
       <Tile i={1} label="Profit factor" sub={Number.isFinite(s.profitFactor) && s.profitFactor > 0 ? `Won ${fmtMoney(s.profitFactor, { cents: true })} for every $1 lost` : "No losses yet"}>
-        <Odometer value={Number.isFinite(s.profitFactor) ? s.profitFactor : 0} format="ratio" decimals={2} tone={false} face="display" className="text-[46px] leading-none font-semibold" />
+        <Odometer value={Number.isFinite(s.profitFactor) ? s.profitFactor : 0} format="ratio" decimals={2} tone={false} face="display" className="text-[clamp(40px,5.6vw,72px)] leading-none font-light" />
       </Tile>
       <Tile i={2} label={s.avgR !== null ? "Average R" : "Per trade"} sub={s.avgR !== null ? "Measured against your planned risk" : "Average net result per trade"}>
         {s.avgR !== null ? (
-          <Odometer value={s.avgR} format="number" decimals={2} suffix="R" face="display" className="text-[46px] leading-none font-semibold" />
+          <Odometer value={s.avgR} format="number" decimals={2} suffix="R" face="display" className="text-[clamp(40px,5.6vw,72px)] leading-none font-light" />
         ) : (
-          <Odometer value={s.expectancy} decimals={s.expectancy !== 0 && Math.abs(s.expectancy) < 100 ? 2 : 0} face="display" className="text-[46px] leading-none font-semibold" />
+          <Odometer value={s.expectancy} decimals={s.expectancy !== 0 && Math.abs(s.expectancy) < 100 ? 2 : 0} face="display" className="text-[clamp(40px,5.6vw,72px)] leading-none font-light" />
         )}
       </Tile>
       <Tile i={3} label="Clean days" sub={`${s.cleanDays} of ${s.tradingDays} sessions inside every rule`}>
-        <Odometer value={s.tradingDays ? s.cleanDays / s.tradingDays : 0} format="percent" tone={false} face="display" className="text-[46px] leading-none font-semibold" />
+        <Odometer value={s.tradingDays ? s.cleanDays / s.tradingDays : 0} format="percent" tone={false} face="display" className="text-[clamp(40px,5.6vw,72px)] leading-none font-light" />
       </Tile>
-      <motion.div {...rise(4)} className="glass lift col-span-2 flex min-h-[176px] flex-col rounded-[24px] p-6">
+      <motion.div {...rise(4)} className="col-span-2 flex flex-col border-t border-line pt-8">
         <div className="flex items-baseline justify-between gap-3">
           <div className="eyebrow">Process streak</div>
           <div className="text-[13px] text-ink-3">Last {s.thread.length} sessions</div>
         </div>
         <div className="mt-3 flex items-end gap-5">
           <div className="shrink-0">
-            <div className="num-display text-[46px] leading-none font-semibold">{s.streak}</div>
+            <div className="num-display text-[clamp(40px,5.6vw,72px)] leading-none">{s.streak}</div>
             <div className="mt-1.5 text-[13px] text-ink-3">{s.streak === 1 ? "day" : "days"} unbroken</div>
           </div>
           <div className="min-w-0 flex-1">
@@ -141,11 +141,11 @@ export function Bento({ s }: { s: BentoStats }) {
           </div>
         </div>
       </motion.div>
-      <motion.div {...rise(5)} className="glass lift col-span-2 flex min-h-[176px] flex-col rounded-[24px] p-6">
+      <motion.div {...rise(5)} className="col-span-2 flex flex-col border-t border-line pt-8">
         <div className="eyebrow">Best setup · 30 days</div>
         {s.bestSetup ? (
           <div className="mt-auto pt-6">
-            <div className="display text-[clamp(28px,3.4vw,40px)]">{s.bestSetup.name}</div>
+            <div className="display text-[clamp(28px,3.4vw,42px)]">{s.bestSetup.name}</div>
             <div className="mt-2 text-[13px] text-ink-3">
               <span className="num text-pos">{fmtMoney(s.bestSetup.expectancy, { sign: true })}</span> a trade across {s.bestSetup.trades} trades
             </div>

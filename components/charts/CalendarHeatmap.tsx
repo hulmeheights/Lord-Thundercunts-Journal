@@ -47,7 +47,7 @@ export function CalendarHeatmap({
           const inner = (
             <div
               className={cn(
-                "relative flex h-full flex-col justify-between rounded-xl border p-1.5 transition-transform sm:p-2",
+                "relative flex h-full flex-col justify-between rounded-[3px] border p-1.5 transition-transform sm:p-2",
                 d ? "border-white/[0.06]" : "border-line bg-fill",
                 isToday && "ring-1 ring-cyan/70",
                 future && "opacity-35",

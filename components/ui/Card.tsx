@@ -13,7 +13,7 @@ export function Card({
   padded?: boolean;
   lift?: boolean;
 }) {
-  return <As className={cn("glass relative overflow-hidden rounded-[24px]", padded && "p-5 sm:p-7", lift && "lift", className)}>{children}</As>;
+  return <As className={cn("glass relative overflow-hidden rounded-[3px]", padded && "p-5 sm:p-7", lift && "lift", className)}>{children}</As>;
 }
 
 export function CardHeader({

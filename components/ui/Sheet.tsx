@@ -54,7 +54,7 @@ export function Sheet({
             role="dialog"
             aria-modal="true"
             data-lenis-prevent
-            className={`relative max-h-[92dvh] w-full overflow-y-auto rounded-t-[28px] border border-line bg-surface p-5 pb-[calc(20px+var(--safe-bottom))] shadow-[0_40px_120px_-40px_rgba(11,15,12,0.45)] sm:rounded-[28px] sm:p-8 ${wide ? "sm:max-w-2xl" : "sm:max-w-lg"}`}
+            className={`relative max-h-[92dvh] w-full overflow-y-auto rounded-t-[3px] border border-line bg-surface p-5 pb-[calc(20px+var(--safe-bottom))] shadow-[0_40px_120px_-40px_rgba(11,15,12,0.45)] sm:rounded-[3px] sm:p-8 ${wide ? "sm:max-w-2xl" : "sm:max-w-lg"}`}
             initial={{ y: 48, opacity: 0, scale: 0.985 }}
             animate={{ y: 0, opacity: 1, scale: 1 }}
             exit={{ y: 32, opacity: 0, scale: 0.985 }}

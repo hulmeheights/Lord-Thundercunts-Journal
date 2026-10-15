@@ -119,7 +119,7 @@ export function AreaChart({
       )}
       {hover !== null && primary && (
         <div
-          className="glass-strong pointer-events-none absolute top-0 z-10 rounded-xl px-3 py-2 text-[12px] shadow-xl"
+          className="glass-strong pointer-events-none absolute top-0 z-10 rounded-[3px] px-3 py-2 text-[12px] shadow-xl"
           style={{ left: Math.min(Math.max(x(hover) - 70, 0), w - 150), transform: "translateY(-105%)" }}
         >
           {labels?.[hover] && <div className="mb-0.5 text-ink-3">{labels[hover]}</div>}

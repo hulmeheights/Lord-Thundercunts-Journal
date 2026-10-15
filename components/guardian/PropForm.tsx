@@ -36,7 +36,7 @@ export function PropForm({ initial, accounts }: { initial: PropSettings; account
 
   return (
     <div className="space-y-5">
-      <div className="flex items-center justify-between gap-4 rounded-2xl border border-line bg-fill px-4 py-3">
+      <div className="flex items-center justify-between gap-4 rounded-[3px] border border-line bg-fill px-4 py-3">
         <div>
           <div className="text-[14.5px] font-semibold">Guardian is {p.enabled ? "on" : "off"}</div>
           <div className="text-[12.5px] text-ink-3">Tracks your evaluation or funded account rules live.</div>

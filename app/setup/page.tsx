@@ -10,7 +10,7 @@ export const metadata = { title: "Setup" };
 
 function Step({ n, title, done, children }: { n: number; title: string; done: boolean; children: React.ReactNode }) {
   return (
-    <section className="glass rounded-[28px] p-5 sm:p-6">
+    <section className="glass rounded-[3px] p-5 sm:p-6">
       <div className="mb-3 flex items-center gap-3">
         {done ? <CircleCheck size={24} className="shrink-0 text-pos" /> : (
           <span className="num grid h-6 w-6 shrink-0 place-items-center rounded-full bg-fill-3 text-[12px] font-bold">{n}</span>
@@ -65,7 +65,7 @@ export default async function SetupPage() {
           </p>
         </Step>
 
-        <div className="glass rounded-[24px] p-5">
+        <div className="glass rounded-[3px] p-5">
           <div className="eyebrow mb-3">Status</div>
           <div className="space-y-2">
             {items.map((i) => (

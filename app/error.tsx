@@ -6,7 +6,7 @@ export default function ErrorPage({ reset }: { error: Error & { digest?: string 
   return (
     <div className="grid min-h-[60dvh] place-items-center px-6 text-center">
       <div>
-        <div className="mx-auto mb-4 grid h-14 w-14 place-items-center rounded-2xl bg-orange/15 text-orange">
+        <div className="mx-auto mb-4 grid h-14 w-14 place-items-center rounded-[3px] bg-orange/15 text-orange">
           <TriangleAlert size={24} />
         </div>
         <h1 className="title-lg">Something went sideways.</h1>

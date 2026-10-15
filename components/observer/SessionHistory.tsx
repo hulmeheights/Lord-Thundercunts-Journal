@@ -54,7 +54,7 @@ function SessionCard({ s, name, nowCost, aiReady }: { s: ObserverSession; name: 
   const top = s.snapshot.top[0];
   const verdict = s.gap?.verdict ?? "unknown";
   return (
-    <div className="rounded-[22px] border border-line bg-fill/50">
+    <div className="rounded-[3px] border border-line bg-fill/50">
       <button type="button" onClick={() => setOpen((v) => !v)} className="flex w-full items-center gap-3 p-4 text-left">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
@@ -88,7 +88,7 @@ function SessionCard({ s, name, nowCost, aiReady }: { s: ObserverSession; name: 
               </div>
             ))}
           </div>
-          {s.gap && <p className="rounded-2xl bg-fill-2 p-3 text-[13.5px] leading-relaxed text-ink-2">{s.gap.message}</p>}
+          {s.gap && <p className="rounded-[3px] bg-fill-2 p-3 text-[13.5px] leading-relaxed text-ink-2">{s.gap.message}</p>}
           {(aiReady || s.ai) && <CaseFileLoader sessionId={s.id} name={name} initial={s.ai} />}
           <div className="flex justify-end">
             <Button
@@ -126,7 +126,7 @@ export function SessionHistory({
   onNew: () => void;
 }) {
   return (
-    <section className="glass rounded-[28px] p-5 sm:p-6">
+    <section className="glass rounded-[3px] p-5 sm:p-6">
       <div className="mb-4 flex items-start justify-between gap-3">
         <div>
           <div className="eyebrow mb-1">Over time</div>

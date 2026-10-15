@@ -36,11 +36,11 @@ function Panel({
       initial={{ opacity: 0, y: 14 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ type: "spring", stiffness: 260, damping: 30, delay }}
-      className="glass relative overflow-hidden rounded-[28px] p-5 sm:p-6"
+      className="glass relative overflow-hidden rounded-[3px] p-5 sm:p-6"
     >
       <div className="pointer-events-none absolute -top-24 -right-20 h-48 w-48 rounded-full opacity-25 blur-3xl" style={{ background: color }} />
       <div className="relative mb-4 flex items-center gap-3">
-        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl" style={{ background: `${color}22`, color }}>
+        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-[3px]" style={{ background: `${color}22`, color }}>
           <Icon size={19} />
         </span>
         <div>
@@ -56,7 +56,7 @@ function Panel({
 function ObstacleRow({ o, max, rank }: { o: Obstacle; max: number; rank: number }) {
   const [open, setOpen] = useState(rank === 1);
   return (
-    <div className="rounded-2xl border border-line bg-fill/60 p-3.5">
+    <div className="rounded-[3px] border border-line bg-fill/60 p-3.5">
       <button type="button" onClick={() => setOpen((v) => !v)} className="flex w-full items-start gap-3 text-left">
         <span className="num mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full bg-orange/15 text-[12px] font-bold text-orange">{rank}</span>
         <span className="min-w-0 flex-1">
@@ -96,7 +96,7 @@ function TellCard({ ins, name, window, index, sessionId }: { ins: Instruction; n
   const [error, setError] = useState<string | null>(null);
   const canAdopt = Boolean(ins.rulesPatch || ins.checklist);
   return (
-    <div className="rounded-2xl border border-purple/20 bg-purple/[0.06] p-4">
+    <div className="rounded-[3px] border border-purple/20 bg-purple/[0.06] p-4">
       <div className="eyebrow mb-1.5 text-purple">Instruction {index + 1}</div>
       <p className="text-[15px] leading-snug">
         <span className="text-ink-3">When </span>
@@ -169,7 +169,7 @@ export function ObserverView({
         initial={{ opacity: 0, scale: 0.985 }}
         animate={{ opacity: 1, scale: 1 }}
         transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
-        className="glass relative overflow-hidden rounded-[32px] p-6 sm:p-9"
+        className="glass relative overflow-hidden rounded-[3px] p-6 sm:p-9"
       >
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(120%_80%_at_0%_0%,rgba(94,92,230,0.28),transparent_55%),radial-gradient(90%_70%_at_100%_100%,rgba(191,90,242,0.18),transparent_60%)]" />
         <div className="relative">
@@ -220,7 +220,7 @@ export function ObserverView({
             {!dossier.doing.length && <li className="text-[14px] text-ink-3">No trades in this window yet.</li>}
           </ul>
           {dossier.strengths.length > 0 && (
-            <div className="mt-4 rounded-2xl bg-pos/[0.07] p-3.5">
+            <div className="mt-4 rounded-[3px] bg-pos/[0.07] p-3.5">
               <div className="eyebrow mb-2 text-pos">Working</div>
               <ul className="space-y-1.5">
                 {dossier.strengths.map((f) => (

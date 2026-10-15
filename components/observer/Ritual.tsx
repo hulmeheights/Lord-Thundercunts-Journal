@@ -120,7 +120,7 @@ export function Ritual({
 
   const screens = [
     <div key="intro">
-      <div className="mb-5 grid h-14 w-14 place-items-center rounded-3xl bg-indigo/15 text-cyan">
+      <div className="mb-5 grid h-14 w-14 place-items-center rounded-[3px] bg-indigo/15 text-cyan">
         <EyeOff size={24} />
       </div>
       <h3 className="font-[family-name:var(--font-display)] text-[26px] leading-tight font-bold tracking-[-0.02em]">For three minutes, you&apos;re not you.</h3>
@@ -128,7 +128,7 @@ export function Ritual({
         Picture {n} at the desk this morning: the screens, the first trade, what happened after it. You&apos;re watching from across the room —
         a calm coach who has seen every trade. Write about {n} the way you&apos;d write about someone else.
       </p>
-      <div className="mt-5 grid gap-3 rounded-2xl border border-line bg-fill/60 p-4 sm:grid-cols-[1fr_auto] sm:items-end">
+      <div className="mt-5 grid gap-3 rounded-[3px] border border-line bg-fill/60 p-4 sm:grid-cols-[1fr_auto] sm:items-end">
         <label className="block">
           <span className="mb-1.5 block text-[12.5px] text-ink-3">The observer calls you</span>
           <input value={name} onChange={(e) => setName(e.target.value)} placeholder={n} maxLength={40} className="field h-10" />
@@ -214,7 +214,7 @@ export function Ritual({
               initial={{ opacity: 0, scale: 0.96 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{ type: "spring", stiffness: 300, damping: 26 }}
-              className={cn("rounded-[24px] p-5", v.bg)}
+              className={cn("rounded-[3px] p-5", v.bg)}
             >
               <div className={cn("mb-2 flex items-center gap-2 text-[13px] font-bold tracking-wide uppercase", v.color)}>
                 <v.Icon size={17} /> {v.label}
@@ -230,7 +230,7 @@ export function Ritual({
           ) : (
             <div className="space-y-2">
               {dossier.tell.map((t, i) => (
-                <div key={t.obstacle} className="rounded-2xl border border-purple/20 bg-purple/[0.06] p-3.5 text-[14px]">
+                <div key={t.obstacle} className="rounded-[3px] border border-purple/20 bg-purple/[0.06] p-3.5 text-[14px]">
                   <span className="num mr-2 font-bold text-purple">{i + 1}</span>
                   <span className="text-ink-3">When </span>
                   <b className="font-semibold">{t.when}</b>, <b className="font-semibold">{t.then}</b>

@@ -88,7 +88,7 @@ export default async function JournalPage({ searchParams }: { searchParams: Prom
             {written.map((e) => {
               const net = netByDay.get(e.day);
               return (
-                <Link key={e.day} href={`/journal/${e.day}`} className="glass block rounded-[22px] p-5 transition-transform hover:scale-[1.01]">
+                <Link key={e.day} href={`/journal/${e.day}`} className="glass block rounded-[3px] p-5 transition-transform hover:scale-[1.01]">
                   <div className="flex items-baseline justify-between">
                     <span className="text-[14px] font-semibold">{longDate(e.day)}</span>
                     {net !== undefined && <span className={cn("num text-[13px] font-semibold", net >= 0 ? "text-pos" : "text-neg")}>{fmtMoney(net, { sign: true })}</span>}

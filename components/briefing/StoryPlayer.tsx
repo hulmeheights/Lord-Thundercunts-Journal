@@ -189,7 +189,7 @@ export function StoryPlayer({
           onDragEnd={(_, info) => {
             if (info.offset.y > 120) close();
           }}
-          className="noise relative h-full w-full overflow-hidden bg-[#050507] sm:aspect-[9/16] sm:h-[min(92vh,860px)] sm:w-auto sm:rounded-[38px] sm:border sm:border-white/10 sm:shadow-[0_40px_120px_-20px_rgba(0,0,0,0.9)]"
+          className="noise relative h-full w-full overflow-hidden bg-[#050507] sm:aspect-[9/16] sm:h-[min(92vh,860px)] sm:w-auto sm:rounded-[3px] sm:border sm:border-white/10 sm:shadow-[0_40px_120px_-20px_rgba(0,0,0,0.9)]"
           onPointerDown={onPointerDown}
           onPointerUp={onPointerUp}
           onPointerCancel={() => holdTimer.current && clearTimeout(holdTimer.current)}

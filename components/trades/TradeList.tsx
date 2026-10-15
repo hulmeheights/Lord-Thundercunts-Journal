@@ -87,7 +87,7 @@ export function TradeList({
         />
         <div className="relative min-w-[200px] flex-1">
           <Search size={15} className="absolute top-1/2 left-3.5 -translate-y-1/2 text-ink-4" />
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search symbol, setup, mistake, note…" className="field h-10 rounded-full pl-10 text-[14px]" />
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search symbol, setup, mistake, note…" className="field h-10 pl-10 text-[14px]" />
         </div>
         <Button variant="secondary" size="md" onClick={() => setImporting(true)}>
           <FileUp size={16} /> Import
@@ -97,7 +97,7 @@ export function TradeList({
         </Button>
       </div>
 
-      <div className="glass mb-5 grid grid-cols-2 gap-4 rounded-[24px] p-5 sm:grid-cols-5">
+      <div className="glass mb-5 grid grid-cols-2 gap-4 rounded-[3px] p-5 sm:grid-cols-5">
         <div>
           <div className="text-[12px] text-ink-3">Net P&amp;L</div>
           <div className={cn("num text-[22px] font-bold", s.net >= 0 ? "text-pos" : "text-neg")}>{fmtMoney(s.net, { sign: true })}</div>
@@ -140,10 +140,10 @@ export function TradeList({
                   </Link>
                   <span className={cn("num text-[13px] font-semibold", net >= 0 ? "text-pos" : "text-neg")}>{fmtMoney(net, { sign: true })}</span>
                 </div>
-                <div className="glass divide-y divide-line overflow-hidden rounded-[22px]">
+                <div className="glass divide-y divide-line overflow-hidden rounded-[3px]">
                   {list.map((t) => (
                     <Link key={t.id} href={`/trades/${encodeURIComponent(t.id)}`} className="flex items-center gap-3 px-4 py-3.5 transition-colors hover:bg-fill sm:gap-4">
-                      <div className={cn("grid h-9 w-9 shrink-0 place-items-center rounded-xl", t.direction === "long" ? "bg-pos/12 text-pos" : "bg-neg/12 text-neg")}>
+                      <div className={cn("grid h-9 w-9 shrink-0 place-items-center rounded-[3px]", t.direction === "long" ? "bg-pos/12 text-pos" : "bg-neg/12 text-neg")}>
                         {t.direction === "long" ? <ArrowUpRight size={17} /> : <ArrowDownRight size={17} />}
                       </div>
                       <div className="min-w-0 flex-1">

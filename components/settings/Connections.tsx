@@ -84,7 +84,7 @@ function ConnectForm({ option, onConnected }: { option: Option; onConnected: () 
         </>
       )}
       {error && (
-        <div className="flex items-start gap-2 rounded-2xl bg-neg/10 px-3.5 py-2.5 text-[13px] text-neg">
+        <div className="flex items-start gap-2 rounded-[3px] bg-neg/10 px-3.5 py-2.5 text-[13px] text-neg">
           <TriangleAlert size={15} className="mt-0.5 shrink-0" /> {error}
         </div>
       )}
@@ -168,7 +168,7 @@ export function Connections({ connections, accounts }: { connections: Connection
 
   return (
     <div className="space-y-5">
-      <div className="flex items-start gap-3 rounded-2xl border border-pos/20 bg-pos/[0.06] p-4 text-[13px] leading-relaxed text-ink-2">
+      <div className="flex items-start gap-3 rounded-[3px] border border-pos/20 bg-pos/[0.06] p-4 text-[13px] leading-relaxed text-ink-2">
         <ShieldCheck size={18} className="mt-0.5 shrink-0 text-pos" />
         <div>
           <span className="font-semibold text-ink">Read-only by design.</span> Nothing here can place, change or cancel a trade. Any key you enter is verified, then
@@ -190,7 +190,7 @@ export function Connections({ connections, accounts }: { connections: Connection
           {connections.map((c) => {
             const accs = accounts.filter((a) => a.connectionId === c.id);
             return (
-              <div key={c.id} className="rounded-[24px] border border-line bg-fill p-4 sm:p-5">
+              <div key={c.id} className="rounded-[3px] border border-line bg-fill p-4 sm:p-5">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <div className="text-[15.5px] font-semibold">{c.label}</div>
@@ -213,8 +213,8 @@ export function Connections({ connections, accounts }: { connections: Connection
                     <Unplug size={14} /> Disconnect
                   </Button>
                 </div>
-                {c.lastError && <div className="mt-3 rounded-2xl bg-orange/10 px-3.5 py-2.5 text-[13px] text-orange">{c.lastError}</div>}
-                {accs.length > 0 && <div className="mt-3 divide-y divide-line rounded-2xl border border-line bg-fill">{accs.map((a) => <AccountRow key={a.id} a={a} />)}</div>}
+                {c.lastError && <div className="mt-3 rounded-[3px] bg-orange/10 px-3.5 py-2.5 text-[13px] text-orange">{c.lastError}</div>}
+                {accs.length > 0 && <div className="mt-3 divide-y divide-line rounded-[3px] border border-line bg-fill">{accs.map((a) => <AccountRow key={a.id} a={a} />)}</div>}
               </div>
             );
           })}
@@ -222,10 +222,10 @@ export function Connections({ connections, accounts }: { connections: Connection
       )}
 
       {importAccounts.length > 0 && (
-        <div className="rounded-[24px] border border-line bg-fill p-4 sm:p-5">
+        <div className="rounded-[3px] border border-line bg-fill p-4 sm:p-5">
           <div className="mb-1 text-[15.5px] font-semibold">Imported accounts</div>
           <div className="mb-3 text-[12.5px] text-ink-3">Accounts you&apos;ve added from export files. Rename them or hide them from your stats.</div>
-          <div className="divide-y divide-line rounded-2xl border border-line bg-fill">{importAccounts.map((a) => <AccountRow key={a.id} a={a} />)}</div>
+          <div className="divide-y divide-line rounded-[3px] border border-line bg-fill">{importAccounts.map((a) => <AccountRow key={a.id} a={a} />)}</div>
         </div>
       )}
 
@@ -234,7 +234,7 @@ export function Connections({ connections, accounts }: { connections: Connection
         <div className="grid gap-3 sm:grid-cols-2">
           {OPTIONS.map((o) =>
             o.key === "import" ? (
-              <Link key={o.key} href="/trades?import=1" className="rounded-[22px] border border-line bg-fill p-4 text-left transition-colors hover:bg-fill-2">
+              <Link key={o.key} href="/trades?import=1" className="rounded-[3px] border border-line bg-fill p-4 text-left transition-colors hover:bg-fill-2">
                 <div className="flex items-center justify-between gap-2">
                   <span className="flex items-center gap-2 text-[14.5px] font-semibold">
                     <FileUp size={16} className="text-cyan" /> {o.title}
@@ -247,7 +247,7 @@ export function Connections({ connections, accounts }: { connections: Connection
               <button
                 key={o.key}
                 onClick={() => setAdding(adding === o.key ? null : o.key)}
-                className={cn("rounded-[22px] border p-4 text-left transition-colors", adding === o.key ? "border-cyan/50 bg-cyan/[0.05]" : "border-line bg-fill hover:bg-fill-2")}
+                className={cn("rounded-[3px] border p-4 text-left transition-colors", adding === o.key ? "border-cyan/50 bg-cyan/[0.05]" : "border-line bg-fill hover:bg-fill-2")}
               >
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-[14.5px] font-semibold">{o.title}</span>
@@ -259,7 +259,7 @@ export function Connections({ connections, accounts }: { connections: Connection
           )}
         </div>
         {adding && (
-          <div className="mt-4 rounded-[24px] border border-line bg-fill p-4 sm:p-5">
+          <div className="mt-4 rounded-[3px] border border-line bg-fill p-4 sm:p-5">
             <ConnectForm
               key={adding}
               option={OPTIONS.find((o) => o.key === adding)!}

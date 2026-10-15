@@ -10,7 +10,7 @@ export function Onboarding() {
   const [pending, start] = useTransition();
   const [done, setDone] = useState(false);
   return (
-    <div className="glass noise relative overflow-hidden rounded-[30px] p-6 sm:p-8">
+    <div className="glass noise relative overflow-hidden rounded-[3px] p-6 sm:p-8">
       <div className="absolute -top-24 -right-24 h-72 w-72 rounded-full bg-brand opacity-25 blur-3xl" />
       <div className="relative max-w-xl">
         <div className="eyebrow mb-2 text-cyan">Welcome, my Lord</div>

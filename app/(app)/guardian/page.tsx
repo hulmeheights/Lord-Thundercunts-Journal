@@ -25,7 +25,7 @@ export default async function GuardianPage() {
           <GuardianView trades={trades} prop={prop} tz={settings.profile.timezone} brokerBalance={tracked?.balance ?? null} />
         ) : (
           <Card className="text-center">
-            <div className="mx-auto mb-4 grid h-16 w-16 place-items-center rounded-3xl bg-blue/15 text-blue">
+            <div className="mx-auto mb-4 grid h-16 w-16 place-items-center rounded-[3px] bg-blue/15 text-blue">
               <ShieldCheck size={30} />
             </div>
             <h2 className="title-lg">Never blow an evaluation by accident</h2>

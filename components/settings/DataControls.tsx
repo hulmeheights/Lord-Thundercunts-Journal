@@ -13,7 +13,7 @@ export function DataControls({ sampleCount }: { sampleCount: number }) {
   const [msg, setMsg] = useState<string | null>(null);
   return (
     <div className="space-y-5">
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-line bg-fill px-4 py-3">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-[3px] border border-line bg-fill px-4 py-3">
         <div>
           <div className="text-[14px] font-semibold">Sample data</div>
           <div className="text-[12.5px] text-ink-3">{sampleCount ? `${sampleCount} sample trades loaded.` : "Explore every feature with realistic demo trades."}</div>
@@ -28,7 +28,7 @@ export function DataControls({ sampleCount }: { sampleCount: number }) {
           </Button>
         )}
       </div>
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-line bg-fill px-4 py-3">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-[3px] border border-line bg-fill px-4 py-3">
         <div>
           <div className="text-[14px] font-semibold">Export everything</div>
           <div className="text-[12.5px] text-ink-3">Trades, journal, settings — as JSON. Never includes credentials.</div>
@@ -37,7 +37,7 @@ export function DataControls({ sampleCount }: { sampleCount: number }) {
           <Download size={14} /> Export
         </a>
       </div>
-      <div className="rounded-2xl border border-neg/25 bg-neg/[0.05] px-4 py-3">
+      <div className="rounded-[3px] border border-neg/25 bg-neg/[0.05] px-4 py-3">
         <div className="text-[14px] font-semibold text-neg">Delete all trades</div>
         <div className="mb-3 text-[12.5px] text-ink-3">Removes every trade and fill (your journal stays). Brokers will re-import on the next full sync.</div>
         <div className="flex flex-wrap gap-2">

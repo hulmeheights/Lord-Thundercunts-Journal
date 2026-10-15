@@ -16,7 +16,7 @@ export default async function CoachPage() {
         <CoachChat />
       ) : (
         <Card className="mx-auto max-w-xl text-center">
-          <div className="mx-auto mb-4 grid h-16 w-16 place-items-center rounded-3xl bg-purple/15 text-purple">
+          <div className="mx-auto mb-4 grid h-16 w-16 place-items-center rounded-[3px] bg-purple/15 text-purple">
             <Sparkles size={28} />
           </div>
           <h2 className="title-lg">Switch on your AI coach</h2>

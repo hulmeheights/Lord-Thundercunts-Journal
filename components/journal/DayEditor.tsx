@@ -97,7 +97,7 @@ export function DayEditor({ day, journal, customRules, aiEnabled }: { day: strin
                 persist({ moodAfter: v }, "mood", 0);
               }}
               className={cn(
-                "grid h-12 w-12 place-items-center rounded-2xl text-[24px] transition-all",
+                "grid h-12 w-12 place-items-center rounded-[3px] text-[24px] transition-all",
                 j.moodAfter === i + 1 ? "scale-110 bg-fill-3 ring-1 ring-white/20" : "bg-fill opacity-60 hover:opacity-100",
               )}
             >
@@ -111,7 +111,7 @@ export function DayEditor({ day, journal, customRules, aiEnabled }: { day: strin
         <section>
           <div className="eyebrow mb-1">Rules check</div>
           <p className="mb-3 text-[12.5px] text-ink-3">The ones only you can judge. These feed your Discipline ring.</p>
-          <div className="divide-y divide-line rounded-2xl border border-line bg-fill">
+          <div className="divide-y divide-line rounded-[3px] border border-line bg-fill">
             {customRules.map((r) => (
               <div key={r.id} className="flex items-center justify-between gap-4 px-4 py-3">
                 <span className="text-[14px]">{r.label}</span>
@@ -131,7 +131,7 @@ export function DayEditor({ day, journal, customRules, aiEnabled }: { day: strin
       )}
 
       {aiEnabled && (
-        <section className="rounded-[24px] border border-purple/25 bg-purple/[0.06] p-5">
+        <section className="rounded-[3px] border border-purple/25 bg-purple/[0.06] p-5">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <div className="text-[15px] font-semibold">Reflect with Thunder</div>

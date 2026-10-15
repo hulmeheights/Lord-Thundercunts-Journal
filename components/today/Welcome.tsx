@@ -24,14 +24,14 @@ export function Welcome({ hasPasskey }: { hasPasskey: boolean }) {
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, height: 0 }}
-          className="glass noise relative overflow-hidden rounded-[28px] p-5 sm:p-6"
+          className="glass noise relative overflow-hidden rounded-[3px] p-5 sm:p-6"
         >
           <div className="absolute -top-20 -right-16 h-56 w-56 rounded-full bg-brand opacity-25 blur-3xl" />
           <button onClick={() => setOpen(false)} className="absolute top-4 right-4 text-ink-3 hover:text-ink" aria-label="Dismiss">
             <X size={17} />
           </button>
           <div className="relative flex flex-wrap items-center gap-4">
-            <div className="grid h-12 w-12 place-items-center rounded-2xl bg-cyan/15 text-cyan">
+            <div className="grid h-12 w-12 place-items-center rounded-[3px] bg-cyan/15 text-cyan">
               <ScanFace size={24} />
             </div>
             <div className="min-w-0 flex-1">

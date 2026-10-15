@@ -165,7 +165,7 @@ export function SlideView({ slide, ai, window: w, onReplay }: { slide: Slide; ai
           </Item>
           <div className="grid grid-cols-2 gap-3">
             {slide.stats.map((st) => (
-              <Item key={st.label} className="rounded-3xl border border-white/10 bg-white/[0.06] p-4 backdrop-blur">
+              <Item key={st.label} className="rounded-[3px] border border-white/10 bg-white/[0.06] p-4 backdrop-blur">
                 <div className="text-[12px] font-medium text-white/55">{st.label}</div>
                 <div className={cn("num mt-1.5 text-[24px] leading-tight font-bold tracking-[-0.03em]", st.tone === "pos" ? "text-pos" : st.tone === "neg" ? "text-neg" : "text-white")}>
                   {st.value}
@@ -228,7 +228,7 @@ export function SlideView({ slide, ai, window: w, onReplay }: { slide: Slide; ai
                   initial={{ opacity: 0, x: -20 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: 0.3 + i * 0.07 }}
-                  className="flex items-center justify-between rounded-2xl px-4 py-3"
+                  className="flex items-center justify-between rounded-[3px] px-4 py-3"
                   style={{ background: bg }}
                 >
                   <span className="text-[14px] font-semibold text-white">{longDate(d.day).split(",")[0]}</span>
@@ -261,10 +261,10 @@ export function SlideView({ slide, ai, window: w, onReplay }: { slide: Slide; ai
             <Eyebrow color={best ? POS : NEG}>{best ? "Trade of the period" : "The one that hurt"}</Eyebrow>
             <Headline>{best ? "Your best trade." : "Your toughest trade."}</Headline>
           </Item>
-          <Item className="rounded-[28px] border border-white/10 bg-white/[0.07] p-5 backdrop-blur">
+          <Item className="rounded-[3px] border border-white/10 bg-white/[0.07] p-5 backdrop-blur">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className={cn("grid h-11 w-11 place-items-center rounded-2xl", t.direction === "long" ? "bg-pos/20 text-pos" : "bg-neg/20 text-neg")}>
+                <div className={cn("grid h-11 w-11 place-items-center rounded-[3px]", t.direction === "long" ? "bg-pos/20 text-pos" : "bg-neg/20 text-neg")}>
                   {t.direction === "long" ? <TrendingUp size={21} /> : <TrendingDown size={21} />}
                 </div>
                 <div>
@@ -318,7 +318,7 @@ export function SlideView({ slide, ai, window: w, onReplay }: { slide: Slide; ai
       return (
         <Stage className="justify-center gap-5">
           <Item>
-            <div className={cn("mb-5 grid h-14 w-14 place-items-center rounded-2xl", edge ? "bg-mint/20 text-mint" : "bg-orange/20 text-orange")}>
+            <div className={cn("mb-5 grid h-14 w-14 place-items-center rounded-[3px]", edge ? "bg-mint/20 text-mint" : "bg-orange/20 text-orange")}>
               {edge ? <Trophy size={26} /> : <TriangleAlert size={26} />}
             </div>
             <Eyebrow color={edge ? "#66d4cf" : "#ff9f0a"}>{edge ? "Your edge" : "Your leak"}</Eyebrow>
@@ -367,7 +367,7 @@ export function SlideView({ slide, ai, window: w, onReplay }: { slide: Slide; ai
               <p className="text-[15.5px] leading-relaxed text-white/75">Every trade stayed inside your rules. That&apos;s the job done — the P&amp;L follows.</p>
             ) : (
               slide.violations.slice(0, 4).map((v) => (
-                <div key={v.label} className="flex items-center justify-between rounded-2xl bg-white/[0.06] px-4 py-3">
+                <div key={v.label} className="flex items-center justify-between rounded-[3px] bg-white/[0.06] px-4 py-3">
                   <span className="text-[14px] text-white/85">
                     {v.label} <span className="text-white/40">×{v.count}</span>
                   </span>
@@ -396,7 +396,7 @@ export function SlideView({ slide, ai, window: w, onReplay }: { slide: Slide; ai
           {r && (
             <Item className="grid grid-cols-4 gap-2">
               {(["sleep", "energy", "focus", "mood"] as const).map((k) => (
-                <div key={k} className="rounded-2xl bg-white/[0.07] p-3 text-center">
+                <div key={k} className="rounded-[3px] bg-white/[0.07] p-3 text-center">
                   <div className="num text-[24px] font-bold text-white">{r[k]}</div>
                   <div className="text-[10.5px] font-semibold tracking-wider text-white/50 uppercase">{k}</div>
                 </div>
@@ -481,19 +481,19 @@ export function SlideView({ slide, ai, window: w, onReplay }: { slide: Slide; ai
           </Item>
           <Item className="grid grid-cols-2 gap-3">
             {slide.passProb !== null && (
-              <div className="rounded-2xl bg-white/[0.07] p-4">
+              <div className="rounded-[3px] bg-white/[0.07] p-4">
                 <div className="text-[12px] text-white/55">Pass probability</div>
                 <div className="num text-[26px] font-bold text-pos">{fmtPct(slide.passProb)}</div>
               </div>
             )}
             {slide.bustProb !== null && (
-              <div className="rounded-2xl bg-white/[0.07] p-4">
+              <div className="rounded-[3px] bg-white/[0.07] p-4">
                 <div className="text-[12px] text-white/55">Risk of ruin (30d)</div>
                 <div className={cn("num text-[26px] font-bold", slide.bustProb > 0.25 ? "text-neg" : "text-white")}>{fmtPct(slide.bustProb)}</div>
               </div>
             )}
             {slide.targetProgress !== null && (
-              <div className="col-span-2 rounded-2xl bg-white/[0.07] p-4">
+              <div className="col-span-2 rounded-[3px] bg-white/[0.07] p-4">
                 <div className="flex justify-between text-[12px] text-white/55">
                   <span>Target progress</span>
                   <span className="num font-semibold text-white">{fmtPct(slide.targetProgress)}</span>
@@ -516,7 +516,7 @@ export function SlideView({ slide, ai, window: w, onReplay }: { slide: Slide; ai
         <Stage className="justify-center gap-6">
           <Item>
             <motion.div
-              className="mb-5 grid h-16 w-16 place-items-center rounded-3xl bg-orange/20 text-orange"
+              className="mb-5 grid h-16 w-16 place-items-center rounded-[3px] bg-orange/20 text-orange"
               animate={{ rotate: [0, -6, 6, 0] }}
               transition={{ duration: 1.2, delay: 0.6 }}
             >
@@ -536,7 +536,7 @@ export function SlideView({ slide, ai, window: w, onReplay }: { slide: Slide; ai
       return (
         <Stage className="justify-center gap-5">
           <Item>
-            <div className="mb-5 grid h-14 w-14 place-items-center rounded-2xl bg-cyan/15 text-cyan">
+            <div className="mb-5 grid h-14 w-14 place-items-center rounded-[3px] bg-cyan/15 text-cyan">
               <Eye size={26} />
             </div>
             <Eyebrow color="#64d2ff">From the outside</Eyebrow>
@@ -547,7 +547,7 @@ export function SlideView({ slide, ai, window: w, onReplay }: { slide: Slide; ai
           {slide.doing && <Item className="text-[14px] leading-relaxed text-white/60">{slide.doing}</Item>}
           {slide.tell && (
             <Item>
-              <div className="rounded-2xl bg-white/[0.07] p-4">
+              <div className="rounded-[3px] bg-white/[0.07] p-4">
                 <div className="mb-1 text-[11px] font-bold tracking-[0.14em] text-purple uppercase">Tell {slide.name}</div>
                 <p className="text-[16px] leading-snug">
                   <span className="text-white/55">When </span>
@@ -565,7 +565,7 @@ export function SlideView({ slide, ai, window: w, onReplay }: { slide: Slide; ai
       return (
         <Stage className="justify-center gap-6">
           <Item>
-            <div className="mb-5 grid h-14 w-14 place-items-center rounded-2xl bg-yellow/20 text-yellow">
+            <div className="mb-5 grid h-14 w-14 place-items-center rounded-[3px] bg-yellow/20 text-yellow">
               <Target size={26} />
             </div>
             <Eyebrow color="#ffd60a">Next session, one thing</Eyebrow>
@@ -636,7 +636,7 @@ function AiSlide({ ai, period }: { ai: AiState; period: string }) {
     return (
       <Stage className="justify-center gap-5">
         <Item>
-          <div className="mb-5 grid h-14 w-14 place-items-center rounded-2xl bg-purple/20 text-purple">
+          <div className="mb-5 grid h-14 w-14 place-items-center rounded-[3px] bg-purple/20 text-purple">
             <Sparkles size={26} />
           </div>
           <Eyebrow color="#bf5af2">AI coach</Eyebrow>
@@ -691,7 +691,7 @@ function AiSlide({ ai, period }: { ai: AiState; period: string }) {
           </div>
         ))}
       </Item>
-      <Item className="rounded-2xl border border-white/10 bg-white/[0.07] p-4">
+      <Item className="rounded-[3px] border border-white/10 bg-white/[0.07] p-4">
         <div className="text-[11px] font-bold tracking-[0.12em] text-yellow uppercase">One thing</div>
         <div className="mt-1 text-[16px] leading-snug font-semibold text-white">{d.oneThing}</div>
       </Item>

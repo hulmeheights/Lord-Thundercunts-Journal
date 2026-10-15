@@ -90,7 +90,7 @@ export function RulesForm({ initial }: { initial: TradingRules }) {
         <div className="eyebrow mb-2">Personal rules (checked off in your journal)</div>
         <div className="space-y-2">
           {r.custom.map((c) => (
-            <div key={c.id} className="flex items-center gap-2 rounded-2xl border border-line bg-fill px-4 py-2.5">
+            <div key={c.id} className="flex items-center gap-2 rounded-[3px] border border-line bg-fill px-4 py-2.5">
               <span className="flex-1 text-[14px]">{c.label}</span>
               <button onClick={() => set({ custom: r.custom.filter((x) => x.id !== c.id) })} className="text-ink-4 hover:text-ink" aria-label="Remove">
                 <X size={15} />
@@ -143,7 +143,7 @@ export function RitualEditor({ initial }: { initial: RitualItem[] }) {
             {items
               .filter((i) => i.group === g.key)
               .map((i) => (
-                <div key={i.id} className="flex items-center gap-2 rounded-2xl border border-line bg-fill px-4 py-2">
+                <div key={i.id} className="flex items-center gap-2 rounded-[3px] border border-line bg-fill px-4 py-2">
                   <input
                     value={i.label}
                     onChange={(e) => update(items.map((x) => (x.id === i.id ? { ...x, label: e.target.value } : x)))}

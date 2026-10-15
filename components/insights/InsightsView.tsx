@@ -38,7 +38,7 @@ const BREAKDOWNS: { value: Breakdown; label: string }[] = [
 
 function Kpi({ label, value, tone, sub }: { label: string; value: string; tone?: "pos" | "neg"; sub?: string }) {
   return (
-    <div className="glass rounded-[22px] p-4">
+    <div className="glass rounded-[3px] p-4">
       <div className="text-[12px] font-medium text-ink-3">{label}</div>
       <div className={cn("num mt-1 truncate text-[22px] font-bold tracking-[-0.02em]", tone === "pos" && "text-pos", tone === "neg" && "text-neg")}>{value}</div>
       {sub && <div className="mt-0.5 truncate text-[11.5px] text-ink-3">{sub}</div>}
@@ -176,8 +176,8 @@ export function InsightsView({ trades: all, journals, settings }: { trades: Trad
           ) : (
             <div className="space-y-2.5">
               {m.insights.slice(0, 9).map((i) => (
-                <div key={i.id} className="flex gap-3 rounded-2xl border border-line bg-fill p-4">
-                  <div className={cn("grid h-9 w-9 shrink-0 place-items-center rounded-xl", i.kind === "strength" ? "bg-pos/15 text-pos" : i.kind === "leak" ? "bg-orange/15 text-orange" : "bg-cyan/15 text-cyan")}>
+                <div key={i.id} className="flex gap-3 rounded-[3px] border border-line bg-fill p-4">
+                  <div className={cn("grid h-9 w-9 shrink-0 place-items-center rounded-[3px]", i.kind === "strength" ? "bg-pos/15 text-pos" : i.kind === "leak" ? "bg-orange/15 text-orange" : "bg-cyan/15 text-cyan")}>
                     {i.kind === "strength" ? <Trophy size={17} /> : i.kind === "leak" ? <TriangleAlert size={17} /> : <GaugeIcon size={17} />}
                   </div>
                   <div className="min-w-0 flex-1">
@@ -203,7 +203,7 @@ export function InsightsView({ trades: all, journals, settings }: { trades: Trad
         <Card className="lg:col-span-5">
           <CardHeader eyebrow="Tilt Radar" title="Emotional trading, detected" />
           <div className="mb-5 flex items-center gap-4">
-            <div className={cn("grid h-14 w-14 place-items-center rounded-2xl", m.tilt.tiltCost < 0 ? "bg-neg/15 text-neg" : "bg-pos/15 text-pos")}>
+            <div className={cn("grid h-14 w-14 place-items-center rounded-[3px]", m.tilt.tiltCost < 0 ? "bg-neg/15 text-neg" : "bg-pos/15 text-pos")}>
               <Flame size={24} />
             </div>
             <div>
@@ -212,21 +212,21 @@ export function InsightsView({ trades: all, journals, settings }: { trades: Trad
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3 text-[13px]">
-            <div className="rounded-2xl bg-fill p-3.5">
+            <div className="rounded-[3px] bg-fill p-3.5">
               <div className="text-ink-3">After a loss</div>
               <div className={cn("num text-[17px] font-semibold", m.tilt.afterLoss.expectancy >= 0 ? "text-pos" : "text-neg")}>{fmtMoney(m.tilt.afterLoss.expectancy, { sign: true })}<span className="text-[12px] font-normal text-ink-3">/trade</span></div>
               <div className="text-ink-3">{fmtPct(m.tilt.afterLoss.winRate)} win rate</div>
             </div>
-            <div className="rounded-2xl bg-fill p-3.5">
+            <div className="rounded-[3px] bg-fill p-3.5">
               <div className="text-ink-3">After a win</div>
               <div className={cn("num text-[17px] font-semibold", m.tilt.afterWin.expectancy >= 0 ? "text-pos" : "text-neg")}>{fmtMoney(m.tilt.afterWin.expectancy, { sign: true })}<span className="text-[12px] font-normal text-ink-3">/trade</span></div>
               <div className="text-ink-3">{fmtPct(m.tilt.afterWin.winRate)} win rate</div>
             </div>
-            <div className="rounded-2xl bg-fill p-3.5">
+            <div className="rounded-[3px] bg-fill p-3.5">
               <div className="text-ink-3">Median re-entry after loss</div>
               <div className="num text-[17px] font-semibold">{m.tilt.medianReentryAfterLoss === null ? "—" : fmtHold(m.tilt.medianReentryAfterLoss)}</div>
             </div>
-            <div className="rounded-2xl bg-fill p-3.5">
+            <div className="rounded-[3px] bg-fill p-3.5">
               <div className="text-ink-3">Overtrading days</div>
               <div className="num text-[17px] font-semibold">{m.tilt.overtradingDays.length}</div>
             </div>
@@ -234,7 +234,7 @@ export function InsightsView({ trades: all, journals, settings }: { trades: Trad
           {m.rules.byRule.length > 0 && (
             <div className="mt-5">
               <div className="eyebrow mb-2">Rule breaks ledger</div>
-              <div className="divide-y divide-line rounded-2xl border border-line">
+              <div className="divide-y divide-line rounded-[3px] border border-line">
                 {m.rules.byRule.map((r) => (
                   <div key={r.rule} className="flex items-center justify-between px-4 py-2.5 text-[13.5px]">
                     <span>
@@ -263,7 +263,7 @@ export function InsightsView({ trades: all, journals, settings }: { trades: Trad
           ) : (
             <>
               <BarChart data={buckets.slice(0, 16).map((b) => ({ label: b.label.length > 8 ? `${b.label.slice(0, 7)}…` : b.label, value: b.net, sub: `${b.trades} trades · ${fmtPct(b.winRate)}` }))} height={190} />
-              <div className="mt-4 overflow-hidden rounded-2xl border border-line">
+              <div className="mt-4 overflow-hidden rounded-[3px] border border-line">
                 <table className="w-full text-[13px]">
                   <thead>
                     <tr className="bg-fill text-left text-[11.5px] text-ink-3">

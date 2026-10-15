@@ -135,7 +135,7 @@ export function ImportSheet({ tz, accounts, onDone }: { tz: string; accounts: st
               if (f) void load(f);
             }}
             className={cn(
-              "flex w-full flex-col items-center gap-3 rounded-[24px] border-2 border-dashed px-6 py-10 text-center transition-colors",
+              "flex w-full flex-col items-center gap-3 rounded-[3px] border-2 border-dashed px-6 py-10 text-center transition-colors",
               drag ? "border-cyan bg-cyan/5" : "border-line-2 bg-fill hover:bg-fill-2",
             )}
           >
@@ -158,7 +158,7 @@ export function ImportSheet({ tz, accounts, onDone }: { tz: string; accounts: st
         </>
       ) : (
         <>
-          <div className="flex items-center justify-between gap-3 rounded-2xl border border-line bg-fill px-4 py-3">
+          <div className="flex items-center justify-between gap-3 rounded-[3px] border border-line bg-fill px-4 py-3">
             <div className="min-w-0">
               <div className="truncate text-[14px] font-semibold">{fileName}</div>
               <div className={cn("text-[12.5px]", shape === "unknown" ? "text-orange" : "text-pos")}>
@@ -210,7 +210,7 @@ export function ImportSheet({ tz, accounts, onDone }: { tz: string; accounts: st
           </div>
 
           {(shape === "unknown" || (preview?.errors.length ?? 0) > 0) && mapping && rows && (
-            <details open={shape === "unknown"} className="rounded-2xl border border-line bg-fill p-4">
+            <details open={shape === "unknown"} className="rounded-[3px] border border-line bg-fill p-4">
               <summary className="cursor-pointer text-[13px] font-semibold text-ink-2">Column mapping</summary>
               <div className="mt-3 grid gap-2 sm:grid-cols-2">
                 {MAPPABLE_FIELDS.filter((f) => shape === "unknown" || f.shapes.includes(shape)).map((f) => (
@@ -235,7 +235,7 @@ export function ImportSheet({ tz, accounts, onDone }: { tz: string; accounts: st
           )}
 
           {preview && preview.items.length > 0 && (
-            <div className="overflow-hidden rounded-2xl border border-line">
+            <div className="overflow-hidden rounded-[3px] border border-line">
               <table className="w-full text-[12.5px]">
                 <tbody className="divide-y divide-line">
                   {preview.items.slice(0, 6).map((it) => (
@@ -277,7 +277,7 @@ export function ImportSheet({ tz, accounts, onDone }: { tz: string; accounts: st
           )}
 
           {(error || preview?.errors[0]) && (
-            <div className="flex items-start gap-2 rounded-2xl bg-orange/10 px-3.5 py-2.5 text-[13px] text-orange">
+            <div className="flex items-start gap-2 rounded-[3px] bg-orange/10 px-3.5 py-2.5 text-[13px] text-orange">
               <TriangleAlert size={15} className="mt-0.5 shrink-0" /> {error ?? preview?.errors[0]}
             </div>
           )}

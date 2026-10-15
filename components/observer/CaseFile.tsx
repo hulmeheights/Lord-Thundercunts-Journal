@@ -16,7 +16,7 @@ const rise = (i: number) => ({
 
 function Block({ label, color, children, i }: { label: string; color: string; children: React.ReactNode; i: number }) {
   return (
-    <motion.div {...rise(i)} className="rounded-2xl border border-line bg-fill/60 p-4">
+    <motion.div {...rise(i)} className="rounded-[3px] border border-line bg-fill/60 p-4">
       <div className="eyebrow mb-1.5" style={{ color }}>{label}</div>
       <div className="text-[14.5px] leading-relaxed text-ink-2">{children}</div>
     </motion.div>
@@ -44,7 +44,7 @@ export function CaseFileView({ data, name }: { data: ObserverCaseFile; name: str
           ))}
         </ol>
       </Block>
-      <motion.div {...rise(5)} className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-indigo/25 to-purple/15 p-5">
+      <motion.div {...rise(5)} className="relative overflow-hidden rounded-[3px] bg-gradient-to-br from-indigo/25 to-purple/15 p-5">
         <Quote size={22} className="mb-2 text-purple/80" />
         <p className="font-[family-name:var(--font-display)] text-[17px] leading-relaxed font-medium">{data.letter}</p>
         <p className="mt-4 text-[13.5px] text-ink-3"><span className="font-semibold text-ink-2">Sit with this:</span> {data.question}</p>
@@ -77,7 +77,7 @@ export function CaseFileLoader({ sessionId, name, initial, auto = false }: { ses
   if (state.status === "ready") return <CaseFileView data={state.data} name={name} />;
   if (state.status === "loading") {
     return (
-      <div className="flex items-center gap-3 rounded-2xl border border-line bg-fill/60 p-4 text-[14px] text-ink-3">
+      <div className="flex items-center gap-3 rounded-[3px] border border-line bg-fill/60 p-4 text-[14px] text-ink-3">
         <LoaderCircle size={17} className="animate-spin text-purple" /> The Observer is reading {name}&apos;s file…
       </div>
     );

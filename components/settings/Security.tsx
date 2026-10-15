@@ -46,7 +46,7 @@ export function Security({ passkeys, sessions, passkeyOnly }: { passkeys: Passke
           </Button>
         </div>
         {error && <div className="mb-2 text-[13px] text-orange">{error}</div>}
-        <div className="divide-y divide-line rounded-2xl border border-line">
+        <div className="divide-y divide-line rounded-[3px] border border-line">
           {passkeys.length === 0 ? (
             <div className="flex items-center gap-3 px-4 py-3.5 text-[13.5px] text-ink-3">
               <ScanFace size={18} /> No passkeys yet — add one to unlock with Face ID.
@@ -76,7 +76,7 @@ export function Security({ passkeys, sessions, passkeyOnly }: { passkeys: Passke
             ))
           )}
         </div>
-        <div className="mt-3 flex items-center justify-between gap-4 rounded-2xl border border-line bg-fill px-4 py-3">
+        <div className="mt-3 flex items-center justify-between gap-4 rounded-[3px] border border-line bg-fill px-4 py-3">
           <div>
             <div className="text-[14px] font-semibold">Passkey-only mode</div>
             <div className="text-[12px] text-ink-3">Disables passphrase unlock entirely. Maximum security.</div>
@@ -110,7 +110,7 @@ export function Security({ passkeys, sessions, passkeyOnly }: { passkeys: Passke
             </Button>
           </form>
         </div>
-        <div className="divide-y divide-line rounded-2xl border border-line">
+        <div className="divide-y divide-line rounded-[3px] border border-line">
           {sessions.map((s) => (
             <div key={s.id} className="flex items-center gap-3 px-4 py-3">
               <Monitor size={17} className="text-ink-3" />

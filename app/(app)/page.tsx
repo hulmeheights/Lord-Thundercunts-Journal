@@ -39,12 +39,11 @@ function greeting(minute: number) {
 
 function SectionLabel({ n, title, aside }: { n: string; title: string; aside?: React.ReactNode }) {
   return (
-    <div className="mb-5 flex items-end justify-between gap-4 border-b border-line pb-3">
-      <div className="flex items-baseline gap-3">
-        <span className="num text-[11px] text-ink-4">{n}</span>
-        <h2 className="title-lg">{title}</h2>
+    <div className="mb-10 sm:mb-14">
+      <div className="mb-5 flex items-center justify-between gap-4">
+        <div className="label">{n} — {title}</div>
+        {aside}
       </div>
-      {aside}
     </div>
   );
 }
@@ -148,7 +147,7 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
   const playIntro = prefs.intro && jar.get(INTRO_COOKIE)?.value !== today && sp.welcome !== "1";
 
   return (
-    <div className="space-y-10 sm:space-y-14">
+    <div className="space-y-[clamp(6rem,14vh,11rem)]">
       {playIntro && <OpeningSequence day={today} greeting={hello} dayNumber={dayNumber} values={curve} />}
       {sp.welcome === "1" && <Welcome hasPasskey={(await passkeyCount()) > 0} />}
       {counts.total === 0 && conns.length === 0 && <Onboarding />}
@@ -169,7 +168,7 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
       />
 
       {redDay && (
-        <section className="glass grid gap-6 rounded-[24px] p-6 sm:grid-cols-[auto_1fr_1fr] sm:items-start sm:p-8">
+        <section className="glass grid gap-6 rounded-[3px] p-6 sm:grid-cols-[auto_1fr_1fr] sm:items-start sm:p-8">
           <div className="eyebrow pt-1">A red day</div>
           <div>
             <div className="eyebrow mb-2 !text-ink-4">One lesson</div>
@@ -189,7 +188,7 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
       )}
 
       <section>
-        <SectionLabel n="01" title="The last thirty days" aside={<Link href="/insights" className="text-[13px] text-ink-3 transition-colors hover:text-ink">All insights →</Link>} />
+        <div id="thirty" /><SectionLabel n="01" title="The last thirty days" aside={<Link href="/insights" className="font-mono text-[10px] tracking-[0.3em] text-ink-4 uppercase transition-colors hover:text-ink">All insights →</Link>} />
         <Bento
           s={{
             trades: s30.trades,
@@ -231,7 +230,7 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
         <SectionLabel n="03" title="Perspective" />
         <div className="grid gap-5 lg:grid-cols-3">
           {observer && (
-            <Link href="/observer" className="glass lift group flex min-h-[220px] flex-col rounded-[24px] p-6 sm:p-7">
+            <Link href="/observer" className="glass lift group flex min-h-[220px] flex-col rounded-[3px] p-6 sm:p-7">
               <div className="eyebrow">From the outside</div>
               <p className="display mt-5 text-[22px] leading-[1.2] !tracking-[-0.025em]">{observer.headline}</p>
               <span className="mt-auto inline-flex items-center gap-1 pt-6 text-[13.5px] font-medium text-ink-2 transition-colors group-hover:text-ink">
@@ -239,7 +238,7 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
               </span>
             </Link>
           )}
-          <Link href="/briefing/weekly" className="glass lift group flex min-h-[220px] flex-col rounded-[24px] p-6 sm:p-7">
+          <Link href="/briefing/weekly" className="glass lift group flex min-h-[220px] flex-col rounded-[3px] p-6 sm:p-7">
             <div className="eyebrow">{sunday ? "Unlocked today" : "Weekly replay"}</div>
             <p className="display mt-5 text-[22px] leading-[1.2] !tracking-[-0.025em]">
               {sunday ? "Your week, replayed. Ten slides, two minutes." : `Your week so far: ${fmtMoney(weekly?.net ?? weekNet, { sign: true })}.`}
@@ -249,7 +248,7 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
             </span>
           </Link>
           {prop ? (
-            <Link href="/guardian" className="glass lift group flex min-h-[220px] flex-col rounded-[24px] p-6 sm:p-7">
+            <Link href="/guardian" className="glass lift group flex min-h-[220px] flex-col rounded-[3px] p-6 sm:p-7">
               <div className="eyebrow">{settings.prop.firm} Guardian</div>
               <p className="display mt-5 text-[22px] leading-[1.2] !tracking-[-0.025em]">
                 {prop.breached ? "Max loss breached." : `${fmtMoney(prop.cushion)} above the max-loss line.`}
@@ -264,7 +263,7 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
           ) : capsule ? (
             <CapsuleCard capsule={capsule} />
           ) : (
-            <Link href={`/journal/${today}`} className="glass lift group flex min-h-[220px] flex-col rounded-[24px] p-6 sm:p-7">
+            <Link href={`/journal/${today}`} className="glass lift group flex min-h-[220px] flex-col rounded-[3px] p-6 sm:p-7">
               <div className="eyebrow">Tonight</div>
               <p className="display mt-5 text-[22px] leading-[1.2] !tracking-[-0.025em]">Two lines on today. Future you will read them.</p>
               <span className="mt-auto inline-flex items-center gap-1 pt-6 text-[13.5px] font-medium text-ink-2 transition-colors group-hover:text-ink">

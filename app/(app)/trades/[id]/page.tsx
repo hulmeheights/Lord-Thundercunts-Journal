@@ -48,7 +48,7 @@ export default async function TradePage({ params }: { params: Promise<{ id: stri
         <div className="space-y-5 lg:col-span-5">
           <Card>
             <div className="flex items-center gap-3">
-              <div className={cn("grid h-12 w-12 place-items-center rounded-2xl", long ? "bg-pos/15 text-pos" : "bg-neg/15 text-neg")}>
+              <div className={cn("grid h-12 w-12 place-items-center rounded-[3px]", long ? "bg-pos/15 text-pos" : "bg-neg/15 text-neg")}>
                 {long ? <ArrowUpRight size={22} /> : <ArrowDownRight size={22} />}
               </div>
               <div>
