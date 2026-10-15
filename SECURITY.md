@@ -1,0 +1,57 @@
+# Security model
+
+Lord Thundercunts Journal is a **single-owner** app. The source code can be public: every secret lives in
+Vercel environment variables, and nothing sensitive is ever committed.
+
+## What an attacker would need
+
+| Asset | Protected by |
+| --- | --- |
+| Your journal & trades | Owner-only login (passkey or passphrase) + per-request session validation against the database |
+| Broker credentials | AES-256-GCM encryption with a key (`ENCRYPTION_KEY`) that exists only in Vercel env — a database leak alone reveals nothing usable |
+| Ability to trade | **Impossible from this app.** Broker clients can only call an explicit allowlist of read endpoints (`lib/brokers/projectx.ts`, `lib/brokers/tradovate.ts`). No code path can place, modify or cancel an order |
+| Sessions | 256-bit random tokens; only their SHA-256 hash is stored. `__Host-` cookie, `HttpOnly`, `Secure`, `SameSite=Strict`, 30-day sliding expiry, "sign out everywhere" |
+
+## Controls
+
+- **Authentication**: WebAuthn passkeys (Face ID / Touch ID, phishing-resistant, user verification required) and/or an
+  owner passphrase compared in constant time. Optional *passkey-only mode* disables the passphrase entirely.
+- **Brute-force protection**: 5 failed attempts per network per 15 minutes, plus a global circuit breaker that freezes
+  passphrase unlock for an hour after 30 failures (passkeys keep working). Failed attempts are slowed down.
+- **Passkey challenges** are single-use, expire after 5 minutes and are stored server-side (no replay).
+- **CSRF**: `SameSite=Strict` cookies, Next.js server-action origin checks, and explicit `Origin` checks on every
+  state-changing route handler.
+- **XSS**: React escaping everywhere (no `dangerouslySetInnerHTML`), plus a strict nonce-based Content-Security-Policy
+  (`script-src 'nonce-…' 'strict-dynamic'`, `object-src 'none'`, `frame-ancestors 'none'`, `connect-src 'self'`).
+- **Headers**: HSTS (preload), `X-Frame-Options: DENY`, `nosniff`, `Referrer-Policy: no-referrer`, COOP/CORP,
+  restrictive `Permissions-Policy`, `X-Robots-Tag: noindex` and a disallow-all `robots.txt`.
+- **SQL injection**: every query uses parameterised tagged templates (`postgres` library). Migrations are static SQL.
+- **Input validation**: every server action and API route validates input with `zod`.
+- **SSRF**: the only configurable outbound host (ProjectX gateway) must be HTTPS on `api.topstepx.com` or `*.projectx.com`.
+- **Secrets hygiene**: credentials are write-only (the UI only ever sees a masked username), never logged, and excluded
+  from data exports. Disconnecting a broker deletes its credentials and tokens immediately.
+- **Cron**: `/api/cron/sync` refuses every request unless `Authorization: Bearer $CRON_SECRET` matches (constant-time).
+- **AI privacy**: only summarised statistics and your journal text are sent to Anthropic's API. No credentials, tokens or
+  account numbers. The API does not train on your data by default. AI can be switched off in Settings.
+
+## Recommended Vercel settings
+
+1. Mark every environment variable **Sensitive** and scope secrets to **Production** only.
+2. Keep **Deployment Protection → Vercel Authentication** on for preview deployments (the default).
+3. Leave **Git Fork Protection** on so pull requests from forks can't deploy with your secrets.
+4. Make the GitHub repository **private** (Settings → General → Danger Zone → Change visibility). Not required for
+   security — no secrets are in the code — but it keeps your setup to yourself.
+
+## Broker API keys
+
+- A **TopstepX / ProjectX API key has full trading permissions** (there is no read-only key). This app enforces read-only
+  access in code, but treat the key like a password. If you ever suspect exposure, delete it in TopstepX → Settings → API
+  and generate a new one.
+- Topstep forbids placing orders from servers/VPS. This app never places orders — it only reads history, which is the
+  "storage, analytics, dashboards" use Topstep explicitly permits.
+- For **Tradovate**, use a dedicated API key you can revoke independently, and rotate your password if it is ever shared.
+
+## Reporting
+
+Found something? Rotate `ENCRYPTION_KEY` (then reconnect brokers), rotate `OWNER_PASSWORD`, and use
+Settings → Security → *Sign out everywhere*.
