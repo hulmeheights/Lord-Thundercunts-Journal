@@ -2,11 +2,11 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { RefreshCw, TriangleAlert } from "lucide-react";
+import { Dot } from "@/components/m";
 import { cn } from "@/lib/cn";
 import { timeAgo } from "@/lib/format";
 
-/** Shows sync status and quietly auto-syncs when the app is opened. */
+/** Meridian's HUD status line — "● LIVE · 2M AGO". Quietly auto-syncs on open; tap to sync now. */
 export function SyncPill({ lastSyncAt, hasConnections, error }: { lastSyncAt: string | null; hasConnections: boolean; error: string | null }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -46,25 +46,29 @@ export function SyncPill({ lastSyncAt, hasConnections, error }: { lastSyncAt: st
   const problem = msg ?? error;
   return (
     <button
+      type="button"
       onClick={() => sync(false)}
       disabled={busy}
-      className={cn(
-        "inline-flex h-9 shrink-0 items-center gap-2 rounded-full border border-line-2 px-3.5 text-[12.5px] transition-colors",
-        problem ? "text-warn" : "text-ink-2 hover:text-ink",
-      )}
       title={problem ?? "Sync trades now"}
+      className="group inline-flex shrink-0 items-center gap-2.5 font-mono text-[10px] tracking-[0.24em] whitespace-nowrap text-ink-4 uppercase transition-colors duration-300 hover:text-ink"
     >
-      {problem && !busy ? (
-        <TriangleAlert size={14} />
-      ) : busy ? (
-        <RefreshCw size={13} className="animate-spin" />
+      {busy ? (
+        <>
+          <Dot tone="mute" />
+          Syncing…
+        </>
+      ) : problem ? (
+        <>
+          <span className="text-gold">◆</span>
+          <span className="text-ink-3 group-hover:text-ink">Sync issue · retry</span>
+        </>
       ) : (
-        <span className="relative grid h-2 w-2 place-items-center">
-          <span className="absolute h-2 w-2 animate-ping rounded-full bg-glow opacity-60" />
-          <span className="h-1.5 w-1.5 rounded-full bg-glow" />
-        </span>
+        <>
+          <Dot />
+          <span className={cn("text-pos")}>Live</span>
+          <span>· {timeAgo(lastSyncAt)}</span>
+        </>
       )}
-      {busy ? "Syncing…" : problem ? "Sync issue — retry" : `Live · ${timeAgo(lastSyncAt)}`}
     </button>
   );
 }

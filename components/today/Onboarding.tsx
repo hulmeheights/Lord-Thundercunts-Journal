@@ -2,45 +2,49 @@
 
 import Link from "next/link";
 import { useState, useTransition } from "react";
-import { Link2, LoaderCircle, Sparkles } from "lucide-react";
-import { buttonClass, Button } from "@/components/ui/Button";
+import { Button, buttonClass } from "@/components/ui/Button";
 import { loadSampleData } from "@/lib/actions/settings";
 
+/** First run: an empty journal gets one gold panel and two ways in. */
 export function Onboarding() {
   const [pending, start] = useTransition();
   const [done, setDone] = useState(false);
   return (
-    <div className="glass noise relative overflow-hidden rounded-[3px] p-6 sm:p-8">
-      <div className="absolute -top-24 -right-24 h-72 w-72 rounded-full bg-brand opacity-25 blur-3xl" />
-      <div className="relative max-w-xl">
-        <div className="eyebrow mb-2 text-cyan">Welcome, my Lord</div>
-        <h2 className="font-[family-name:var(--font-display)] text-[26px] leading-tight font-bold tracking-[-0.025em] sm:text-[30px]">
-          Let&apos;s fill your journal — automatically.
-        </h2>
-        <p className="mt-3 text-[15px] leading-relaxed text-ink-2">
-          Connect TopstepX or Tradovate and every trade lands here on its own, already paired into round trips with fees. Read-only, encrypted,
-          and impossible to trade from.
-        </p>
-        <div className="mt-6 flex flex-wrap gap-3">
-          <Link href="/settings#connections" className={buttonClass("primary", "lg")}>
-            <Link2 size={18} /> Connect a broker
-          </Link>
-          <Button
-            variant="secondary"
-            size="lg"
-            disabled={pending || done}
-            onClick={() =>
-              start(async () => {
-                await loadSampleData();
-                setDone(true);
-              })
-            }
-          >
-            {pending ? <LoaderCircle size={18} className="animate-spin" /> : <Sparkles size={18} />}
-            {done ? "Sample loaded" : "Explore with sample data"}
-          </Button>
-        </div>
+    <section className="reveal mx-auto max-w-[560px] rounded-[3px] border border-gold bg-[rgba(189,158,99,0.03)] p-[clamp(2rem,4vw,3.2rem)]">
+      <div className="label mb-6">Welcome, my Lord ◆</div>
+      <h2 className="max-w-[16ch] font-serif text-[clamp(1.7rem,3.4vw,2.4rem)] leading-[1.15] font-light tracking-[-0.01em] [&_em]:italic">
+        Let&apos;s fill your journal — <em>automatically</em>.
+      </h2>
+      <p className="mt-5 font-mono text-[12px] leading-[1.9] tracking-[0.02em] text-ink-2">
+        Connect TopstepX or Tradovate and every trade lands here on its own, paired into round trips with fees.
+      </p>
+      <ul className="mt-6 space-y-3 border-t border-line pt-6">
+        {["Read-only and encrypted", "Impossible to place a trade from here", "Syncs quietly every time you open it"].map((x) => (
+          <li key={x} className="relative pl-[1.4em] font-mono text-[12px] tracking-[0.01em] text-ink">
+            <span className="absolute top-[0.25em] left-0 text-[0.7em] text-gold">◆</span>
+            {x}
+          </li>
+        ))}
+      </ul>
+      <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+        <Link href="/settings#connections" className={buttonClass("primary", "lg", "w-full sm:w-auto")}>
+          Connect a broker
+        </Link>
+        <Button
+          variant="secondary"
+          size="lg"
+          className="w-full sm:w-auto"
+          disabled={pending || done}
+          onClick={() =>
+            start(async () => {
+              await loadSampleData();
+              setDone(true);
+            })
+          }
+        >
+          {pending ? "Loading…" : done ? "Sample loaded" : "Try sample data"}
+        </Button>
       </div>
-    </div>
+    </section>
   );
 }

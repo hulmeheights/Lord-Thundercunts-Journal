@@ -5,7 +5,7 @@ import { z } from "zod";
 import { assertSession } from "../auth/session";
 import { randomToken } from "../crypto";
 import { OBSTACLE_KEYS, perceptionGap, type ObstacleKey } from "../analytics/observer";
-import { saveSetting } from "../data/settings";
+import { getSettings, saveSetting } from "../data/settings";
 import { deleteObserverSession, insertObserverSession, loadDossier, markAdopted, OBSERVER_WINDOWS, type ObserverWindow } from "../data/observer";
 import type { TradingRules } from "../types";
 
@@ -127,7 +127,33 @@ export async function saveObserverPrefs(input: z.input<typeof Prefs>) {
   await assertSession();
   const parsed = Prefs.safeParse(input);
   if (!parsed.success) return { error: "Keep the name under 40 characters." };
-  await saveSetting("observer", parsed.data);
+  const { observer } = await getSettings();
+  // Merge, so a pinned order survives a change of name or pronoun.
+  await saveSetting("observer", { ...observer, ...parsed.data });
+  revalidatePath("/", "layout");
+  return { ok: true };
+}
+
+/**
+ * Pins one instruction as the standing order. From then on the Observer checks
+ * every session against it, automatically, from the trades themselves.
+ */
+export async function pinOrder(input: { obstacle: ObstacleKey; window: ObserverWindow }) {
+  await assertSession();
+  const parsed = z.object({ obstacle: Key, window: Win }).safeParse(input);
+  if (!parsed.success) return { error: "Unknown instruction." };
+  const { settings, dossier, today } = await loadDossier(parsed.data.window);
+  const found = dossier.stopping.find((o) => o.key === parsed.data.obstacle);
+  if (!found) return { error: "That pattern no longer shows up in your data." };
+  await saveSetting("observer", { ...settings.observer, pinned: found.key, pinnedAt: today, pinnedParams: found.instruction.params });
+  revalidatePath("/", "layout");
+  return { ok: true };
+}
+
+export async function unpinOrder() {
+  await assertSession();
+  const { observer } = await getSettings();
+  await saveSetting("observer", { ...observer, pinned: null, pinnedAt: null, pinnedParams: null });
   revalidatePath("/", "layout");
   return { ok: true };
 }

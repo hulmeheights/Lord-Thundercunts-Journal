@@ -2,13 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { AnimatePresence, motion } from "motion/react";
-import { LoaderCircle, ScanFace, X } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { registerPasskey } from "@/lib/passkey-client";
 import { clearSetupEnv } from "@/lib/setup-client";
 
-/** Shown once after claiming: offers Face ID straight away. */
+/** Shown once after claiming: offers Face ID straight away. A hairline strip, not a banner. */
 export function Welcome({ hasPasskey }: { hasPasskey: boolean }) {
   const router = useRouter();
   const [open, setOpen] = useState(!hasPasskey);
@@ -17,50 +15,47 @@ export function Welcome({ hasPasskey }: { hasPasskey: boolean }) {
 
   useEffect(() => clearSetupEnv(), []);
 
+  if (!open) return null;
   return (
-    <AnimatePresence>
-      {open && (
-        <motion.div
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, height: 0 }}
-          className="glass noise relative overflow-hidden rounded-[3px] p-5 sm:p-6"
-        >
-          <div className="absolute -top-20 -right-16 h-56 w-56 rounded-full bg-brand opacity-25 blur-3xl" />
-          <button onClick={() => setOpen(false)} className="absolute top-4 right-4 text-ink-3 hover:text-ink" aria-label="Dismiss">
-            <X size={17} />
-          </button>
-          <div className="relative flex flex-wrap items-center gap-4">
-            <div className="grid h-12 w-12 place-items-center rounded-[3px] bg-cyan/15 text-cyan">
-              <ScanFace size={24} />
-            </div>
-            <div className="min-w-0 flex-1">
-              <div className="text-[17px] font-semibold">It&apos;s yours. Now make it effortless.</div>
-              <div className="text-[13.5px] text-ink-3">Add Face ID / Touch ID so you unlock in a glance — phishing-proof.</div>
-              {msg && <div className="mt-1 text-[12.5px] text-orange">{msg}</div>}
-            </div>
-            <Button
-              variant="primary"
-              disabled={busy}
-              onClick={async () => {
-                setBusy(true);
-                setMsg(null);
-                try {
-                  await registerPasskey();
-                  setOpen(false);
-                  router.refresh();
-                } catch (e) {
-                  setMsg(e instanceof Error ? e.message : "Couldn't add Face ID");
-                } finally {
-                  setBusy(false);
-                }
-              }}
-            >
-              {busy ? <LoaderCircle size={16} className="animate-spin" /> : <ScanFace size={16} />} Add Face ID
-            </Button>
-          </div>
-        </motion.div>
-      )}
-    </AnimatePresence>
+    <section className="reveal relative grid gap-x-10 gap-y-6 border-y border-line py-[clamp(1.8rem,4vh,2.6rem)] md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
+      <div className="min-w-0 pr-8">
+        <div className="label mb-4">It&apos;s yours ◆</div>
+        <p className="max-w-[24ch] font-serif text-[clamp(1.4rem,2.6vw,1.9rem)] leading-[1.2] font-light tracking-[-0.01em] [&_em]:italic">
+          Now make it <em>effortless</em>.
+        </p>
+        <p className="mt-3 max-w-[48ch] font-mono text-[12px] leading-[1.9] tracking-[0.02em] text-ink-2">
+          Add Face ID or Touch ID and unlock in a glance — phishing-proof.
+        </p>
+        {msg && <p className="mt-2 font-mono text-[11px] text-gold">{msg}</p>}
+      </div>
+      <Button
+        variant="primary"
+        size="lg"
+        disabled={busy}
+        onClick={async () => {
+          setBusy(true);
+          setMsg(null);
+          try {
+            await registerPasskey();
+            setOpen(false);
+            router.refresh();
+          } catch (e) {
+            setMsg(e instanceof Error ? e.message : "Couldn't add Face ID");
+          } finally {
+            setBusy(false);
+          }
+        }}
+      >
+        {busy ? "Waiting…" : "Add Face ID"}
+      </Button>
+      <button
+        type="button"
+        onClick={() => setOpen(false)}
+        className="absolute top-[clamp(1.8rem,4vh,2.6rem)] right-0 font-mono text-[14px] leading-none text-ink-4 transition-colors hover:text-ink"
+        aria-label="Dismiss"
+      >
+        ×
+      </button>
+    </section>
   );
 }

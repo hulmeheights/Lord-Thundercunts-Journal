@@ -1,54 +1,58 @@
 "use client";
 
-import { motion } from "motion/react";
-import { LoaderCircle, Quote, Sparkles } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { ObserverCaseFile } from "@/lib/ai/observer";
-import { Button } from "@/components/ui/Button";
+import { Dot, Row, Rows } from "@/components/m";
+import { cn } from "@/lib/cn";
+import { IfThen, monoBody, textBtn } from "./ui";
 
 type State = { status: "idle" } | { status: "loading" } | { status: "error"; message: string } | { status: "ready"; data: ObserverCaseFile };
 
-const rise = (i: number) => ({
-  initial: { opacity: 0, y: 10 },
-  animate: { opacity: 1, y: 0 },
-  transition: { type: "spring" as const, stiffness: 260, damping: 30, delay: 0.08 * i },
-});
-
-function Block({ label, color, children, i }: { label: string; color: string; children: React.ReactNode; i: number }) {
-  return (
-    <motion.div {...rise(i)} className="rounded-[3px] border border-line bg-fill/60 p-4">
-      <div className="eyebrow mb-1.5" style={{ color }}>{label}</div>
-      <div className="text-[14.5px] leading-relaxed text-ink-2">{children}</div>
-    </motion.div>
-  );
-}
-
+/** The AI case file: the Observer's letter, then the file itself as rows. */
 export function CaseFileView({ data, name }: { data: ObserverCaseFile; name: string }) {
   return (
-    <div className="space-y-3">
-      <Block label="Wants" color="#64d2ff" i={0}>{data.wants}</Block>
-      <Block label="Is doing" color="#0a84ff" i={1}>
-        <ul className="space-y-1.5">
-          {data.doing.map((d) => <li key={d}>{d}</li>)}
-        </ul>
-      </Block>
-      <Block label="Is stopped by" color="#ff9f0a" i={2}>{data.stopping}</Block>
-      <Block label="Belief vs evidence" color="#ffd60a" i={3}>{data.gap}</Block>
-      <Block label={`Tell ${name}`} color="#bf5af2" i={4}>
-        <ol className="space-y-2">
-          {data.tell.map((t, k) => (
-            <li key={k} className="flex gap-2.5">
-              <span className="num mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full bg-purple/15 text-[11px] font-bold text-purple">{k + 1}</span>
-              <span><span className="text-ink-3">When </span><b className="font-semibold text-ink">{t.when}</b><span className="text-ink-3"> → </span><b className="font-semibold text-ink">{t.then}</b></span>
-            </li>
-          ))}
-        </ol>
-      </Block>
-      <motion.div {...rise(5)} className="relative overflow-hidden rounded-[3px] bg-gradient-to-br from-indigo/25 to-purple/15 p-5">
-        <Quote size={22} className="mb-2 text-purple/80" />
-        <p className="font-[family-name:var(--font-display)] text-[17px] leading-relaxed font-medium">{data.letter}</p>
-        <p className="mt-4 text-[13.5px] text-ink-3"><span className="font-semibold text-ink-2">Sit with this:</span> {data.question}</p>
-      </motion.div>
+    <div>
+      <figure className="reveal">
+        <blockquote className="max-w-[32ch] font-serif text-[clamp(1.35rem,2.8vw,2.1rem)] leading-[1.45] font-light tracking-[-0.01em] italic">
+          “{data.letter}”
+        </blockquote>
+        <figcaption className="mt-7 font-mono text-[10px] tracking-[0.28em] text-ink-4 uppercase">— The Observer, to {name}</figcaption>
+      </figure>
+
+      <Rows className="mt-[clamp(3rem,8vh,5rem)]">
+        <Row i="01" title="Wants" desc={data.wants} />
+        <Row
+          i="02"
+          title="Is doing"
+          desc={
+            <ul className="space-y-2.5">
+              {data.doing.map((d) => (
+                <li key={d}>{d}</li>
+              ))}
+            </ul>
+          }
+        />
+        <Row i="03" title="Is stopped by" desc={data.stopping} />
+        <Row i="04" title="Belief and evidence" desc={data.gap} />
+        <Row
+          i="05"
+          title={<>Tell {name}</>}
+          desc={
+            <ol className="space-y-3">
+              {data.tell.map((t, k) => (
+                <li key={k} className="[&_em]:text-ink [&_em]:not-italic">
+                  <IfThen when={t.when} then={t.then} />
+                </li>
+              ))}
+            </ol>
+          }
+        />
+      </Rows>
+
+      <div className="reveal mt-[clamp(3rem,8vh,5rem)]">
+        <div className="eyebrow mb-4">Sit with this</div>
+        <p className="max-w-[30ch] font-serif text-[clamp(1.25rem,2.4vw,1.7rem)] leading-[1.35] font-light">{data.question}</p>
+      </div>
     </div>
   );
 }
@@ -63,7 +67,7 @@ export function CaseFileLoader({ sessionId, name, initial, auto = false }: { ses
       const res = await fetch("/api/observer/ai", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: sessionId }) });
       const json = (await res.json()) as { caseFile?: ObserverCaseFile; error?: string; disabled?: boolean };
       if (json.caseFile) setState({ status: "ready", data: json.caseFile });
-      else setState({ status: "error", message: json.disabled ? "AI is switched off." : json.error ?? "The Observer is unavailable right now." });
+      else setState({ status: "error", message: json.disabled ? "AI is switched off in Settings." : (json.error ?? "The Observer is unavailable right now.") });
     } catch {
       setState({ status: "error", message: "Couldn't reach the Observer. Check your connection." });
     }
@@ -77,17 +81,17 @@ export function CaseFileLoader({ sessionId, name, initial, auto = false }: { ses
   if (state.status === "ready") return <CaseFileView data={state.data} name={name} />;
   if (state.status === "loading") {
     return (
-      <div className="flex items-center gap-3 rounded-[3px] border border-line bg-fill/60 p-4 text-[14px] text-ink-3">
-        <LoaderCircle size={17} className="animate-spin text-purple" /> The Observer is reading {name}&apos;s file…
-      </div>
+      <p className={cn(monoBody, "flex items-center gap-3 text-ink-3")}>
+        <Dot tone="gold" /> The Observer is reading {name}&apos;s file…
+      </p>
     );
   }
   return (
-    <div className="space-y-2">
-      <Button variant="secondary" size="sm" onClick={load}>
-        <Sparkles size={14} className="text-purple" /> Ask the Observer to write it up
-      </Button>
-      {state.status === "error" && <div className="text-[12.5px] text-neg">{state.message}</div>}
+    <div className="space-y-4">
+      <button type="button" onClick={load} className={textBtn}>
+        Ask the Observer to write it up →
+      </button>
+      {state.status === "error" && <p className={cn(monoBody, "text-ink-3")}>{state.message}</p>}
     </div>
   );
 }

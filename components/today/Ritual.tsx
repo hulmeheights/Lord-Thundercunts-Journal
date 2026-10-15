@@ -1,48 +1,98 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { AnimatePresence, motion } from "motion/react";
-import { Check, Plus, X } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { saveJournal, toggleChecklistItem } from "@/lib/actions/journal";
 import type { DayTask, RitualItem } from "@/lib/types";
+import { Aside, GroupHead, Split } from "./Layout";
 
-const GROUPS: { key: RitualItem["group"]; label: string; color: string }[] = [
-  { key: "pre", label: "Before the open", color: "var(--pos)" },
-  { key: "post", label: "After the close", color: "var(--pos)" },
-  { key: "life", label: "Life", color: "var(--pos)" },
+const GROUPS: { key: RitualItem["group"]; label: string }[] = [
+  { key: "pre", label: "Before the open" },
+  { key: "post", label: "After the close" },
+  { key: "life", label: "Life" },
 ];
 
-function CheckRow({ done, label, color, onToggle, onDelete }: { done: boolean; label: string; color: string; onToggle: () => void; onDelete?: () => void }) {
+const EASE = "cubic-bezier(0.16,1,0.3,1)";
+
+/** A square hairline box that fills jade and draws its tick. */
+export function CheckBox({ on }: { on: boolean }) {
   return (
-    <motion.div layout className="group flex items-center gap-3.5 py-2.5">
-      <button
-        onClick={onToggle}
-        aria-pressed={done}
-        className="grid h-[22px] w-[22px] shrink-0 place-items-center rounded-full border transition-all duration-300 active:scale-90"
-        style={{ borderColor: done ? color : "var(--ink-4)", background: done ? color : "transparent", boxShadow: done ? "0 0 0 4px color-mix(in oklab, var(--glow) 18%, transparent)" : undefined }}
-      >
-        <AnimatePresence>
-          {done && (
-            <motion.span initial={{ scale: 0 }} animate={{ scale: 1 }} exit={{ scale: 0 }} transition={{ type: "spring", stiffness: 600, damping: 25 }}>
-              <Check size={13} strokeWidth={2.6} className="text-on-brand" style={{ strokeWidth: 2.6 }} />
-            </motion.span>
-          )}
-        </AnimatePresence>
-      </button>
-      <button onClick={onToggle} className={cn("min-w-0 flex-1 text-left text-[15px] transition-colors duration-300", done ? "text-ink-3 line-through decoration-ink-4" : "text-ink")}>
-        {label}
-      </button>
-      {onDelete && (
-        <button onClick={onDelete} className="text-ink-4 opacity-0 transition-opacity group-hover:opacity-100 hover:text-ink-2 max-sm:opacity-100" aria-label="Remove">
-          <X size={15} />
-        </button>
+    <span
+      aria-hidden
+      className={cn(
+        "grid h-[18px] w-[18px] shrink-0 place-items-center rounded-[2px] border transition-[background-color,border-color] duration-300",
+        on ? "border-pos bg-pos" : "border-line-2 group-hover:border-ink-4",
       )}
-    </motion.div>
+    >
+      <svg viewBox="0 0 12 12" className="h-[11px] w-[11px]">
+        <path
+          d="M2.4 6.3 L4.9 8.7 L9.7 3.5"
+          fill="none"
+          stroke="var(--bg)"
+          strokeWidth="1.7"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          pathLength={1}
+          strokeDasharray="1"
+          style={{ strokeDashoffset: on ? 0 : 1, transition: `stroke-dashoffset 0.5s ${EASE} ${on ? "0.1s" : "0s"}` }}
+        />
+      </svg>
+    </span>
   );
 }
 
-export function Ritual({ day, items, checklist, tasks: initialTasks }: { day: string; items: RitualItem[]; checklist: Record<string, boolean>; tasks: DayTask[] }) {
+function CheckRow({ i, done, label, onToggle, onDelete }: { i: number; done: boolean; label: string; onToggle: () => void; onDelete?: () => void }) {
+  return (
+    <div className="m-row group grid grid-cols-[2.2rem_minmax(0,1fr)_auto] items-center gap-x-3 border-t border-line sm:grid-cols-[2.5rem_minmax(0,1fr)_auto] sm:gap-x-4">
+      <span className={cn("font-mono text-[11px] tracking-[0.1em] transition-colors duration-500", done ? "text-gold/45" : "text-gold")}>{String(i).padStart(2, "0")}</span>
+      <button
+        type="button"
+        role="checkbox"
+        aria-checked={done}
+        onClick={onToggle}
+        className={cn(
+          "min-w-0 py-[1.05rem] text-left font-mono text-[12.5px] leading-[1.6] tracking-[0.03em] transition-colors duration-500",
+          done ? "text-ink-4 line-through decoration-line-2" : "text-ink",
+        )}
+      >
+        {label}
+      </button>
+      <span className="flex items-center gap-4">
+        {onDelete && (
+          <button
+            type="button"
+            onClick={onDelete}
+            className="font-mono text-[13px] text-ink-4 opacity-0 transition-[opacity,color] duration-300 group-hover:opacity-100 hover:text-ink max-sm:opacity-100"
+            aria-label={`Remove ${label}`}
+          >
+            ×
+          </button>
+        )}
+        <button type="button" onClick={onToggle} aria-label={done ? `Untick ${label}` : `Tick ${label}`} className="-m-2 p-2">
+          <CheckBox on={done} />
+        </button>
+      </span>
+    </div>
+  );
+}
+
+/**
+ * The daily ritual: Meridian rows with a gold index, a mono label and a square
+ * box that fills jade. `layout="split"` adds the Today aside with the count.
+ */
+export function Ritual({
+  day,
+  items,
+  checklist,
+  tasks: initialTasks,
+  layout = "stack",
+}: {
+  day: string;
+  items: RitualItem[];
+  checklist: Record<string, boolean>;
+  tasks: DayTask[];
+  layout?: "stack" | "split";
+}) {
   const [checked, setChecked] = useState(checklist);
   const [tasks, setTasks] = useState(initialTasks);
   const [draft, setDraft] = useState("");
@@ -76,64 +126,102 @@ export function Ritual({ day, items, checklist, tasks: initialTasks }: { day: st
 
   const total = items.length + tasks.length;
   const done = items.filter((i) => checked[i.id]).length + tasks.filter((t) => t.done).length;
+  const all = total > 0 && done === total;
+  let n = 0;
 
-  return (
-    <div>
-      <div className="mb-4 flex items-center gap-3">
-        <div className="h-[3px] flex-1 overflow-hidden rounded-full bg-fill-3">
-          <motion.div
-            className="h-full rounded-full bg-pos"
-            animate={{ width: `${total ? (done / total) * 100 : 0}%` }}
-            transition={{ duration: 0.9, ease: [0.22, 1, 0.36, 1] }}
-          />
-        </div>
-        <span className="num text-[12.5px] text-ink-2">
-          {done}/{total}
-        </span>
-      </div>
-      <div className="space-y-7">
-        {GROUPS.map((g) => {
-          const list = items.filter((i) => i.group === g.key);
-          if (!list.length) return null;
-          return (
-            <div key={g.key}>
-              <div className="eyebrow mb-1">{g.label}</div>
-              <div className="divide-y divide-line">
-                {list.map((i) => (
-                  <CheckRow key={i.id} done={!!checked[i.id]} label={i.label} color={g.color} onToggle={() => toggle(i.id)} />
-                ))}
-              </div>
+  const list = (
+    <div className="space-y-[clamp(2.4rem,6vh,3.4rem)]">
+      {GROUPS.map((g) => {
+        const rows = items.filter((i) => i.group === g.key);
+        if (!rows.length) return null;
+        const gDone = rows.filter((i) => checked[i.id]).length;
+        return (
+          <div key={g.key} className="reveal">
+            <GroupHead right={`${gDone} / ${rows.length}`}>{g.label}</GroupHead>
+            <div className="border-b border-line">
+              {rows.map((i) => (
+                <CheckRow key={i.id} i={++n} done={!!checked[i.id]} label={i.label} onToggle={() => toggle(i.id)} />
+              ))}
             </div>
-          );
-        })}
-        <div>
-          <div className="eyebrow mb-1">Today&apos;s to-dos</div>
-          <div className="divide-y divide-line">
-            {tasks.map((t) => (
-              <CheckRow
-                key={t.id}
-                done={t.done}
-                label={t.label}
-                color="var(--pos)"
-                onToggle={() => persistTasks(tasks.map((x) => (x.id === t.id ? { ...x, done: !x.done } : x)))}
-                onDelete={() => persistTasks(tasks.filter((x) => x.id !== t.id))}
-              />
-            ))}
           </div>
+        );
+      })}
+      <div className="reveal">
+        <GroupHead right={tasks.length ? `${tasks.filter((t) => t.done).length} / ${tasks.length}` : undefined}>Today&apos;s to-dos</GroupHead>
+        <div>
+          {tasks.map((t) => (
+            <CheckRow
+              key={t.id}
+              i={++n}
+              done={t.done}
+              label={t.label}
+              onToggle={() => persistTasks(tasks.map((x) => (x.id === t.id ? { ...x, done: !x.done } : x)))}
+              onDelete={() => persistTasks(tasks.filter((x) => x.id !== t.id))}
+            />
+          ))}
           <form
             onSubmit={(e) => {
               e.preventDefault();
               addTask();
             }}
-            className="mt-2 flex items-center gap-2"
+            className="grid grid-cols-[2.2rem_minmax(0,1fr)_auto] items-center gap-x-3 border-t border-line pt-3 sm:grid-cols-[2.5rem_minmax(0,1fr)_auto] sm:gap-x-4"
           >
-            <input value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="Add something for today…" className="field h-10 text-[14px]" maxLength={200} />
-            <button type="submit" className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-line-2 text-ink-2 transition-colors hover:text-ink" aria-label="Add">
-              <Plus size={18} />
+            <span className="font-mono text-[11px] tracking-[0.1em] text-ink-4">+</span>
+            <input
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              placeholder="Add something for today"
+              aria-label="Add a to-do for today"
+              maxLength={200}
+              className="min-w-0 border-0 border-b border-line-2 bg-transparent py-2.5 font-mono text-[12.5px] tracking-[0.03em] text-ink transition-colors duration-300 placeholder:text-ink-4 focus:border-ink-3 focus:outline-none"
+            />
+            <button
+              type="submit"
+              disabled={!draft.trim()}
+              className="font-mono text-[10px] tracking-[0.26em] text-ink-4 uppercase transition-colors duration-300 hover:text-ink disabled:opacity-40"
+            >
+              Add ↵
             </button>
           </form>
         </div>
       </div>
+    </div>
+  );
+
+  const progress = (
+    <div className="mt-6 h-px w-full max-w-[220px] bg-line-2">
+      <div className="h-px bg-pos transition-[width] duration-1000" style={{ width: `${total ? (done / total) * 100 : 0}%`, transitionTimingFunction: EASE }} />
+    </div>
+  );
+
+  if (layout === "split") {
+    return (
+      <Split
+        aside={
+          <Aside label="The ritual" figure={done} unit={`/ ${total}`} tone={all ? "pos" : null} caption={all ? <>Complete <span className="text-gold">◆</span></> : "Ticked today"}>
+            {progress}
+            <p className="mt-6 max-w-[30ch] font-mono text-[11px] leading-[1.85] tracking-[0.02em] text-ink-3">
+              The same few things, in the same order, every day. Repetition is the edge.
+            </p>
+          </Aside>
+        }
+      >
+        {list}
+      </Split>
+    );
+  }
+
+  return (
+    <div>
+      <div className="mb-8 flex items-center gap-4">
+        <div className="h-px flex-1 bg-line-2">
+          <div className="h-px bg-pos transition-[width] duration-1000" style={{ width: `${total ? (done / total) * 100 : 0}%`, transitionTimingFunction: EASE }} />
+        </div>
+        <span className="num text-[11px] text-ink-3">
+          {done} / {total}
+        </span>
+      </div>
+      {list}
     </div>
   );
 }

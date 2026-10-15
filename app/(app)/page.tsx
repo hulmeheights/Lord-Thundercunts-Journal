@@ -1,12 +1,12 @@
 import Link from "next/link";
 import { cookies } from "next/headers";
-import { ArrowUpRight } from "lucide-react";
 import { getSettings } from "@/lib/data/settings";
 import { activeDayCount, listTrades, tradeCounts } from "@/lib/data/trades";
 import { dueCapsules, getJournalDay, listJournalDays } from "@/lib/data/journal";
 import { listConnections } from "@/lib/data/connections";
 import { briefingStubs } from "@/lib/data/briefing";
-import { addDays, dayKey, isWeekend, longDate, minuteOfDay, startOfMonth, startOfWeek, todayKey, weekdayIndex } from "@/lib/analytics/time";
+import { db } from "@/lib/db";
+import { addDays, dayKey, isWeekend, longDate, minuteOfDay, startOfMonth, startOfWeek, timeInTz, todayKey, weekdayIndex } from "@/lib/analytics/time";
 import { bySetup, dailySeries, inRange, summarize } from "@/lib/analytics/stats";
 import { evaluateRules } from "@/lib/analytics/rules";
 import { ringStreak, ringsClosed, ringsForDay } from "@/lib/analytics/rings";
@@ -15,17 +15,24 @@ import { detectTilt } from "@/lib/analytics/tilt";
 import { buildDossier, observerName } from "@/lib/analytics/observer";
 import { fmtMoney, fmtPct } from "@/lib/format";
 import { parseUiPrefs, UI_COOKIE } from "@/lib/ui-prefs";
-import { Card, CardHeader } from "@/components/ui/Card";
+import { Row, Rows } from "@/components/m";
+import { Manifesto } from "@/components/m/Manifesto";
+import { LimitLine } from "@/components/m/LimitLine";
+import { SectionIndex } from "@/components/m/SectionIndex";
 import { TodayHero } from "@/components/today/Hero";
-import { Bento, type ThreadDay } from "@/components/today/Bento";
+import { Thirty } from "@/components/today/Thirty";
+import type { ThreadDay } from "@/components/today/Vine";
+import { Chapter } from "@/components/today/Layout";
 import { OpeningSequence, INTRO_COOKIE } from "@/components/today/OpeningSequence";
-import { TraderRingsCard } from "@/components/today/TraderRings";
 import { Ritual } from "@/components/today/Ritual";
 import { Readiness } from "@/components/today/Readiness";
+import { Process } from "@/components/today/Process";
 import { CapsuleCard } from "@/components/today/Capsule";
 import { SyncPill } from "@/components/today/SyncPill";
 import { Onboarding } from "@/components/today/Onboarding";
 import { Welcome } from "@/components/today/Welcome";
+import { Milestone, type Moment } from "@/components/today/Milestone";
+import { emphasise, numberWord } from "@/components/today/words";
 import { passkeyCount } from "@/lib/auth/passkeys";
 
 export const metadata = { title: "Today" };
@@ -37,15 +44,38 @@ function greeting(minute: number) {
   return "Good evening";
 }
 
-function SectionLabel({ n, title, aside }: { n: string; title: string; aside?: React.ReactNode }) {
-  return (
-    <div className="mb-10 sm:mb-14">
-      <div className="mb-5 flex items-center justify-between gap-4">
-        <div className="label">{n} — {title}</div>
-        {aside}
-      </div>
-    </div>
-  );
+const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+
+const TRADE_MARKS = [100, 250, 500, 1000, 2500];
+const TRADE_SUBS: Record<number, string> = {
+  100: "Most traders stop writing it down after a week. You kept the record a hundred times.",
+  250: "Enough trades for the numbers to start telling the truth about you.",
+  500: "Five hundred honest entries. The edge lives in the record now.",
+  1000: "A thousand trades on the record. Patterns have nowhere left to hide.",
+  2500: "Two and a half thousand trades. This is no longer a journal — it's a body of work.",
+};
+
+function tradeMoment(mark: number, crossed: number[], preview = false): Moment {
+  return {
+    id: `trades-${mark}`,
+    also: crossed.map((c) => `trades-${c}`),
+    line: `${cap(numberWord(mark))} trades. *Logged.*`,
+    figure: mark.toLocaleString("en-US"),
+    caption: "Trades on the record",
+    sub: TRADE_SUBS[mark] ?? "Every one of them written down.",
+    preview,
+  };
+}
+
+/** When the review was written: the journal row's last update, in the owner's timezone. */
+async function reviewTime(day: string, tz: string): Promise<string | null> {
+  try {
+    const sql = await db();
+    const [r] = await sql<{ t: Date | string }[]>`select updated_at as t from journal_days where day = ${day}`;
+    return r?.t ? timeInTz(new Date(r.t).toISOString(), tz) : null;
+  } catch {
+    return null;
+  }
 }
 
 export default async function TodayPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
@@ -68,10 +98,9 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
   ]);
 
   const firstName = settings.profile.name.trim().split(/\s+/)[0] || settings.profile.name;
-  const nowMinute = minuteOfDay(new Date().toISOString(), tz);
-  const hello = greeting(nowMinute);
+  const hello = greeting(minuteOfDay(new Date().toISOString(), tz));
 
-  // Equity curve for the hero: cumulative net by day across the last 90 days.
+  // The living line: cumulative net by day across the last 90 days.
   const series = dailySeries(trades.filter((t) => dayKey(t.exitTime, tz) >= from), tz);
   const curve = [0, ...series.map((d) => d.cum)];
 
@@ -81,7 +110,7 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
   const weekNet = series.filter((d) => d.day >= startOfWeek(today)).reduce((x, d) => x + d.net, 0);
   const monthNet = series.filter((d) => d.day >= startOfMonth(today)).reduce((x, d) => x + d.net, 0);
 
-  // Process: rings, streak and the thread of recent sessions.
+  // Process: rings, streak and the vine of recent sessions.
   const rules = evaluateRules(trades, settings.rules, tz);
   const jMap = new Map(journals.map((j) => [j.day, j]));
   const entriesByDay = new Map<string, number>();
@@ -98,7 +127,7 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
     thread.unshift({ day: d, closed: ringsClosed(ringsOn(d)), traded: (entriesByDay.get(d) ?? 0) > 0 });
   }
 
-  // The last 30 days, for the bento.
+  // The last 30 days.
   const last30 = inRange(trades, tz, addDays(today, -29), today);
   const prev30 = inRange(trades, tz, addDays(today, -59), addDays(today, -30));
   const s30 = summarize(last30, settings.rules.defaultRisk);
@@ -106,6 +135,21 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
   const r30 = evaluateRules(last30, settings.rules, tz);
   const days30 = [...r30.byDay.values()];
   const best = bySetup(last30).filter((b) => b.trades >= 3).sort((a, b) => b.expectancy - a.expectancy)[0];
+  const winDelta = p30.trades >= 5 ? Math.round((s30.winRate - p30.winRate) * 100) : 0;
+  const thirtyLead =
+    winDelta >= 3 ? (
+      <>
+        Sharper than the thirty days <em>before</em>.
+      </>
+    ) : winDelta <= -3 ? (
+      <>
+        A harder month. The process still <em>counts</em>.
+      </>
+    ) : (
+      <>
+        Thirty days, measured <em>honestly</em>.
+      </>
+    );
 
   // Readiness ↔ results, from your own history.
   const ready = journals.filter((j) => j.readiness && daily.has(j.day));
@@ -142,15 +186,46 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
   const todayBreaks = rules.violations.filter((v) => v.day === today);
   const redDay = s.trades > 0 && s.net < 0;
 
+  // Session closed: once tonight's review is written.
+  const reviewed = (journal.review?.trim().length ?? 0) >= 15 || (journal.lessons?.trim().length ?? 0) >= 15;
+  const closedAt = reviewed ? await reviewTime(today, tz) : null;
+
+  // Retention moments — real trades only, never the sample set.
+  const real = counts.total - counts.sample;
+  const crossed = TRADE_MARKS.filter((m) => real >= m);
+  const moments: Moment[] = [];
+  if (crossed.length) moments.push(tradeMoment(crossed.at(-1)!, crossed));
+  const todayStat = daily.get(today);
+  const priorHigh = Math.max(0, ...series.filter((d) => d.day < today).map((d) => d.cum));
+  const highMoment = (preview: boolean): Moment => ({
+    id: `high-${today}`,
+    line: "A new equity *high*.",
+    figure: fmtMoney(todayStat?.cum ?? curve.at(-1) ?? 0, { sign: true }),
+    caption: "90-day high · closed today",
+    sub: "The curve has not been here in ninety days. Bank the lesson, not just the money.",
+    preview,
+  });
+  if (todayStat && todayStat.net > 0 && series.length >= 10 && todayStat.cum > priorHigh) moments.push(highMoment(false));
+  const ask = typeof sp.moment === "string" ? sp.moment : null;
+  if (ask === "high") moments.unshift(highMoment(true));
+  else if (ask?.startsWith("trades-") && TRADE_MARKS.includes(Number(ask.slice(7)))) {
+    const mark = Number(ask.slice(7));
+    moments.unshift(tradeMoment(mark, TRADE_MARKS.filter((m) => m <= mark), true));
+  }
+
   const sunday = weekdayIndex(today) === 6;
   const weekly = stubs.find((x) => x.period === "weekly");
   const playIntro = prefs.intro && jar.get(INTRO_COOKIE)?.value !== today && sp.welcome !== "1";
 
+  let n = 0;
+  const sections = ["top", "thirty", "session", ...(observer ? ["outside"] : []), "week"];
+
   return (
-    <div className="space-y-[clamp(6rem,14vh,11rem)]">
+    <div>
       {playIntro && <OpeningSequence day={today} greeting={hello} dayNumber={dayNumber} values={curve} />}
+      <Milestone moments={moments} curve={curve} delay={playIntro ? 3300 : 900} />
+      <SectionIndex ids={sections} />
       {sp.welcome === "1" && <Welcome hasPasskey={(await passkeyCount()) > 0} />}
-      {counts.total === 0 && conns.length === 0 && <Onboarding />}
 
       <TodayHero
         dateLabel={longDate(today)}
@@ -164,32 +239,48 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
         weekNet={weekNet}
         monthNet={monthNet}
         stubs={stubs}
+        closedAt={closedAt}
         sync={<SyncPill lastSyncAt={lastSync} hasConnections={conns.length > 0} error={connError} />}
       />
 
+      {counts.total === 0 && conns.length === 0 && (
+        <div className="py-[clamp(2rem,6vh,4rem)]">
+          <Onboarding />
+        </div>
+      )}
+
       {redDay && (
-        <section className="glass grid gap-6 rounded-[3px] p-6 sm:grid-cols-[auto_1fr_1fr] sm:items-start sm:p-8">
-          <div className="eyebrow pt-1">A red day</div>
-          <div>
-            <div className="eyebrow mb-2 !text-ink-4">One lesson</div>
-            <p className="text-[15.5px] leading-relaxed">
+        <section aria-label="A red day" className="grid grid-cols-1 gap-x-[clamp(1.2rem,4vw,3.5rem)] border-b border-line md:grid-cols-2">
+          <div className="reveal border-t border-line py-[clamp(1.8rem,4.5vh,2.6rem)]">
+            <div className="label mb-4 !text-[9px] !tracking-[0.36em]">One lesson</div>
+            <p className="max-w-[44ch] font-mono text-[12px] leading-[1.9] tracking-[0.02em] text-ink-2">
               {todayBreaks.length
                 ? `${todayBreaks[0]!.detail}. That rule exists for exactly this moment.`
                 : "Every trade stayed inside your rules. A red day inside the plan is simply the cost of doing business."}
             </p>
           </div>
-          <div>
-            <div className="eyebrow mb-2 !text-ink-4">One next step</div>
-            <p className="text-[15.5px] leading-relaxed">
+          <div className="reveal border-t border-line py-[clamp(1.8rem,4.5vh,2.6rem)]" style={{ "--d": "80ms" } as React.CSSProperties}>
+            <div className="label mb-4 !text-[9px] !tracking-[0.36em]">One next step</div>
+            <p className="max-w-[44ch] font-mono text-[12px] leading-[1.9] tracking-[0.02em] text-ink-2">
               {observer?.tell[0] ? `When ${observer.tell[0].when}, ${observer.tell[0].then}` : "Write two lines in tonight's review, then close the laptop. Tomorrow is a new tape."}
             </p>
           </div>
         </section>
       )}
 
-      <section>
-        <div id="thirty" /><SectionLabel n="01" title="The last thirty days" aside={<Link href="/insights" className="font-mono text-[10px] tracking-[0.3em] text-ink-4 uppercase transition-colors hover:text-ink">All insights →</Link>} />
-        <Bento
+      <Chapter
+        n={++n}
+        id="thirty"
+        label="The last thirty days"
+        lead={thirtyLead}
+        aside={
+          <Link href="/insights" className="font-mono text-[10px] tracking-[0.3em] text-ink-4 uppercase transition-colors duration-300 hover:text-ink">
+            All insights →
+          </Link>
+        }
+      >
+        <Thirty
+          today={today}
           s={{
             trades: s30.trades,
             winRate: s30.winRate,
@@ -204,80 +295,127 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
             tradingDays: days30.length,
           }}
         />
-      </section>
+      </Chapter>
 
-      <section>
-        <SectionLabel n="02" title="Today's session" />
-        <div className="grid gap-5 lg:grid-cols-12">
-          <Card className="lg:col-span-7">
-            <CardHeader eyebrow="Daily ritual" title="Tick it off" />
-            <Ritual day={today} items={settings.ritual} checklist={journal.checklist} tasks={journal.tasks} />
-          </Card>
-          <div className="space-y-5 lg:col-span-5">
-            <Card>
-              <CardHeader eyebrow="Process" title="Close all three" />
-              <TraderRingsCard prepare={rings.prepare} discipline={rings.discipline} reflect={rings.reflect} streak={streak} />
-            </Card>
-            <Card>
-              <CardHeader eyebrow="Readiness" title="Mind before market" />
-              <Readiness day={today} initial={journal.readiness} initialIntention={journal.intention} insight={readinessInsight} />
-            </Card>
+      <Chapter
+        n={++n}
+        id="session"
+        label="Today's session"
+        lead={
+          <>
+            The process is the only thing you <em>control</em>.
+          </>
+        }
+      >
+        <div className="space-y-[clamp(4.5rem,11vh,7rem)]">
+          <Ritual day={today} items={settings.ritual} checklist={journal.checklist} tasks={journal.tasks} layout="split" />
+          <Readiness day={today} initial={journal.readiness} initialIntention={journal.intention} insight={readinessInsight} layout="split" />
+          <Process prepare={rings.prepare} discipline={rings.discipline} reflect={rings.reflect} streak={streak} />
+        </div>
+      </Chapter>
+
+      {observer && (
+        <Chapter n={++n} id="outside" label="From the outside">
+          <Manifesto text={emphasise(observer.headline)} />
+          <div className="reveal mt-[clamp(2.6rem,7vh,4rem)] flex flex-wrap items-center gap-x-10 gap-y-4">
+            <span className="font-mono text-[10px] tracking-[0.28em] text-ink-4 uppercase">— The Observer · last 30 days</span>
+            <Link href="/observer" className="m-link pb-1 font-mono text-[10px] tracking-[0.3em] text-ink-2 uppercase">
+              Step outside →
+            </Link>
           </div>
-        </div>
-      </section>
+        </Chapter>
+      )}
 
-      <section>
-        <SectionLabel n="03" title="Perspective" />
-        <div className="grid gap-5 lg:grid-cols-3">
-          {observer && (
-            <Link href="/observer" className="glass lift group flex min-h-[220px] flex-col rounded-[3px] p-6 sm:p-7">
-              <div className="eyebrow">From the outside</div>
-              <p className="display mt-5 text-[22px] leading-[1.2] !tracking-[-0.025em]">{observer.headline}</p>
-              <span className="mt-auto inline-flex items-center gap-1 pt-6 text-[13.5px] font-medium text-ink-2 transition-colors group-hover:text-ink">
-                Step outside <ArrowUpRight size={15} />
-              </span>
-            </Link>
-          )}
-          <Link href="/briefing/weekly" className="glass lift group flex min-h-[220px] flex-col rounded-[3px] p-6 sm:p-7">
-            <div className="eyebrow">{sunday ? "Unlocked today" : "Weekly replay"}</div>
-            <p className="display mt-5 text-[22px] leading-[1.2] !tracking-[-0.025em]">
-              {sunday ? "Your week, replayed. Ten slides, two minutes." : `Your week so far: ${fmtMoney(weekly?.net ?? weekNet, { sign: true })}.`}
-            </p>
-            <span className="mt-auto inline-flex items-center gap-1 pt-6 text-[13.5px] font-medium text-ink-2 transition-colors group-hover:text-ink">
-              {sunday ? "Play the replay" : "Full replay unlocks Sunday · preview now"} <ArrowUpRight size={15} />
-            </span>
-          </Link>
-          {prop ? (
-            <Link href="/guardian" className="glass lift group flex min-h-[220px] flex-col rounded-[3px] p-6 sm:p-7">
-              <div className="eyebrow">{settings.prop.firm} Guardian</div>
-              <p className="display mt-5 text-[22px] leading-[1.2] !tracking-[-0.025em]">
-                {prop.breached ? "Max loss breached." : `${fmtMoney(prop.cushion)} above the max-loss line.`}
-              </p>
-              <div className="mt-3 h-[3px] overflow-hidden rounded-full bg-fill-3">
-                <div className="h-full rounded-full bg-pos" style={{ width: `${Math.round(Math.max(0, Math.min(1, prop.targetProgress ?? 0)) * 100)}%` }} />
+      <Chapter n={++n} id="week" label="This week">
+        <Rows>
+          <Row
+            i="01"
+            href="/briefing/weekly"
+            title={
+              sunday ? (
+                <>
+                  Your week, <em>replayed</em>.
+                </>
+              ) : (
+                <>
+                  The weekly <em>replay</em>.
+                </>
+              )
+            }
+            desc={
+              sunday ? (
+                "Ten slides, two minutes. Unlocked this morning — watch it before the week starts again."
+              ) : (
+                <>
+                  So far <span className={weekNet > 0.004 ? "num text-pos" : weekNet < -0.004 ? "num text-neg" : "num"}>{fmtMoney(weekly?.net ?? weekNet, { sign: true })}</span>
+                  {weekly?.trades ? ` across ${weekly.trades} trades` : ""}. The full replay unlocks Sunday; the preview is open now.
+                </>
+              )
+            }
+            right={<span className="font-mono text-[10px] tracking-[0.3em] text-ink-4 uppercase">{sunday ? "Play →" : "Preview →"}</span>}
+          />
+          {prop && (
+            <Row
+              i="02"
+              d={80}
+              href="/guardian"
+              title={
+                prop.breached ? (
+                  <>
+                    Max loss <em>breached</em>.
+                  </>
+                ) : (
+                  <>
+                    {fmtMoney(prop.cushion)} above the <em>line</em>.
+                  </>
+                )
+              }
+              desc={
+                <>
+                  {settings.prop.firm} Guardian · {settings.prop.phase}.{" "}
+                  {prop.targetProgress !== null ? `${fmtPct(prop.targetProgress)} of the way to target.` : "No profit target set."}
+                  {prop.dailyLossUsed !== null && prop.dailyLossUsed > 0 ? ` ${fmtPct(prop.dailyLossUsed)} of today's loss limit used.` : ""}
+                </>
+              }
+              right={<span className="font-mono text-[10px] tracking-[0.3em] text-ink-4 uppercase">Open →</span>}
+            >
+              <div className="mt-[clamp(1.4rem,3.5vh,2.2rem)] md:ml-[calc(2.5rem+clamp(1.2rem,4vw,3.5rem))]">
+                <LimitLine closeness={1 - Math.max(0, Math.min(1, prop.cushionPct))} label="MAX LOSS" height={72} />
               </div>
-              <span className="mt-auto inline-flex items-center gap-1 pt-6 text-[13.5px] font-medium text-ink-2 transition-colors group-hover:text-ink">
-                {prop.targetProgress !== null ? `${fmtPct(prop.targetProgress)} to target` : "Open Guardian"} <ArrowUpRight size={15} />
-              </span>
-            </Link>
-          ) : capsule ? (
-            <CapsuleCard capsule={capsule} />
-          ) : (
-            <Link href={`/journal/${today}`} className="glass lift group flex min-h-[220px] flex-col rounded-[3px] p-6 sm:p-7">
-              <div className="eyebrow">Tonight</div>
-              <p className="display mt-5 text-[22px] leading-[1.2] !tracking-[-0.025em]">Two lines on today. Future you will read them.</p>
-              <span className="mt-auto inline-flex items-center gap-1 pt-6 text-[13.5px] font-medium text-ink-2 transition-colors group-hover:text-ink">
-                Open today&apos;s journal <ArrowUpRight size={15} />
-              </span>
-            </Link>
+            </Row>
           )}
-        </div>
-        {prop && capsule && (
-          <div className="mt-5">
+          {!reviewed && (
+            <Row
+              i={prop ? "03" : "02"}
+              d={160}
+              href={`/journal/${today}`}
+              title={
+                <>
+                  Two lines on <em>today</em>.
+                </>
+              }
+              desc="Future you will read them. Write tonight's review and the reflect ring closes."
+              right={<span className="font-mono text-[10px] tracking-[0.3em] text-ink-4 uppercase">Write →</span>}
+            />
+          )}
+        </Rows>
+
+        {capsule && (
+          <div className="pt-[clamp(6rem,16vh,11rem)]">
             <CapsuleCard capsule={capsule} />
           </div>
         )}
-      </section>
+      </Chapter>
+
+      <footer className="reveal flex flex-col items-center gap-5 pt-[clamp(3rem,8vh,5rem)] pb-[clamp(2rem,6vh,4rem)] text-center">
+        <span className="text-[11px] text-gold">◆</span>
+        <p className="font-serif text-[clamp(1.3rem,2.6vw,1.9rem)] leading-[1.3] font-light tracking-[-0.01em] italic">
+          {reviewed ? "Rest well. See you at the open." : "The rest is execution."}
+        </p>
+        <p className="font-mono text-[9.5px] tracking-[0.32em] text-ink-4 uppercase">
+          Day {dayNumber} · {closedAt ? `Session closed ${closedAt}` : reviewed ? "Session closed" : "Session open"}
+        </p>
+      </footer>
     </div>
   );
 }

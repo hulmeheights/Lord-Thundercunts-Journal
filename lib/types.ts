@@ -97,7 +97,43 @@ export type Settings = {
   vocab: { setups: string[]; mistakes: string[]; emotions: string[] };
   security: { passkeyOnly: boolean };
   ai: { enabled: boolean };
-  observer: { name: string | null; pronoun: "they" | "he" | "she" };
+  observer: {
+    name: string | null;
+    pronoun: "they" | "he" | "she";
+    /** The one order the Observer checks against every session, or null. */
+    pinned: ObstacleKey | null;
+    /** The day (YYYY-MM-DD) the order was pinned. */
+    pinnedAt: string | null;
+    /** The numbers the pinned order was written with, so its sentence and its check never drift apart. */
+    pinnedParams: OrderParams | null;
+  };
+};
+
+/** A pattern the Observer can find in the trades — and the order written against it. */
+export type ObstacleKey =
+  | "overtrading"
+  | "revenge"
+  | "holding-losers"
+  | "cutting-winners"
+  | "rule-breaks"
+  | "bad-hours"
+  | "sizing-up"
+  | "unprepared"
+  | "mistakes"
+  | "fees";
+
+/** The numbers an Observer order is written and checked with. */
+export type OrderParams = {
+  /** Trades a day (overtrading, fees). */
+  limit?: number;
+  /** Minutes: the cool-down after a loss (revenge) or the bail-out time (holding losers). */
+  minutes?: number;
+  /** Local hour 0–23 to stay out of (bad hours). */
+  hour?: number;
+  /** Contracts allowed straight after a loss (sizing up). */
+  qty?: number;
+  /** A rule or mistake label (rule breaks, mistakes). */
+  label?: string;
 };
 
 export type Capsule = {

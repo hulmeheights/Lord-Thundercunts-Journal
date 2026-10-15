@@ -1,9 +1,9 @@
-import type { JournalDay, PropSettings, RitualItem, Trade, TradingRules } from "../types";
-import { fmtMoney, fmtPct } from "../format";
-import type { RuleReport } from "./rules";
+import type { JournalDay, ObstacleKey, OrderParams, PropSettings, RitualItem, Trade, TradingRules } from "../types";
+import { fmtMoney, fmtPct, plural } from "../format";
+import { evaluateRules, type RuleReport } from "./rules";
 import type { TiltReport } from "./tilt";
 import { byHour, byMistake, bySetup, dailySeries, sortByEntry, summarize, type Bucket } from "./stats";
-import { dayKey, fmtHold } from "./time";
+import { dayKey, fmtHold, minuteOfDay } from "./time";
 import { propStatus } from "./prop";
 import { suggestRules, type WhatIfOptions } from "./whatif";
 
@@ -18,17 +18,7 @@ import { suggestRules, type WhatIfOptions } from "./whatif";
  * them — from their own trades and journal, with every claim carrying numbers.
  */
 
-export type ObstacleKey =
-  | "overtrading"
-  | "revenge"
-  | "holding-losers"
-  | "cutting-winners"
-  | "rule-breaks"
-  | "bad-hours"
-  | "sizing-up"
-  | "unprepared"
-  | "mistakes"
-  | "fees";
+export type { ObstacleKey, OrderParams };
 
 /** The options the trader picks from when asked "what do you think is stopping them?". */
 export const OBSTACLE_LABELS: Record<ObstacleKey, string> = {
@@ -54,6 +44,8 @@ export type Instruction = {
   obstacle: ObstacleKey;
   when: string;
   then: string;
+  /** The numbers the sentence is written with — and that a pinned order is checked against. */
+  params: OrderParams;
   /** A rule the Rule Lab says would have paid, with its dollar delta. */
   backtest: { label: string; opts: WhatIfOptions; delta: number } | null;
   /** Changes to the auto-enforced rules that make the instruction stick. */
@@ -75,7 +67,8 @@ export type Obstacle = {
   instruction: Instruction;
 };
 
-export type Fact = { text: string; tone: Tone };
+/** An observation: a short serif title over the full sentence with the numbers. */
+export type Fact = { title: string; text: string; tone: Tone };
 export type Want = { text: string; source: "stated" | "prop" | "rules" | "intention" };
 
 export type ObserverDossier = {
@@ -84,6 +77,8 @@ export type ObserverDossier = {
   to: string;
   sample: { trades: number; days: number; low: boolean };
   headline: string;
+  /** The same verdict, a little longer, with the obstacle phrase in *asterisks* for italics. */
+  headlineMd: string;
   wants: Want[];
   doing: Fact[];
   strengths: Fact[];
@@ -148,6 +143,180 @@ function prepared(j: JournalDay | undefined, preIds: string[]): boolean {
   return done / preIds.length >= 0.5;
 }
 
+// ── Orders ───────────────────────────────────────────────────────────────
+// An instruction is an implementation intention ("When X, then Y"). Its words
+// are generated from a handful of numbers, so the same numbers can later check
+// whether the order was kept — the sentence and the check can never disagree.
+
+const hh = (h: number) => `${String(((h % 24) + 24) % 24).padStart(2, "0")}:00`;
+
+/** The if-then sentence for an obstacle, written with `params`. */
+export function orderText(key: ObstacleKey, p: OrderParams, name: string): { when: string; then: string; params: OrderParams } {
+  const n = (v: number | undefined, fallback: number) => Math.max(1, Math.round(v ?? fallback));
+  switch (key) {
+    case "overtrading": {
+      const limit = n(p.limit, 3);
+      return { when: `${name} has taken ${plural(limit, "trade")}`, then: "the platform closes. Done for the day — win or lose.", params: { limit } };
+    }
+    case "revenge": {
+      const minutes = n(p.minutes, 10);
+      return { when: `${name} takes a loss`, then: `hands off the mouse, stands up, and waits ${minutes} minutes before even looking for the next trade.`, params: { minutes } };
+    }
+    case "holding-losers": {
+      const minutes = n(p.minutes, 5);
+      return { when: `a trade isn't working after ${plural(minutes, "minute")}`, then: `${name} takes the planned stop. No moving it, no hoping.`, params: { minutes } };
+    }
+    case "cutting-winners":
+      return { when: "a trade reaches 1R in profit", then: `${name} moves the stop to break-even and leaves the target alone.`, params: {} };
+    case "rule-breaks":
+      return {
+        when: `${name} feels the urge to break ${p.label ? `the “${p.label}” rule` : "a rule"}`,
+        then: "the rule gets read out loud and the platform closes for 15 minutes.",
+        params: p.label ? { label: p.label } : {},
+      };
+    case "bad-hours": {
+      const hour = Math.min(23, Math.max(0, Math.round(p.hour ?? 12)));
+      return { when: `the clock reaches ${hh(hour)}`, then: `${name} doesn't open a new trade until the hour is over.`, params: { hour } };
+    }
+    case "sizing-up": {
+      const qty = n(p.qty, 1);
+      return { when: `${name} has just lost`, then: `the next trade is ${plural(qty, "contract")} or smaller — never bigger.`, params: { qty } };
+    }
+    case "unprepared":
+      return { when: "the market is about to open", then: `${name} doesn't place an order until the pre-market checklist and the day's intention are done.`, params: {} };
+    case "mistakes": {
+      const label = p.label || "same old";
+      return { when: `${name} feels a “${label}” coming on`, then: "the hands come off the keyboard and the idea goes in the journal, not the market.", params: { label } };
+    }
+    case "fees": {
+      const limit = n(p.limit, 3);
+      return { when: `${name} is about to take a trade that isn't an A+ setup`, then: `it gets skipped — no more than ${limit} a day, so the edge isn't paid away in fees.`, params: { limit } };
+    }
+  }
+}
+
+/** kept · broken · untested (nothing happened that could test it) · self (the data can't see it). */
+export type OrderVerdict = "kept" | "broken" | "untested" | "self";
+export type OrderCheck = { day: string; verdict: OrderVerdict; reason: string; trades: number };
+
+export type OrderContext = {
+  /** Any span of trades; only those entered on `day` count. */
+  trades: Trade[];
+  /** The journal for `day`, if any (the "unprepared" order reads it). */
+  journal?: JournalDay | null;
+  rules: TradingRules;
+  ritual: RitualItem[];
+  tz: string;
+};
+
+/** Every obstacle key the data can check by itself (the rest are self-reported). */
+export const CHECKABLE: Record<ObstacleKey, boolean> = {
+  overtrading: true,
+  revenge: true,
+  "holding-losers": true,
+  "cutting-winners": false,
+  "rule-breaks": true,
+  "bad-hours": true,
+  "sizing-up": true,
+  unprepared: true,
+  mistakes: true,
+  fees: true,
+};
+
+const minutesBetween = (a: string, b: string) => (new Date(b).getTime() - new Date(a).getTime()) / 60_000;
+
+/**
+ * Was the order kept on `day`? Judged only from that day's trades (and journal),
+ * so the verdict is automatic — no self-reporting, no arguing with yourself.
+ */
+export function checkOrder(key: ObstacleKey, p: OrderParams, day: string, ctx: OrderContext): OrderCheck {
+  const list = sortByEntry(ctx.trades.filter((t) => dayKey(t.entryTime, ctx.tz) === day));
+  const count = list.length;
+  const out = (verdict: OrderVerdict, reason: string): OrderCheck => ({ day, verdict, reason, trades: count });
+  const nothing = () => out("untested", "No trades — nothing to test.");
+  const { params } = orderText(key, p, "");
+
+  switch (key) {
+    case "overtrading":
+    case "fees": {
+      const limit = params.limit!;
+      if (!count) return nothing();
+      return count > limit
+        ? out("broken", `${count} trades — ${count - limit} past the ${limit}.`)
+        : out("kept", `${plural(count, "trade")}, inside the ${limit}.`);
+    }
+    case "revenge": {
+      const wait = params.minutes!;
+      if (!count) return nothing();
+      const losses = list.filter((t) => t.netPnl < 0).length;
+      const gaps: number[] = [];
+      for (let i = 0; i < list.length - 1; i++) {
+        if (list[i]!.netPnl < 0) gaps.push(Math.max(0, minutesBetween(list[i]!.exitTime, list[i + 1]!.entryTime)));
+      }
+      if (!losses) return out("untested", "No losing trade, so nothing to wait out.");
+      if (!gaps.length) return out("kept", "A loss, and no rush back in.");
+      const gap = Math.min(...gaps);
+      return gap < wait
+        ? out("broken", `Back in ${Math.round(gap)} minute${Math.round(gap) === 1 ? "" : "s"} after a loss — the order says ${wait}.`)
+        : out("kept", `Waited at least ${Math.floor(gap)} minutes after every loss.`);
+    }
+    case "holding-losers": {
+      const cap = params.minutes!;
+      if (!count) return nothing();
+      const losers = list.filter((t) => t.netPnl < 0);
+      if (!losers.length) return out("untested", "No losing trade to cut.");
+      const longest = Math.max(...losers.map((t) => minutesBetween(t.entryTime, t.exitTime)));
+      return longest > cap + 0.5
+        ? out("broken", `A loser was held ${fmtHold(longest)} — past the ${cap}-minute line.`)
+        : out("kept", `Every loser was closed inside ${plural(cap, "minute")}.`);
+    }
+    case "sizing-up": {
+      const cap = params.qty!;
+      if (!count) return nothing();
+      let tested = false;
+      let biggest = 0;
+      for (let i = 1; i < list.length; i++) {
+        if (list[i - 1]!.netPnl < 0) {
+          tested = true;
+          biggest = Math.max(biggest, list[i]!.qty);
+        }
+      }
+      if (!tested) return out("untested", "No trade straight after a loss.");
+      return biggest > cap
+        ? out("broken", `Went to ${plural(biggest, "contract")} straight after a loss.`)
+        : out("kept", `${plural(cap, "contract")} or fewer after every loss.`);
+    }
+    case "bad-hours": {
+      const hour = params.hour!;
+      if (!count) return nothing();
+      const inside = list.filter((t) => Math.floor(minuteOfDay(t.entryTime, ctx.tz) / 60) === hour);
+      return inside.length
+        ? out("broken", `${plural(inside.length, "trade")} opened between ${hh(hour)} and ${hh(hour + 1)}.`)
+        : out("kept", `Nothing opened between ${hh(hour)} and ${hh(hour + 1)}.`);
+    }
+    case "rule-breaks": {
+      if (!count) return nothing();
+      const v = evaluateRules(list, ctx.rules, ctx.tz).violations[0];
+      return v ? out("broken", `${v.detail.charAt(0).toUpperCase()}${v.detail.slice(1)}.`) : out("kept", "Every rule held.");
+    }
+    case "mistakes": {
+      const label = params.label!;
+      if (!count) return nothing();
+      const hits = list.filter((t) => t.mistakes.some((m) => m.toLowerCase() === label.toLowerCase())).length;
+      return hits
+        ? out("broken", `Tagged “${label}” ${hits === 1 ? "once" : `${hits} times`}.`)
+        : out("kept", `No “${label}” in ${plural(count, "trade")}.`);
+    }
+    case "unprepared": {
+      const preIds = ctx.ritual.filter((i) => i.group === "pre").map((i) => i.id);
+      if (prepared(ctx.journal ?? undefined, preIds)) return out("kept", count ? "Prepared before the first order." : "Prepared — checklist and intention done.");
+      return count ? out("broken", "Traded without the checklist or an intention.") : out("untested", "Not prepared yet — and no trades.");
+    }
+    case "cutting-winners":
+      return out("self", "The data can't see where the target was. Only you can say.");
+  }
+}
+
 export type ObserverInput = {
   name: string;
   trades: Trade[];
@@ -194,34 +363,42 @@ export function buildDossier(input: ObserverInput): ObserverDossier {
   ].filter(Boolean);
   if (ruleBits.length) wants.push({ text: `${name} has set out to trade with discipline: ${ruleBits.join(", ")}.`, source: "rules" });
   const lastIntention = [...journals].reverse().find((j) => j.intention && j.intention.trim().length >= 3);
-  if (lastIntention) wants.push({ text: `Most recent intention: “${lastIntention.intention!.trim().slice(0, 160)}”`, source: "intention" });
+  if (lastIntention) wants.push({ text: `The last intention ${name} set: “${lastIntention.intention!.trim().slice(0, 160)}”`, source: "intention" });
 
   // ── Doing (plain facts) ──────────────────────────────────────────────────
   const doing: Fact[] = [];
   if (trades.length) {
     const perDay = trades.length / Math.max(1, tradeDays);
+    const over = Boolean(r.maxTradesPerDay && perDay > r.maxTradesPerDay);
     doing.push({
+      title: over ? "Trades more than planned" : "Trades within the plan",
       text: `${name} took ${trades.length} trade${trades.length === 1 ? "" : "s"} over ${tradeDays} trading day${tradeDays === 1 ? "" : "s"} — ${perDay.toFixed(1)} a day${r.maxTradesPerDay ? ` against a limit of ${r.maxTradesPerDay}` : ""}.`,
-      tone: r.maxTradesPerDay && perDay > r.maxTradesPerDay ? "neg" : "flat",
+      tone: over ? "neg" : "flat",
     });
     doing.push({
+      title: s.net > 0 ? "In profit" : s.net < 0 ? "Under water" : "Flat",
       text: `Net ${fmtMoney(s.net, { sign: true })}. Wins ${fmtPct(s.winRate)} of trades; the average win is ${fmtMoney(s.avgWin)} and the average loss ${fmtMoney(s.avgLoss)}.`,
       tone: s.net > 0 ? "pos" : s.net < 0 ? "neg" : "flat",
     });
     if (s.wins && s.losses) {
+      const ratio = s.avgHoldLoss / Math.max(0.01, s.avgHoldWin);
       doing.push({
+        title: ratio > 1.5 ? "Lets losers run" : ratio > 1 ? "Holds losers a little longer" : "Cuts losers faster than winners",
         text: `Holds winners for ${fmtHold(s.avgHoldWin)} and losers for ${fmtHold(s.avgHoldLoss)}.`,
-        tone: s.avgHoldLoss > s.avgHoldWin * 1.5 ? "neg" : "flat",
+        tone: ratio > 1.5 ? "neg" : "flat",
       });
     }
     if (tilt.afterLoss.trades >= 3) {
+      const worse = tilt.afterLoss.expectancy < s.expectancy;
       doing.push({
+        title: worse ? "Worse after a loss" : "Steady after a loss",
         text: `After a loss, the next trade averages ${fmtMoney(tilt.afterLoss.expectancy, { sign: true })} (overall ${fmtMoney(s.expectancy, { sign: true })})${tilt.medianReentryAfterLoss != null ? `, and it usually comes ${Math.round(tilt.medianReentryAfterLoss)} minute${Math.round(tilt.medianReentryAfterLoss) === 1 ? "" : "s"} later` : ""}.`,
-        tone: tilt.afterLoss.expectancy < s.expectancy ? "neg" : "pos",
+        tone: worse ? "neg" : "pos",
       });
     }
     if (rules.violations.length) {
       doing.push({
+        title: rules.breakPnl < 0 ? "Breaks the rules, and pays for it" : "Bends the rules",
         text: `${name} broke the rules set in Settings ${rules.violations.length} time${rules.violations.length === 1 ? "" : "s"}; those trades netted ${fmtMoney(rules.breakPnl, { sign: true })}.`,
         tone: rules.breakPnl < 0 ? "neg" : "flat",
       });
@@ -232,30 +409,53 @@ export function buildDossier(input: ObserverInput): ObserverDossier {
     return j && ((j.review?.trim().length ?? 0) >= 10 || (j.lessons?.trim().length ?? 0) >= 10);
   }).length;
   if (tradeDays) {
+    const share = journaled / tradeDays;
     doing.push({
+      title: share >= 0.7 ? "Reviews the day" : share < 0.4 ? "Rarely looks back" : "Reviews some days",
       text: `Wrote a proper review on ${journaled} of ${tradeDays} trading day${tradeDays === 1 ? "" : "s"}.`,
-      tone: journaled / tradeDays >= 0.7 ? "pos" : journaled / tradeDays < 0.4 ? "neg" : "flat",
+      tone: share >= 0.7 ? "pos" : share < 0.4 ? "neg" : "flat",
     });
   }
 
   // ── Strengths (a fair observer says what's working too) ──────────────────
-  const strengths: Fact[] = [];
+  // Each strength also carries a short clause for the headline ("the 09:00 hour pays +$2,372").
+  const strengths: (Fact & { clause: string })[] = [];
   const hours = byHour(trades, tz).filter((b) => b.trades >= 5);
   const bestHour = [...hours].sort((a, b) => b.net - a.net)[0];
   if (bestHour && bestHour.net > 0) {
-    strengths.push({ text: `Makes ${fmtMoney(bestHour.net, { sign: true })} between ${hourLabel(bestHour)} (${bestHour.trades} trades, ${fmtPct(bestHour.winRate)} wins).`, tone: "pos" });
+    strengths.push({
+      title: `The ${bestHour.label} hour`,
+      text: `Makes ${fmtMoney(bestHour.net, { sign: true })} between ${hourLabel(bestHour)} (${bestHour.trades} trades, ${fmtPct(bestHour.winRate)} wins).`,
+      tone: "pos",
+      clause: `the ${bestHour.label} hour pays ${fmtMoney(bestHour.net, { sign: true })}`,
+    });
   }
   const setups = bySetup(trades).filter((b) => b.trades >= 5);
   const bestSetup = [...setups].sort((a, b) => b.expectancy - a.expectancy)[0];
   if (bestSetup && bestSetup.expectancy > 0) {
-    strengths.push({ text: `The ${bestSetup.label} pays ${fmtMoney(bestSetup.expectancy, { sign: true })} a trade over ${bestSetup.trades} trades.`, tone: "pos" });
+    strengths.push({
+      title: `The ${bestSetup.label}`,
+      text: `Pays ${fmtMoney(bestSetup.expectancy, { sign: true })} a trade over ${bestSetup.trades} trades.`,
+      tone: "pos",
+      clause: `the ${bestSetup.label} pays ${fmtMoney(bestSetup.expectancy, { sign: true })} a trade`,
+    });
   }
   if (rules.cleanPnl > 0 && rules.violatingTradeIds.size) {
-    strengths.push({ text: `When ${name} follows the rules, the trades net ${fmtMoney(rules.cleanPnl, { sign: true })}.`, tone: "pos" });
+    strengths.push({
+      title: "Following the rules",
+      text: `When ${name} follows the rules, the trades net ${fmtMoney(rules.cleanPnl, { sign: true })}.`,
+      tone: "pos",
+      clause: `the trades inside the rules net ${fmtMoney(rules.cleanPnl, { sign: true })}`,
+    });
   }
   const greenDays = days.filter((d) => d.net > 0).length;
   if (tradeDays >= 5 && greenDays / tradeDays >= 0.55) {
-    strengths.push({ text: `Green on ${greenDays} of ${tradeDays} days.`, tone: "pos" });
+    strengths.push({
+      title: "More green days than red",
+      text: `Green on ${greenDays} of ${tradeDays} days.`,
+      tone: "pos",
+      clause: `${greenDays} of ${tradeDays} days finish green`,
+    });
   }
 
   // ── Stopping (ranked by what each pattern cost) ──────────────────────────
@@ -287,8 +487,7 @@ export function buildDossier(input: ObserverInput): ObserverDossier {
       ],
       instruction: {
         obstacle: "overtrading",
-        when: `${name} has taken ${limit} trade${limit === 1 ? "" : "s"}`,
-        then: "the platform closes. Done for the day — win or lose.",
+        ...orderText("overtrading", { limit }, name),
         backtest: findTest((o) => o.maxTradesPerDay != null),
         rulesPatch: { maxTradesPerDay: limit },
         checklist: `Stopped at ${limit} trade${limit === 1 ? "" : "s"}`,
@@ -314,8 +513,7 @@ export function buildDossier(input: ObserverInput): ObserverDossier {
       ],
       instruction: {
         obstacle: "revenge",
-        when: `${name} takes a loss`,
-        then: `hands off the mouse, stands up, and waits ${cool} minutes before even looking for the next trade.`,
+        ...orderText("revenge", { minutes: cool }, name),
         backtest: findTest((o) => o.skipTilt === true || o.stopAfterLosses != null),
         rulesPatch: { cooldownMinutesAfterLoss: cool },
         checklist: `Waited ${cool} minutes after every loss`,
@@ -351,8 +549,7 @@ export function buildDossier(input: ObserverInput): ObserverDossier {
         ],
         instruction: {
           obstacle: "holding-losers",
-          when: `a trade isn't working after ${bail} minute${bail === 1 ? "" : "s"}`,
-          then: `${name} takes the planned stop. No moving it, no hoping.`,
+          ...orderText("holding-losers", { minutes: bail }, name),
           backtest: null,
           rulesPatch: null,
           checklist: "Every loser closed at its planned stop",
@@ -379,8 +576,7 @@ export function buildDossier(input: ObserverInput): ObserverDossier {
         ],
         instruction: {
           obstacle: "cutting-winners",
-          when: "a trade reaches 1R in profit",
-          then: `${name} moves the stop to break-even and leaves the target alone.`,
+          ...orderText("cutting-winners", {}, name),
           backtest: null,
           rulesPatch: null,
           checklist: "Let a winner reach its target",
@@ -406,8 +602,7 @@ export function buildDossier(input: ObserverInput): ObserverDossier {
       ],
       instruction: {
         obstacle: "rule-breaks",
-        when: `${name} feels the urge to break ${worst ? `the “${worst.label.toLowerCase()}” rule` : "a rule"}`,
-        then: "the rule gets read out loud and the platform closes for 15 minutes.",
+        ...orderText("rule-breaks", worst ? { label: worst.label.toLowerCase() } : {}, name),
         backtest: null,
         rulesPatch: null,
         checklist: "Kept every rule I set",
@@ -432,8 +627,7 @@ export function buildDossier(input: ObserverInput): ObserverDossier {
       ],
       instruction: {
         obstacle: "bad-hours",
-        when: `the clock reaches ${worstHour.label}`,
-        then: `${name} doesn't open a new trade until the hour is over.`,
+        ...orderText("bad-hours", { hour: Number(worstHour.key) }, name),
         backtest: findTest((o) => o.windowEnd != null),
         rulesPatch: null,
         checklist: `No new trades ${hourLabel(worstHour)}`,
@@ -465,8 +659,7 @@ export function buildDossier(input: ObserverInput): ObserverDossier {
       ],
       instruction: {
         obstacle: "sizing-up",
-        when: `${name} has just lost`,
-        then: `the next trade is ${baseQty} contract${baseQty === 1 ? "" : "s"} or smaller — never bigger.`,
+        ...orderText("sizing-up", { qty: baseQty }, name),
         backtest: null,
         rulesPatch: r.maxContracts ? null : { maxContracts: Math.max(1, Math.round(baseQty * 2)) },
         checklist: "Never sized up after a loss",
@@ -497,8 +690,7 @@ export function buildDossier(input: ObserverInput): ObserverDossier {
         ],
         instruction: {
           obstacle: "unprepared",
-          when: "the market is about to open",
-          then: `${name} doesn't place an order until the pre-market checklist and the day's intention are done.`,
+          ...orderText("unprepared", {}, name),
           backtest: null,
           rulesPatch: null,
           checklist: null,
@@ -525,8 +717,7 @@ export function buildDossier(input: ObserverInput): ObserverDossier {
       ],
       instruction: {
         obstacle: "mistakes",
-        when: `${name} feels a “${worstMistake.label}” coming on`,
-        then: "the hands come off the keyboard and the idea goes in the journal, not the market.",
+        ...orderText("mistakes", { label: worstMistake.label }, name),
         backtest: findTest((o) => o.skipMistakeTagged === true),
         rulesPatch: null,
         checklist: `No “${worstMistake.label}” today`,
@@ -550,8 +741,7 @@ export function buildDossier(input: ObserverInput): ObserverDossier {
       ],
       instruction: {
         obstacle: "fees",
-        when: `${name} is about to take a trade that isn't an A+ setup`,
-        then: "it gets skipped. Fewer trades, bigger edge per trade.",
+        ...orderText("fees", { limit: r.maxTradesPerDay ?? 3 }, name),
         backtest: findTest((o) => o.maxTradesPerDay != null),
         rulesPatch: null,
         checklist: "Only took A+ setups",
@@ -563,12 +753,27 @@ export function buildDossier(input: ObserverInput): ObserverDossier {
   const tell = stopping.slice(0, 3).map((o) => o.instruction);
 
   // ── Headline ─────────────────────────────────────────────────────────────
+  // `headline` is plain (used across the app); `headlineMd` is the Observer's
+  // longer read, with the obstacle phrase in *asterisks* for italics.
   let headline: string;
-  if (!trades.length) headline = `${name} hasn't traded in this window yet — the observer is waiting for evidence.`;
-  else if (stopping[0] && strengths[0]) headline = `${name} has something that works — but ${stopping[0].short}, and it cost ${fmtMoney(stopping[0].cost)}.`;
-  else if (stopping[0]) headline = `${name} ${stopping[0].short} — that cost ${fmtMoney(stopping[0].cost)}.`;
-  else if (s.net > 0) headline = `${name} is trading cleanly. The job now is to keep doing exactly this.`;
-  else headline = `${name} is breaking even — no single habit stands out yet; consistency comes first.`;
+  let headlineMd: string;
+  const top = stopping[0];
+  if (!trades.length) {
+    headline = `${name} hasn't traded in this window yet — the observer is waiting for evidence.`;
+    headlineMd = `${name} hasn't traded in this window yet. The Observer is *waiting* for evidence.`;
+  } else if (top && strengths[0]) {
+    headline = `${name} has something that works — but ${top.short}, and it cost ${fmtMoney(top.cost)}.`;
+    headlineMd = `${name} has an edge: ${strengths[0].clause}. But ${name} *${top.short}* — and that cost ${fmtMoney(top.cost)}.`;
+  } else if (top) {
+    headline = `${name} ${top.short} — that cost ${fmtMoney(top.cost)}.`;
+    headlineMd = `${name} *${top.short}* — and that cost ${fmtMoney(top.cost)} in ${tradeDays} trading day${tradeDays === 1 ? "" : "s"}.`;
+  } else if (s.net > 0) {
+    headline = `${name} is trading cleanly. The job now is to keep doing exactly this.`;
+    headlineMd = `${name} is trading *cleanly*. The job now is to keep doing exactly this.`;
+  } else {
+    headline = `${name} is breaking even — no single habit stands out yet; consistency comes first.`;
+    headlineMd = `${name} is breaking even. No single habit stands out yet — *consistency* comes first.`;
+  }
 
   return {
     name,
@@ -576,9 +781,10 @@ export function buildDossier(input: ObserverInput): ObserverDossier {
     to: input.to,
     sample: { trades: trades.length, days: tradeDays, low },
     headline,
+    headlineMd,
     wants,
     doing,
-    strengths: strengths.slice(0, 3),
+    strengths: strengths.slice(0, 3).map(({ clause: _c, ...f }) => f),
     stopping,
     tell,
   };

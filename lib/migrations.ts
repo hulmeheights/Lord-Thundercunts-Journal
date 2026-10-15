@@ -207,4 +207,22 @@ export const MIGRATIONS: { version: number; sql: string }[] = [
       create index if not exists observer_sessions_created_idx on observer_sessions (created_at desc);
     `,
   },
+  {
+    version: 5,
+    sql: /* sql */ `
+      -- The eval ledger: what prop evaluations have cost, and what they've paid back.
+      -- Amounts are always positive; the kind decides the direction.
+      create table if not exists prop_ledger (
+        id text primary key,
+        day text not null check (day ~ '^\\d{4}-\\d{2}-\\d{2}$'),
+        firm text not null check (char_length(firm) between 1 and 60),
+        account text check (account is null or char_length(account) <= 80),
+        kind text not null check (kind in ('evaluation', 'reset', 'activation', 'subscription', 'payout', 'refund', 'other')),
+        amount numeric(12, 2) not null check (amount >= 0),
+        note text check (note is null or char_length(note) <= 280),
+        created_at timestamptz not null default now()
+      );
+      create index if not exists prop_ledger_day_idx on prop_ledger (day desc);
+    `,
+  },
 ];

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import type { JournalDay, PropSettings, RitualItem, Trade, TradingRules } from "../lib/types";
 import { evaluateRules } from "../lib/analytics/rules";
 import { detectTilt } from "../lib/analytics/tilt";
-import { buildDossier, observerName, perceptionGap } from "../lib/analytics/observer";
+import { buildDossier, checkOrder, observerName, orderText, perceptionGap, type OrderContext } from "../lib/analytics/observer";
 
 const TZ = "America/New_York";
 let seq = 0;
@@ -125,4 +125,94 @@ test("empty window yields a waiting headline and no obstacles", () => {
   const d = dossierFor([]);
   assert.equal(d.stopping.length, 0);
   assert.match(d.headline, /hasn't traded/);
+});
+
+// ── Orders ─────────────────────────────────────────────────────────────────
+
+const DAY = "2026-10-14";
+function ctx(trades: Trade[], extra: Partial<OrderContext> = {}): OrderContext {
+  return { trades, journal: null, rules: { ...RULES, maxTradesPerDay: 5 }, ritual: RITUAL, tz: TZ, ...extra };
+}
+
+test("dossier carries a marked-up headline and titled facts", () => {
+  const trades: Trade[] = [];
+  for (let d = 1; d <= 10; d++) {
+    const day = `2026-09-${String(d).padStart(2, "0")}`;
+    trades.push(trade(day, "09:35", 120), trade(day, "09:50", 80), trade(day, "10:30", -90), trade(day, "10:50", -90), trade(day, "11:10", -90));
+  }
+  const d = dossierFor(trades);
+  assert.match(d.headlineMd, /\*[^*]+\*/, "the obstacle phrase is wrapped in asterisks");
+  assert.ok(!d.headline.includes("*"), "the plain headline has no markup");
+  for (const f of [...d.doing, ...d.strengths]) assert.ok(f.title.length > 0 && f.title.length <= 40, `short title: ${f.title}`);
+  // Instructions carry the numbers they were written with.
+  assert.deepEqual(d.stopping.find((o) => o.key === "overtrading")!.instruction.params, { limit: 2 });
+});
+
+test("order text is generated from params and is pronoun-free", () => {
+  const t = orderText("revenge", { minutes: 12 }, "Lord");
+  assert.equal(t.when, "Lord takes a loss");
+  assert.match(t.then, /waits 12 minutes/);
+  assert.equal(orderText("overtrading", { limit: 1 }, "Lord").when, "Lord has taken 1 trade");
+  assert.equal(orderText("bad-hours", { hour: 9 }, "Lord").when, "the clock reaches 09:00");
+  // Missing params fall back to sane defaults rather than "undefined".
+  assert.ok(!JSON.stringify(orderText("mistakes", {}, "Lord")).includes("undefined"));
+});
+
+test("checkOrder: overtrading counts the day's entries against the limit", () => {
+  const three = [trade(DAY, "09:35", 50), trade(DAY, "09:50", -20), trade(DAY, "10:10", 30)];
+  assert.equal(checkOrder("overtrading", { limit: 3 }, DAY, ctx(three)).verdict, "kept");
+  const four = [...three, trade(DAY, "10:40", -40)];
+  const broken = checkOrder("overtrading", { limit: 3 }, DAY, ctx(four));
+  assert.equal(broken.verdict, "broken");
+  assert.match(broken.reason, /1 past the 3/);
+  assert.equal(checkOrder("overtrading", { limit: 3 }, DAY, ctx([])).verdict, "untested");
+  // Trades on another day don't count.
+  assert.equal(checkOrder("overtrading", { limit: 3 }, DAY, ctx([trade("2026-10-13", "09:35", 50)])).verdict, "untested");
+});
+
+test("checkOrder: revenge waits are measured from the losing exit", () => {
+  // Loss exits 09:38 (3-minute hold); next entry 09:45 → 7 minutes.
+  const quick = [trade(DAY, "09:35", -50), trade(DAY, "09:45", 20)];
+  assert.equal(checkOrder("revenge", { minutes: 10 }, DAY, ctx(quick)).verdict, "broken");
+  const patient = [trade(DAY, "09:35", -50), trade(DAY, "10:05", 20)];
+  assert.equal(checkOrder("revenge", { minutes: 10 }, DAY, ctx(patient)).verdict, "kept");
+  assert.equal(checkOrder("revenge", { minutes: 10 }, DAY, ctx([trade(DAY, "09:35", 50), trade(DAY, "09:40", 50)])).verdict, "untested");
+  assert.equal(checkOrder("revenge", { minutes: 10 }, DAY, ctx([trade(DAY, "09:35", -50)])).verdict, "kept");
+});
+
+test("checkOrder: holding losers, sizing up, bad hours", () => {
+  assert.equal(checkOrder("holding-losers", { minutes: 5 }, DAY, ctx([trade(DAY, "09:35", -50, { holdMin: 20 })])).verdict, "broken");
+  assert.equal(checkOrder("holding-losers", { minutes: 5 }, DAY, ctx([trade(DAY, "09:35", -50, { holdMin: 4 })])).verdict, "kept");
+  assert.equal(checkOrder("holding-losers", { minutes: 5 }, DAY, ctx([trade(DAY, "09:35", 50, { holdMin: 40 })])).verdict, "untested");
+
+  const up = [trade(DAY, "09:35", -50, { qty: 1 }), trade(DAY, "09:55", 20, { qty: 3 })];
+  assert.equal(checkOrder("sizing-up", { qty: 1 }, DAY, ctx(up)).verdict, "broken");
+  const same = [trade(DAY, "09:35", -50, { qty: 1 }), trade(DAY, "09:55", 20, { qty: 1 })];
+  assert.equal(checkOrder("sizing-up", { qty: 1 }, DAY, ctx(same)).verdict, "kept");
+
+  assert.equal(checkOrder("bad-hours", { hour: 11 }, DAY, ctx([trade(DAY, "11:20", 10)])).verdict, "broken");
+  assert.equal(checkOrder("bad-hours", { hour: 11 }, DAY, ctx([trade(DAY, "10:59", 10), trade(DAY, "12:00", 10)])).verdict, "kept");
+});
+
+test("checkOrder: rule breaks, mistakes, fees, preparation, self-report", () => {
+  const six = Array.from({ length: 6 }, (_, i) => trade(DAY, `09:${String(30 + i * 5).padStart(2, "0")}`, 10));
+  const rb = checkOrder("rule-breaks", {}, DAY, ctx(six));
+  assert.equal(rb.verdict, "broken");
+  assert.match(rb.reason, /^6 trades \(limit 5\)/);
+  assert.equal(checkOrder("rule-breaks", {}, DAY, ctx(six.slice(0, 2))).verdict, "kept");
+
+  assert.equal(checkOrder("mistakes", { label: "Moved stop" }, DAY, ctx([trade(DAY, "09:35", -10, { mistakes: ["moved stop"] })])).verdict, "broken");
+  assert.equal(checkOrder("mistakes", { label: "Moved stop" }, DAY, ctx([trade(DAY, "09:35", -10, { mistakes: ["FOMO entry"] })])).verdict, "kept");
+
+  assert.equal(checkOrder("fees", { limit: 5 }, DAY, ctx(six)).verdict, "broken");
+
+  const journal = (plan: boolean): JournalDay => ({
+    day: DAY, checklist: { plan }, tasks: [], readiness: null, intention: null, plan: null, review: null, wins: null,
+    lessons: null, moodAfter: null, rulesKept: {}, isSample: false,
+  });
+  assert.equal(checkOrder("unprepared", {}, DAY, ctx(six, { journal: journal(true) })).verdict, "kept");
+  assert.equal(checkOrder("unprepared", {}, DAY, ctx(six, { journal: journal(false) })).verdict, "broken");
+  assert.equal(checkOrder("unprepared", {}, DAY, ctx([], { journal: null })).verdict, "untested");
+
+  assert.equal(checkOrder("cutting-winners", {}, DAY, ctx(six)).verdict, "self");
 });

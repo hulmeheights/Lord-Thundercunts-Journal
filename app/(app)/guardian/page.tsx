@@ -1,10 +1,16 @@
-import { ShieldCheck } from "lucide-react";
 import { getSettings } from "@/lib/data/settings";
 import { listTrades } from "@/lib/data/trades";
 import { listBrokerAccounts } from "@/lib/data/connections";
-import { addDays } from "@/lib/analytics/time";
-import { Card, CardHeader, PageHeader } from "@/components/ui/Card";
-import { GuardianView } from "@/components/guardian/GuardianView";
+import { listLedger } from "@/lib/data/ledger";
+import { addDays, todayKey } from "@/lib/analytics/time";
+import { propStatus, simulateProp } from "@/lib/analytics/prop";
+import { FIRM_SUGGESTIONS, firmKey, summarizeLedger } from "@/lib/analytics/ledger";
+import { Section } from "@/components/m";
+import { SectionIndex } from "@/components/m/SectionIndex";
+import { GuardianHero } from "@/components/guardian/GuardianHero";
+import { GuardianQuote, OddsSection, StatusSection } from "@/components/guardian/GuardianView";
+import { Explainer } from "@/components/guardian/Explainer";
+import { LedgerSection } from "@/components/guardian/Ledger";
 import { PropForm } from "@/components/guardian/PropForm";
 
 export const metadata = { title: "Guardian" };
@@ -12,34 +18,54 @@ export const metadata = { title: "Guardian" };
 export default async function GuardianPage() {
   const settings = await getSettings();
   const prop = settings.prop;
-  const [trades, accounts] = await Promise.all([
-    listTrades({ since: new Date(`${addDays(prop.startDate, -1)}T00:00:00Z`) }),
+  const tz = settings.profile.timezone;
+  const [trades, accounts, ledger] = await Promise.all([
+    prop.enabled ? listTrades({ since: new Date(`${addDays(prop.startDate, -1)}T00:00:00Z`) }) : Promise.resolve([]),
     listBrokerAccounts(),
+    listLedger(),
   ]);
+
+  const st = prop.enabled ? propStatus(trades, prop, tz) : null;
+  const mc = st ? simulateProp(st, prop, { sims: 4000, horizon: 30 }) : null;
+  const target = st && prop.profitTarget !== null ? prop.startBalance + (st.requiredProfit ?? prop.profitTarget) : null;
   const tracked = prop.accountIds.length === 1 ? accounts.find((a) => a.id === prop.accountIds[0]) : null;
+
+  const summary = summarizeLedger(ledger);
+  // The firm being tracked leads the form's suggestions, then firms already in the ledger.
+  const firms = [...new Map([prop.firm, ...summary.byFirm.map((f) => f.firm), ...FIRM_SUGGESTIONS].filter(Boolean).map((f) => [firmKey(f), f])).values()];
+
+  let n = 0;
+  const ids = st ? ["top", "status", "odds", "ledger", "rules"] : ["top", "watch", "ledger", "rules"];
+
   return (
     <>
-      <PageHeader eyebrow={`${prop.firm} · ${prop.preset} ${prop.phase === "combine" ? "Combine" : "Funded"}`} title="Prop Guardian" />
-      <div className="space-y-5">
-        {prop.enabled ? (
-          <GuardianView trades={trades} prop={prop} tz={settings.profile.timezone} brokerBalance={tracked?.balance ?? null} />
-        ) : (
-          <Card className="text-center">
-            <div className="mx-auto mb-4 grid h-16 w-16 place-items-center rounded-[3px] bg-blue/15 text-blue">
-              <ShieldCheck size={30} />
-            </div>
-            <h2 className="title-lg">Never blow an evaluation by accident</h2>
-            <p className="mx-auto mt-2 max-w-md text-[14.5px] leading-relaxed text-ink-3">
-              Guardian replays your account against your firm&apos;s rules — trailing max loss, daily limit, consistency — and simulates thousands of
-              futures from your own trading days to tell you your odds of passing.
-            </p>
-          </Card>
-        )}
-        <Card>
-          <CardHeader eyebrow="Account rules" title="Your evaluation" />
-          <PropForm initial={prop} accounts={accounts} />
-        </Card>
-      </div>
+      <SectionIndex ids={ids} />
+      <GuardianHero prop={prop} st={st} />
+
+      {st ? (
+        <>
+          <StatusSection prop={prop} st={st} brokerBalance={tracked?.balance ?? null} n={++n} />
+          <OddsSection prop={prop} st={st} mc={mc} target={target} n={++n} />
+          <GuardianQuote />
+        </>
+      ) : (
+        <Explainer n={++n} />
+      )}
+
+      <LedgerSection entries={ledger} summary={summary} n={++n} today={todayKey(tz)} firms={firms} />
+
+      <Section
+        id="rules"
+        n={++n}
+        label="Account rules"
+        lead={
+          <>
+            Tell Guardian the rules <em>once</em>.
+          </>
+        }
+      >
+        <PropForm initial={prop} accounts={accounts} />
+      </Section>
     </>
   );
 }

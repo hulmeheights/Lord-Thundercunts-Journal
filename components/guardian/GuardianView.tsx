@@ -1,164 +1,212 @@
-"use client";
-
-import { useMemo } from "react";
-import { motion } from "motion/react";
-import { ShieldAlert, ShieldCheck } from "lucide-react";
-import type { PropSettings, Trade } from "@/lib/types";
-import { propStatus, simulateProp } from "@/lib/analytics/prop";
-import { fmtMoney, fmtPct } from "@/lib/format";
-import { cn } from "@/lib/cn";
-import { Card, CardHeader } from "@/components/ui/Card";
-import { Gauge } from "@/components/charts/Gauge";
+import { Section, Stat, Stats, Empty, Quote } from "@/components/m";
 import { FanChart } from "@/components/charts/FanChart";
-import { ProgressRing } from "@/components/ui/Rings";
+import type { MonteCarloResult, PropStatus } from "@/lib/analytics/prop";
+import type { PropSettings } from "@/lib/types";
+import { fmtMoney } from "@/lib/format";
+import { Meter } from "./Meter";
+import { countWord, pct, shortDay } from "./words";
 
-export function GuardianView({ trades, prop, tz, brokerBalance }: { trades: Trade[]; prop: PropSettings; tz: string; brokerBalance: number | null }) {
-  const st = useMemo(() => propStatus(trades, prop, tz), [trades, prop, tz]);
-  const mc = useMemo(() => simulateProp(st, prop, { sims: 4000, horizon: 30 }), [st, prop]);
+const tone = (n: number) => (n > 0.004 ? "pos" : n < -0.004 ? "neg" : null);
+const foot = "reveal mt-[clamp(3rem,7vh,4.5rem)] max-w-[52ch] font-mono text-[12px] leading-[1.9] tracking-[0.02em] text-ink-2";
+
+function statusLead(st: PropStatus, survivable: number | null): React.ReactNode {
+  if (st.breached)
+    return (
+      <>
+        The max loss was crossed. <em>Reset</em> before the next trade.
+      </>
+    );
+  if (st.tradingDays === 0)
+    return (
+      <>
+        No trades on this account yet. The cushion is <em>whole</em>.
+      </>
+    );
+  if (st.cushionPct < 0.25)
+    return (
+      <>
+        The cushion is thin. <em>Size down</em> until it isn&apos;t.
+      </>
+    );
+  if (st.targetProgress !== null && st.targetProgress >= 1)
+    return st.consistencyOk === false ? (
+      <>
+        Target reached — but one day is <em>carrying</em> it.
+      </>
+    ) : (
+      <>
+        Target reached. Now <em>protect</em> it.
+      </>
+    );
+  if (st.consistencyOk === false)
+    return (
+      <>
+        One day is carrying the account. Stack <em>normal</em> days.
+      </>
+    );
+  if (survivable !== null)
+    return (
+      <>
+        You could absorb <em>{countWord(survivable)}</em> more {survivable === 1 ? "day" : "days"} like your worst.
+      </>
+    );
+  return (
+    <>
+      No losing day yet. Keep it <em>boring</em>.
+    </>
+  );
+}
+
+/** 01 — Status: where the account stands against every rule, as editorial figures. */
+export function StatusSection({ prop, st, brokerBalance, n }: { prop: PropSettings; st: PropStatus; brokerBalance: number | null; n: number }) {
   const worstDay = Math.min(0, ...st.dailyPnls);
-  const survivable = worstDay < 0 ? Math.floor(st.cushion / -worstDay) : null;
-  const danger = st.breached || st.cushionPct < 0.25;
+  const survivable = worstDay < 0 ? Math.max(0, Math.floor(st.cushion / -worstDay)) : null;
+  const toGo = st.requiredProfit !== null ? Math.max(0, st.requiredProfit - st.profit) : null;
+  const raised = st.requiredProfit !== null && prop.profitTarget !== null && st.requiredProfit > prop.profitTarget;
+  const dailyLeft = prop.dailyLossLimit ? Math.max(0, prop.dailyLossLimit + Math.min(0, st.todayPnl)) : null;
 
   return (
-    <div className="space-y-5">
-      <div className="grid gap-5 lg:grid-cols-12">
-        <Card className="lg:col-span-7">
-          <div className="flex flex-col items-center gap-6 sm:flex-row sm:items-center">
-            <Gauge value={st.cushionPct} size={230} stroke={16}>
-              <div className="text-center">
-                <div className="num text-[34px] font-bold tracking-[-0.03em]">{fmtMoney(st.cushion)}</div>
-                <div className="text-[12.5px] text-ink-3">above max loss</div>
-              </div>
-            </Gauge>
-            <div className="w-full flex-1 space-y-3">
-              <div className={cn("inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-[13px] font-semibold", danger ? "bg-neg/15 text-neg" : "bg-pos/15 text-pos")}>
-                {danger ? <ShieldAlert size={15} /> : <ShieldCheck size={15} />}
-                {st.breached ? "Max loss breached" : danger ? "Cushion is thin — size down" : "Account protected"}
-              </div>
-              {[
-                ["Balance", fmtMoney(st.balance)],
-                ["Profit", fmtMoney(st.profit, { sign: true })],
-                ["Max-loss floor", fmtMoney(st.floor)],
-                ["High-water (EOD)", fmtMoney(st.highWater)],
-                ...(brokerBalance !== null ? [["Broker-reported balance", fmtMoney(brokerBalance)]] : []),
-              ].map(([k, v]) => (
-                <div key={k} className="flex justify-between border-b border-line pb-2 text-[14px] last:border-0">
-                  <span className="text-ink-3">{k}</span>
-                  <span className="num font-semibold">{v}</span>
-                </div>
-              ))}
-              {survivable !== null && (
-                <p className="text-[13px] text-ink-3">
-                  You can absorb <span className="font-semibold text-ink">{survivable}</span> more days like your worst ({fmtMoney(worstDay)}).
-                </p>
-              )}
-            </div>
-          </div>
-        </Card>
-
-        <div className="grid gap-5 lg:col-span-5">
-          <Card>
-            <CardHeader eyebrow="Today" title="Daily loss limit" />
-            {prop.dailyLossLimit ? (
+    <Section id="status" n={n} label="Status" aside={<span className="eyebrow">since {shortDay(prop.startDate)}</span>} lead={statusLead(st, survivable)}>
+      <Stats>
+        <Stat value={fmtMoney(st.balance)} label="Balance" sub={`started at ${fmtMoney(prop.startBalance)}`} />
+        <Stat value={fmtMoney(st.profit, { sign: true })} tone={tone(st.profit)} label="Profit" sub={`best close ${fmtMoney(st.highWater)}`} d={80} />
+        <Stat
+          value={fmtMoney(st.cushion)}
+          label="Cushion to the line"
+          sub={
+            <>
+              floor {fmtMoney(st.floor)}
+              <Meter value={Math.min(1, st.cushionPct)} tone={st.cushionPct < 0.25 ? "gold" : "pos"} label="Cushion remaining" />
+            </>
+          }
+          d={160}
+        />
+        {toGo !== null ? (
+          <Stat
+            value={toGo === 0 ? "Met" : fmtMoney(toGo)}
+            tone={toGo === 0 ? "pos" : null}
+            label={toGo === 0 ? "Profit target" : "To the target"}
+            sub={
               <>
-                <div className="flex items-baseline justify-between">
-                  <span className={cn("num text-[26px] font-bold", st.todayPnl >= 0 ? "text-pos" : "text-neg")}>{fmtMoney(st.todayPnl, { sign: true })}</span>
-                  <span className="text-[13px] text-ink-3">limit {fmtMoney(-prop.dailyLossLimit)}</span>
-                </div>
-                <div className="mt-3 h-2.5 overflow-hidden rounded-full bg-fill-2">
-                  <motion.div
-                    className={cn("h-full rounded-full", (st.dailyLossUsed ?? 0) > 0.7 ? "bg-neg" : (st.dailyLossUsed ?? 0) > 0.4 ? "bg-orange" : "bg-pos")}
-                    initial={{ width: 0 }}
-                    animate={{ width: `${(st.dailyLossUsed ?? 0) * 100}%` }}
-                  />
-                </div>
-                <p className="mt-2 text-[12.5px] text-ink-3">{fmtPct(st.dailyLossUsed ?? 0)} of today&apos;s loss limit used.</p>
+                {raised
+                  ? `consistency raised it to ${fmtMoney(st.requiredProfit!)}`
+                  : st.daysToTarget === 0
+                    ? "target reached"
+                    : st.daysToTarget !== null
+                      ? `~${st.daysToTarget} trading days at your pace`
+                      : "your average day is negative"}
+                <Meter value={st.targetProgress ?? 0} label="Progress to target" />
+              </>
+            }
+            d={240}
+          />
+        ) : (
+          <Stat value={fmtMoney(st.highWater)} label="Best close" sub="funded — no profit target" d={240} />
+        )}
+
+        <Stat
+          value={dailyLeft !== null ? fmtMoney(dailyLeft) : "Off"}
+          label={dailyLeft !== null ? "Daily limit left" : "Daily loss limit"}
+          sub={
+            dailyLeft !== null ? (
+              <>
+                today {fmtMoney(st.todayPnl, { sign: true })} of {fmtMoney(-prop.dailyLossLimit!)}
+                <Meter value={st.dailyLossUsed ?? 0} tone="neg" label="Daily loss used" />
               </>
             ) : (
-              <p className="text-[13.5px] text-ink-3">No daily loss limit on this account.</p>
-            )}
-          </Card>
-          {prop.profitTarget !== null && (
-            <Card>
-              <div className="flex items-center gap-5">
-                <ProgressRing value={st.targetProgress ?? 0} size={92} stroke={10} color="#30d158">
-                  <span className="num text-[16px] font-bold">{fmtPct(st.targetProgress ?? 0)}</span>
-                </ProgressRing>
-                <div className="min-w-0">
-                  <div className="eyebrow mb-1">Profit target</div>
-                  <div className="text-[15px] font-semibold">
-                    {fmtMoney(Math.max(0, (st.requiredProfit ?? 0) - st.profit))} to go
-                  </div>
-                  <div className="mt-1 text-[12.5px] text-ink-3">
-                    {st.requiredProfit !== null && st.requiredProfit > (prop.profitTarget ?? 0)
-                      ? `Consistency raised your target to ${fmtMoney(st.requiredProfit)}.`
-                      : st.daysToTarget !== null
-                        ? st.daysToTarget === 0
-                          ? "Target reached."
-                          : `~${st.daysToTarget} trading days at your average pace.`
-                        : "Your average day is negative — focus on process first."}
-                  </div>
-                </div>
-              </div>
-            </Card>
-          )}
-        </div>
-      </div>
+              "no daily cap on this account"
+            )
+          }
+        />
+        <Stat
+          value={st.consistencyShare === null ? "—" : pct(st.consistencyShare)}
+          unit={st.consistencyShare === null ? undefined : "%"}
+          label={prop.consistencyPct ? `Best day · limit ${prop.consistencyPct}%` : "Best day share"}
+          sub={
+            <>
+              best day {fmtMoney(st.bestDay, { sign: true })}
+              {prop.consistencyPct ? (
+                <Meter value={st.consistencyShare ?? 0} mark={prop.consistencyPct / 100} tone={st.consistencyOk === false ? "gold" : "pos"} label="Best day share of profit" />
+              ) : null}
+            </>
+          }
+          d={80}
+        />
+        <Stat value={st.tradingDays} label="Trading days" sub={st.tradingDays ? `average day ${fmtMoney(st.avgDay, { sign: true })}` : "none yet"} d={160} />
+        <Stat
+          value={survivable === null ? "—" : survivable}
+          label="Worst days to absorb"
+          sub={survivable === null ? "no losing day yet" : `worst day ${fmtMoney(worstDay)}`}
+          d={240}
+        />
+      </Stats>
 
-      <div className="grid gap-5 lg:grid-cols-12">
-        <Card className="lg:col-span-8">
-          <CardHeader eyebrow="Monte Carlo · 4,000 futures from your own days" title="Where this account is heading" />
-          {mc ? (
+      <p className={foot}>
+        The max loss follows your best end-of-day balance and stops trailing once it reaches {fmtMoney(prop.startBalance)}. Intraday swings
+        don&apos;t move it; a close above {fmtMoney(st.highWater)} does.
+        {brokerBalance !== null && <> The broker reports {fmtMoney(brokerBalance)} for this account.</>}
+        {prop.maxContracts ? <> Size cap: {prop.maxContracts} minis.</> : null}
+      </p>
+    </Section>
+  );
+}
+
+/** 02 — The odds: the Monte Carlo fan and what it means. */
+export function OddsSection({ prop, st, mc, target, n }: { prop: PropSettings; st: PropStatus; mc: MonteCarloResult | null; target: number | null; n: number }) {
+  return (
+    <Section
+      id="odds"
+      n={n}
+      label="The odds"
+      aside={mc ? <span className="eyebrow">{mc.sims.toLocaleString("en-US")} futures · {mc.horizon} days</span> : null}
+      lead={
+        <>
+          Four thousand futures, built from <em>your</em> days.
+        </>
+      }
+    >
+      {mc ? (
+        <>
+          <div className="reveal">
+            <FanChart bands={mc.bands} target={target} floor={st.floor} />
+          </div>
+          <Stats cols={3} className="mt-[clamp(3.5rem,8vh,5rem)]">
+            {prop.profitTarget !== null ? (
+              <Stat value={pct(mc.passProb)} unit="%" tone={mc.passProb > 0 ? "pos" : null} label="Pass within 30 days" />
+            ) : (
+              <Stat value={pct(mc.openProb)} unit="%" tone="pos" label="Still standing in 30 days" />
+            )}
+            <Stat value={pct(mc.bustProb)} unit="%" label="Blow the account" sub={mc.bustProb > 0.25 ? "more than one in four — size down" : undefined} d={80} />
+            {prop.profitTarget !== null ? (
+              <Stat value={mc.medianDaysToPass ?? "—"} unit={mc.medianDaysToPass ? "days" : undefined} label="Median time to pass" d={160} />
+            ) : (
+              <Stat value={fmtMoney(mc.bands[mc.bands.length - 1]!.p50)} label="Median balance, day 30" d={160} />
+            )}
+          </Stats>
+          <p className={foot}>
+            Each future resamples your last {Math.min(60, st.dailyPnls.length)} trading days with the trailing max loss, the daily limit and the
+            consistency rule applied. The band holds the middle 80% of outcomes; the jade line is the median. Scrub the chart to read any day.
+          </p>
+        </>
+      ) : (
+        <Empty
+          title={
             <>
-              <div className="mb-4 grid grid-cols-3 gap-3">
-                {prop.profitTarget !== null && (
-                  <div>
-                    <div className="text-[12px] text-ink-3">Pass in 30 days</div>
-                    <div className="num text-[26px] font-bold text-pos">{fmtPct(mc.passProb)}</div>
-                  </div>
-                )}
-                <div>
-                  <div className="text-[12px] text-ink-3">Blow the account</div>
-                  <div className={cn("num text-[26px] font-bold", mc.bustProb > 0.25 ? "text-neg" : "text-ink")}>{fmtPct(mc.bustProb)}</div>
-                </div>
-                <div>
-                  <div className="text-[12px] text-ink-3">{prop.profitTarget !== null ? "Median days to pass" : "Still running"}</div>
-                  <div className="num text-[26px] font-bold">{prop.profitTarget !== null ? (mc.medianDaysToPass ?? "—") : fmtPct(mc.openProb)}</div>
-                </div>
-              </div>
-              <FanChart bands={mc.bands} target={prop.profitTarget !== null ? prop.startBalance + (st.requiredProfit ?? prop.profitTarget) : null} floor={st.floor} />
-              <p className="mt-3 text-[12px] leading-relaxed text-ink-4">
-                Resamples your last {Math.min(60, st.dailyPnls.length)} trading days with the trailing max loss, daily limit and consistency rule applied. The
-                band shows the 10th–90th percentile of outcomes.
-              </p>
+              Five trading days, then the <em>future</em>.
             </>
-          ) : (
-            <p className="text-[14px] text-ink-3">Needs at least 5 trading days on this account to simulate.</p>
-          )}
-        </Card>
-        <Card className="lg:col-span-4">
-          <CardHeader eyebrow="Consistency rule" title="Best-day share" />
-          {prop.consistencyPct ? (
-            <>
-              <div className="num text-[34px] font-bold">{st.consistencyShare === null ? "—" : fmtPct(st.consistencyShare)}</div>
-              <div className="mt-1 text-[13px] text-ink-3">limit {prop.consistencyPct}% · best day {fmtMoney(st.bestDay, { sign: true })}</div>
-              <div className="relative mt-4 h-2.5 overflow-hidden rounded-full bg-fill-2">
-                <div className="absolute inset-y-0 w-px bg-ink-3" style={{ left: `${prop.consistencyPct}%` }} />
-                <motion.div
-                  className={cn("h-full rounded-full", st.consistencyOk === false ? "bg-orange" : "bg-pos")}
-                  initial={{ width: 0 }}
-                  animate={{ width: `${Math.min(100, (st.consistencyShare ?? 0) * 100)}%` }}
-                />
-              </div>
-              <p className="mt-3 text-[12.5px] leading-relaxed text-ink-3">
-                {st.consistencyOk === false ? "One day is carrying the account. Keep stacking normal days — don't force a big one." : "Your profits are spread out nicely."}
-              </p>
-            </>
-          ) : (
-            <p className="text-[13.5px] text-ink-3">No consistency rule set.</p>
-          )}
-        </Card>
-      </div>
-    </div>
+          }
+        >
+          Guardian needs at least five trading days on this account before it can simulate your odds. So far: {st.tradingDays}.
+        </Empty>
+      )}
+    </Section>
+  );
+}
+
+export function GuardianQuote() {
+  return (
+    <section className="py-[clamp(4rem,12vh,9rem)]">
+      <Quote cite="Guardian">The cheapest evaluation is the one you don&apos;t buy twice.</Quote>
+    </section>
   );
 }

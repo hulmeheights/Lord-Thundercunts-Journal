@@ -1,11 +1,22 @@
 import "server-only";
+import { z } from "zod";
 import { db } from "../db";
-import { buildDossier, observerName, type ObserverDossier, type ObstacleKey, type PerceptionGap } from "../analytics/observer";
+import {
+  buildDossier,
+  checkOrder,
+  OBSTACLE_KEYS,
+  observerName,
+  orderText,
+  type ObserverDossier,
+  type ObstacleKey,
+  type OrderCheck,
+  type PerceptionGap,
+} from "../analytics/observer";
 import { evaluateRules } from "../analytics/rules";
 import { detectTilt } from "../analytics/tilt";
-import { addDays, dayKey, todayKey } from "../analytics/time";
+import { addDays, dayKey, isWeekend, todayKey } from "../analytics/time";
 import type { ObserverCaseFile } from "../ai/observer";
-import type { Settings } from "../types";
+import type { OrderParams, Settings } from "../types";
 import { listJournalDays } from "./journal";
 import { getSettings } from "./settings";
 import { listTrades } from "./trades";
@@ -43,6 +54,49 @@ export async function loadDossier(
     statedWant,
   });
   return { settings, dossier, today };
+}
+
+/** The pinned order, its verdict for today and for the last seven sessions. */
+export type PinnedOrder = {
+  key: ObstacleKey;
+  when: string;
+  then: string;
+  pinnedAt: string | null;
+  today: OrderCheck;
+  /** The last seven weekdays, oldest first (today last when it's a weekday). */
+  sessions: OrderCheck[];
+};
+
+// Stored params are only ever written by the server, but read them defensively.
+const ParamsSchema = z
+  .object({
+    limit: z.number().int().min(1).max(200).optional(),
+    minutes: z.number().int().min(1).max(600).optional(),
+    hour: z.number().int().min(0).max(23).optional(),
+    qty: z.number().int().min(1).max(500).optional(),
+    label: z.string().max(80).optional(),
+  })
+  .catch({});
+
+/** Checks the pinned order against today and the last seven sessions. */
+export async function loadPinnedOrder(settings: Settings): Promise<PinnedOrder | null> {
+  const key = settings.observer.pinned;
+  if (!key || !OBSTACLE_KEYS.includes(key)) return null;
+  const params: OrderParams = ParamsSchema.parse(settings.observer.pinnedParams ?? {});
+  const tz = settings.profile.timezone;
+  const today = todayKey(tz);
+  const days: string[] = [];
+  for (let d = today; days.length < 7; d = addDays(d, -1)) if (!isWeekend(d)) days.unshift(d);
+  const from = days[0]!;
+  const [trades, journals] = await Promise.all([
+    listTrades({ since: new Date(`${addDays(from, -1)}T00:00:00Z`), until: new Date(`${addDays(today, 2)}T00:00:00Z`) }),
+    listJournalDays(from, today),
+  ]);
+  const byDay = new Map(journals.map((j) => [j.day, j]));
+  const check = (day: string) =>
+    checkOrder(key, params, day, { trades, journal: byDay.get(day) ?? null, rules: settings.rules, ritual: settings.ritual, tz });
+  const { when, then } = orderText(key, params, observerName(settings.profile.name, settings.observer.name));
+  return { key, when, then, pinnedAt: settings.observer.pinnedAt, today: check(today), sessions: days.map(check) };
 }
 
 /** What the dossier said when the session was written — so progress can be measured later. */
