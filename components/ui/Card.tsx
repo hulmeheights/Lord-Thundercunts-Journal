@@ -13,7 +13,7 @@ export function Card({
   padded?: boolean;
   lift?: boolean;
 }) {
-  return <As className={cn("glass relative overflow-hidden rounded-[3px]", padded && "p-5 sm:p-7", lift && "lift", className)}>{children}</As>;
+  return <As className={cn("relative overflow-hidden rounded-[3px] border border-line bg-surface", padded && "p-[clamp(1.5rem,3vw,2.4rem)]", lift && "lift", className)}>{children}</As>;
 }
 
 export function CardHeader({
@@ -30,8 +30,8 @@ export function CardHeader({
   return (
     <div className={cn("mb-5 flex items-start justify-between gap-3", className)}>
       <div className="min-w-0">
-        {eyebrow && <div className="eyebrow mb-1.5">{eyebrow}</div>}
-        {title && <h2 className="title-lg truncate">{title}</h2>}
+        {eyebrow && <div className="label mb-3">{eyebrow}</div>}
+        {title && <h2 className="font-serif text-[clamp(1.4rem,2.6vw,1.9rem)] leading-[1.2] font-light [&_em]:italic">{title}</h2>}
       </div>
       {action && <div className="shrink-0">{action}</div>}
     </div>

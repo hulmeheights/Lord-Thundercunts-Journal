@@ -44,11 +44,7 @@ export function Hud() {
       <div ref={tl} aria-hidden className="pointer-events-none fixed bottom-0 z-[60] hidden -translate-x-1/2 border border-line bg-bg px-1.5 py-0.5 font-mono text-[9px] tracking-[0.12em] text-ink-4 [.cross-on_&]:block">
         {clock}
       </div>
-      <div aria-hidden className="pointer-events-none fixed bottom-6 left-[calc(232px+3.5rem)] z-40 hidden font-mono text-[10px] leading-[1.9] tracking-[0.2em] text-ink-4 uppercase xl:block">
-        <span className="text-pos">● Live</span> · journal
-        <br />
-        {clock} local
-      </div>
+
     </>
   );
 }

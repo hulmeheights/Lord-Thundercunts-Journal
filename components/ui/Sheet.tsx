@@ -44,7 +44,7 @@ export function Sheet({
       {open && (
         <div className="fixed inset-0 z-[80] flex items-end justify-center sm:items-center">
           <motion.div
-            className="absolute inset-0 bg-[color-mix(in_oklab,var(--ink)_28%,transparent)] backdrop-blur-[6px]"
+            className="absolute inset-0 bg-[rgba(5,5,6,0.82)] backdrop-blur-[3px]"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -54,16 +54,16 @@ export function Sheet({
             role="dialog"
             aria-modal="true"
             data-lenis-prevent
-            className={`relative max-h-[92dvh] w-full overflow-y-auto rounded-t-[3px] border border-line bg-surface p-5 pb-[calc(20px+var(--safe-bottom))] shadow-[0_40px_120px_-40px_rgba(11,15,12,0.45)] sm:rounded-[3px] sm:p-8 ${wide ? "sm:max-w-2xl" : "sm:max-w-lg"}`}
+            className={`relative max-h-[92dvh] w-full overflow-y-auto border border-line bg-bg p-6 pb-[calc(24px+var(--safe-bottom))] sm:p-10 ${wide ? "sm:max-w-3xl" : "sm:max-w-xl"}`}
             initial={{ y: 48, opacity: 0, scale: 0.985 }}
             animate={{ y: 0, opacity: 1, scale: 1 }}
             exit={{ y: 32, opacity: 0, scale: 0.985 }}
             transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
           >
-            <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-fill-3 sm:hidden" />
-            <div className="mb-5 flex items-center justify-between gap-3">
-              <h2 className="title-lg">{title}</h2>
-              <button onClick={onClose} className="grid h-9 w-9 place-items-center rounded-full border border-line-2 text-ink-2 transition-colors hover:text-ink" aria-label="Close">
+            <div className="mx-auto mb-6 h-px w-10 bg-line-2 sm:hidden" />
+            <div className="mb-8 flex items-start justify-between gap-4">
+              <h2 className="font-serif text-[clamp(1.6rem,3vw,2.2rem)] leading-[1.15] font-light [&_em]:italic">{title}</h2>
+              <button onClick={onClose} className="grid h-9 w-9 shrink-0 place-items-center border border-line text-ink-3 transition-colors hover:border-ink hover:text-ink" aria-label="Close">
                 <X size={16} />
               </button>
             </div>

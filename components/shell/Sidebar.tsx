@@ -2,11 +2,27 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
 import { cn } from "@/lib/cn";
 import { lockNow } from "@/lib/actions/auth";
 import { isActive, NAV } from "./nav";
 
 /** A terminal index: numbered, lettered, a gold rule marks where you are. */
+function Clock() {
+  const [t, setT] = useState("");
+  useEffect(() => {
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const tick = () => {
+      const d = new Date();
+      setT(`${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`);
+    };
+    tick();
+    const iv = setInterval(tick, 1000);
+    return () => clearInterval(iv);
+  }, []);
+  return <span className="num tracking-[0.12em]">{t || "--:--:--"}</span>;
+}
+
 export function Sidebar() {
   const pathname = usePathname();
   return (
@@ -40,6 +56,11 @@ export function Sidebar() {
         <form action={lockNow}>
           <button className="flex h-9 w-full items-center tracking-[0.22em] text-ink-4 uppercase transition-colors hover:text-ink-2">Lock</button>
         </form>
+        <div className="mt-5 text-[9.5px] leading-[1.9] tracking-[0.2em] text-ink-4">
+          <span className="text-pos">● Live</span> · journal
+          <br />
+          <Clock /> local
+        </div>
       </div>
     </aside>
   );

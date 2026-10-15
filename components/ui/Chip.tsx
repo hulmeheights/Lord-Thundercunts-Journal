@@ -14,11 +14,11 @@ export function Chip({
   className?: string;
 }) {
   const tones = {
-    default: active ? "bg-ink text-bg border-transparent" : "bg-surface text-ink-2 border-line-2 hover:text-ink hover:border-ink-4",
-    pos: "bg-sage text-pos border-transparent",
-    neg: "bg-neg-fill text-neg border-transparent",
-    brand: "bg-sage text-pos border-transparent",
-    warn: "bg-fill-2 text-warn border-transparent",
+    default: active ? "border-ink text-ink bg-fill-2" : "border-line text-ink-3 hover:text-ink hover:border-line-2",
+    pos: "border-pos/40 text-pos",
+    neg: "border-line-2 text-neg",
+    brand: "border-pos/40 text-pos",
+    warn: "border-gold/50 text-gold",
   } as const;
   const Comp = onClick ? "button" : "span";
   return (
@@ -26,9 +26,8 @@ export function Chip({
       type={onClick ? "button" : undefined}
       onClick={onClick}
       className={cn(
-        "inline-flex h-7 items-center gap-1.5 rounded-full border px-3 text-[12.5px] font-medium whitespace-nowrap transition-colors duration-200",
+        "inline-flex h-7 items-center gap-1.5 border px-2.5 font-mono text-[10px] tracking-[0.14em] whitespace-nowrap uppercase transition-colors duration-300",
         tones[tone],
-        onClick && "active:scale-[0.97]",
         className,
       )}
     >

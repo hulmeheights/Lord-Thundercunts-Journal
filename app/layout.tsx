@@ -4,6 +4,7 @@ import { cookies } from "next/headers";
 import { parseUiPrefs, UI_COOKIE } from "@/lib/ui-prefs";
 import { SmoothScroll } from "@/components/motion/SmoothScroll";
 import { MagneticLayer } from "@/components/motion/Magnetic";
+import { RevealObserver } from "@/components/m/RevealObserver";
 import "./globals.css";
 
 // Every page is private, per-user and served with a per-request CSP nonce, so
@@ -63,6 +64,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       <body className="min-h-dvh bg-bg text-ink antialiased">
         <SmoothScroll />
         <MagneticLayer />
+        <RevealObserver />
         {children}
         <div aria-hidden className="grain" />
       </body>

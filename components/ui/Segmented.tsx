@@ -1,15 +1,13 @@
 "use client";
 
-import { motion } from "motion/react";
-import { useId } from "react";
 import { cn } from "@/lib/cn";
 
+/** Letter-spaced tabs with a gold underline (Meridian). API kept for existing callers. */
 export function Segmented<T extends string>({
   options,
   value,
   onChange,
   className,
-  size = "md",
 }: {
   options: { value: T; label: React.ReactNode }[];
   value: T;
@@ -17,31 +15,21 @@ export function Segmented<T extends string>({
   className?: string;
   size?: "sm" | "md";
 }) {
-  const id = useId();
   return (
-    <div className={cn("inline-flex rounded-full border border-line bg-fill-2 p-[3px]", className)} role="tablist">
+    <div className={cn("inline-flex flex-wrap items-center gap-x-5 gap-y-2", className)} role="tablist">
       {options.map((o) => {
         const active = o.value === value;
         return (
           <button
             key={o.value}
+            type="button"
             role="tab"
             aria-selected={active}
             onClick={() => onChange(o.value)}
-            className={cn(
-              "relative rounded-full font-medium transition-colors duration-200",
-              size === "sm" ? "h-7 px-3 text-[12px]" : "h-8 px-4 text-[13px]",
-              active ? "text-ink" : "text-ink-3 hover:text-ink",
-            )}
+            className={cn("relative pb-1.5 font-mono text-[10px] tracking-[0.24em] uppercase transition-colors duration-300", active ? "text-ink" : "text-ink-4 hover:text-ink-2")}
           >
-            {active && (
-              <motion.span
-                layoutId={`seg-${id}`}
-                className="absolute inset-0 rounded-full border border-line bg-surface shadow-[0_1px_2px_rgba(11,15,12,0.08)]"
-                transition={{ duration: 0.36, ease: [0.22, 1, 0.36, 1] }}
-              />
-            )}
-            <span className="relative">{o.label}</span>
+            {o.label}
+            <i className={cn("absolute bottom-0 left-0 block h-px bg-gold transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)]", active ? "w-full" : "w-0")} />
           </button>
         );
       })}
