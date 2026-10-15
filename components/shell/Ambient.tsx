@@ -1,16 +1,8 @@
-/** Slow-drifting colour fields behind everything — the "studio lighting". */
+/** A single, barely-there wash of mint light at the top of the page. */
 export function Ambient() {
   return (
-    <div aria-hidden className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
-      <div className="absolute -top-[30%] -left-[10%] h-[70vh] w-[70vw] animate-drift rounded-full bg-[radial-gradient(closest-side,rgba(94,92,230,0.22),transparent)] blur-3xl" />
-      <div
-        className="absolute -right-[15%] top-[30%] h-[60vh] w-[55vw] animate-drift rounded-full bg-[radial-gradient(closest-side,rgba(191,90,242,0.14),transparent)] blur-3xl"
-        style={{ animationDelay: "-6s" }}
-      />
-      <div
-        className="absolute -bottom-[25%] left-[20%] h-[50vh] w-[60vw] animate-drift rounded-full bg-[radial-gradient(closest-side,rgba(100,210,255,0.1),transparent)] blur-3xl"
-        style={{ animationDelay: "-12s" }}
-      />
+    <div aria-hidden className="pointer-events-none fixed inset-x-0 top-0 -z-10 h-[60vh] overflow-hidden">
+      <div className="absolute -top-[40vh] left-1/2 h-[80vh] w-[120vw] -translate-x-1/2 rounded-full bg-[radial-gradient(closest-side,color-mix(in_oklab,var(--glow)_10%,transparent),transparent)]" />
     </div>
   );
 }

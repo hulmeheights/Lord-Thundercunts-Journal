@@ -12,10 +12,10 @@ export function Empty({
   className?: string;
 }) {
   return (
-    <div className={cn("flex flex-col items-center justify-center px-6 py-12 text-center", className)}>
-      {icon && <div className="mb-4 grid h-14 w-14 place-items-center rounded-2xl bg-fill-2 text-ink-2">{icon}</div>}
-      <div className="text-[17px] font-semibold tracking-[-0.01em]">{title}</div>
-      {children && <div className="mt-2 max-w-sm text-[14px] leading-relaxed text-ink-3">{children}</div>}
+    <div className={cn("flex flex-col items-center justify-center px-6 py-16 text-center", className)}>
+      {icon && <div className="mb-5 grid h-14 w-14 place-items-center rounded-full border border-line-2 text-ink-3">{icon}</div>}
+      <div className="title-lg">{title}</div>
+      {children && <div className="mt-2.5 max-w-sm text-[14.5px] leading-relaxed text-ink-3">{children}</div>}
     </div>
   );
 }

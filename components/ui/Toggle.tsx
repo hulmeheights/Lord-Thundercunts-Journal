@@ -24,13 +24,13 @@ export function Toggle({
       onClick={() => onChange(!checked)}
       className={cn(
         "relative h-[31px] w-[51px] shrink-0 rounded-full transition-colors duration-300 disabled:opacity-40",
-        checked ? "bg-pos" : "bg-fill-3",
+        checked ? "bg-pos" : "bg-fill-3 ring-1 ring-line-2 ring-inset",
       )}
     >
       <motion.span
-        className="absolute top-[2px] left-[2px] h-[27px] w-[27px] rounded-full bg-white shadow-[0_3px_8px_rgba(0,0,0,0.25)]"
+        className="absolute top-[2px] left-[2px] h-[27px] w-[27px] rounded-full bg-white shadow-[0_2px_6px_rgba(11,15,12,0.22)]"
         animate={{ x: checked ? 20 : 0 }}
-        transition={{ type: "spring", stiffness: 600, damping: 35 }}
+        transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
       />
     </button>
   );

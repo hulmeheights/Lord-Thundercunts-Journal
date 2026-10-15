@@ -214,7 +214,7 @@ export function Connections({ connections, accounts }: { connections: Connection
                   </Button>
                 </div>
                 {c.lastError && <div className="mt-3 rounded-2xl bg-orange/10 px-3.5 py-2.5 text-[13px] text-orange">{c.lastError}</div>}
-                {accs.length > 0 && <div className="mt-3 divide-y divide-line rounded-2xl border border-line bg-black/20">{accs.map((a) => <AccountRow key={a.id} a={a} />)}</div>}
+                {accs.length > 0 && <div className="mt-3 divide-y divide-line rounded-2xl border border-line bg-fill">{accs.map((a) => <AccountRow key={a.id} a={a} />)}</div>}
               </div>
             );
           })}
@@ -225,7 +225,7 @@ export function Connections({ connections, accounts }: { connections: Connection
         <div className="rounded-[24px] border border-line bg-fill p-4 sm:p-5">
           <div className="mb-1 text-[15.5px] font-semibold">Imported accounts</div>
           <div className="mb-3 text-[12.5px] text-ink-3">Accounts you&apos;ve added from export files. Rename them or hide them from your stats.</div>
-          <div className="divide-y divide-line rounded-2xl border border-line bg-black/20">{importAccounts.map((a) => <AccountRow key={a.id} a={a} />)}</div>
+          <div className="divide-y divide-line rounded-2xl border border-line bg-fill">{importAccounts.map((a) => <AccountRow key={a.id} a={a} />)}</div>
         </div>
       )}
 

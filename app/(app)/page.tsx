@@ -1,75 +1,112 @@
 import Link from "next/link";
-import { ArrowUpRight, BookOpen, Eye, MessageCircle, ShieldCheck } from "lucide-react";
+import { cookies } from "next/headers";
+import { ArrowUpRight } from "lucide-react";
 import { getSettings } from "@/lib/data/settings";
-import { listTrades, tradeCounts } from "@/lib/data/trades";
+import { activeDayCount, listTrades, tradeCounts } from "@/lib/data/trades";
 import { dueCapsules, getJournalDay, listJournalDays } from "@/lib/data/journal";
 import { listConnections } from "@/lib/data/connections";
 import { briefingStubs } from "@/lib/data/briefing";
-import { addDays, dayKey, longDate, minuteOfDay, startOfMonth, startOfWeek, todayKey, WEEKDAYS } from "@/lib/analytics/time";
-import { dailySeries, equityCurve, summarize } from "@/lib/analytics/stats";
+import { addDays, dayKey, isWeekend, longDate, minuteOfDay, startOfMonth, startOfWeek, todayKey, weekdayIndex } from "@/lib/analytics/time";
+import { bySetup, dailySeries, inRange, summarize } from "@/lib/analytics/stats";
 import { evaluateRules } from "@/lib/analytics/rules";
-import { ringStreak, ringsForDay } from "@/lib/analytics/rings";
+import { ringStreak, ringsClosed, ringsForDay } from "@/lib/analytics/rings";
 import { propStatus } from "@/lib/analytics/prop";
 import { detectTilt } from "@/lib/analytics/tilt";
 import { buildDossier, observerName } from "@/lib/analytics/observer";
-import { fmtMoney, fmtPct, plural } from "@/lib/format";
-import { cn } from "@/lib/cn";
+import { fmtMoney, fmtPct } from "@/lib/format";
+import { parseUiPrefs, UI_COOKIE } from "@/lib/ui-prefs";
 import { Card, CardHeader } from "@/components/ui/Card";
-import { NumberTicker } from "@/components/ui/NumberTicker";
-import { Sparkline } from "@/components/charts/Sparkline";
-import { StoryRings } from "@/components/today/StoryRings";
+import { TodayHero } from "@/components/today/Hero";
+import { Bento, type ThreadDay } from "@/components/today/Bento";
+import { OpeningSequence, INTRO_COOKIE } from "@/components/today/OpeningSequence";
 import { TraderRingsCard } from "@/components/today/TraderRings";
 import { Ritual } from "@/components/today/Ritual";
 import { Readiness } from "@/components/today/Readiness";
 import { CapsuleCard } from "@/components/today/Capsule";
 import { SyncPill } from "@/components/today/SyncPill";
 import { Onboarding } from "@/components/today/Onboarding";
-import { Gauge } from "@/components/charts/Gauge";
 import { Welcome } from "@/components/today/Welcome";
 import { passkeyCount } from "@/lib/auth/passkeys";
 
 export const metadata = { title: "Today" };
 
 function greeting(minute: number) {
-  if (minute < 5 * 60) return "Burning the midnight oil";
+  if (minute < 5 * 60) return "Still up";
   if (minute < 12 * 60) return "Good morning";
   if (minute < 17 * 60) return "Good afternoon";
   return "Good evening";
 }
 
+function SectionLabel({ n, title, aside }: { n: string; title: string; aside?: React.ReactNode }) {
+  return (
+    <div className="mb-5 flex items-end justify-between gap-4 border-b border-line pb-3">
+      <div className="flex items-baseline gap-3">
+        <span className="num text-[11px] text-ink-4">{n}</span>
+        <h2 className="title-lg">{title}</h2>
+      </div>
+      {aside}
+    </div>
+  );
+}
+
 export default async function TodayPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const sp = await searchParams;
+  const jar = await cookies();
+  const prefs = parseUiPrefs(jar.get(UI_COOKIE)?.value);
   const settings = await getSettings();
   const tz = settings.profile.timezone;
   const today = todayKey(tz);
-  const from = addDays(today, -75);
-  const [journal, trades, stubs, conns, capsules, counts, journals] = await Promise.all([
+  const from = addDays(today, -89);
+  const [journal, trades, stubs, conns, capsules, counts, journals, dayNumber] = await Promise.all([
     getJournalDay(today),
-    listTrades({ since: new Date(`${from}T00:00:00Z`) }),
+    listTrades({ since: new Date(`${addDays(from, -1)}T00:00:00Z`) }),
     briefingStubs(),
     listConnections(),
     dueCapsules(today),
     tradeCounts(),
     listJournalDays(from, today),
+    activeDayCount(tz),
   ]);
+
+  const firstName = settings.profile.name.trim().split(/\s+/)[0] || settings.profile.name;
+  const nowMinute = minuteOfDay(new Date().toISOString(), tz);
+  const hello = greeting(nowMinute);
+
+  // Equity curve for the hero: cumulative net by day across the last 90 days.
+  const series = dailySeries(trades.filter((t) => dayKey(t.exitTime, tz) >= from), tz);
+  const curve = [0, ...series.map((d) => d.cum)];
 
   const todays = trades.filter((t) => dayKey(t.exitTime, tz) === today);
   const s = summarize(todays);
-  const curve = [0, ...equityCurve(todays).map((p) => p.cum)];
+  const daily = new Map(series.map((d) => [d.day, d]));
+  const weekNet = series.filter((d) => d.day >= startOfWeek(today)).reduce((x, d) => x + d.net, 0);
+  const monthNet = series.filter((d) => d.day >= startOfMonth(today)).reduce((x, d) => x + d.net, 0);
+
+  // Process: rings, streak and the thread of recent sessions.
   const rules = evaluateRules(trades, settings.rules, tz);
   const jMap = new Map(journals.map((j) => [j.day, j]));
-  const enteredToday = trades.filter((t) => dayKey(t.entryTime, tz) === today).length;
-  const rings = ringsForDay(today, journal, settings.ritual, enteredToday, rules.byDay.get(today)?.violating ?? 0);
+  const entriesByDay = new Map<string, number>();
+  for (const t of trades) {
+    const d = dayKey(t.entryTime, tz);
+    entriesByDay.set(d, (entriesByDay.get(d) ?? 0) + 1);
+  }
+  const ringsOn = (d: string) => ringsForDay(d, jMap.get(d), settings.ritual, entriesByDay.get(d) ?? 0, rules.byDay.get(d)?.violating ?? 0);
+  const rings = ringsOn(today);
   const streak = ringStreak(today, jMap, settings.ritual, trades, rules, tz);
+  const thread: ThreadDay[] = [];
+  for (let d = today; thread.length < 21 && d >= from; d = addDays(d, -1)) {
+    if (isWeekend(d)) continue;
+    thread.unshift({ day: d, closed: ringsClosed(ringsOn(d)), traded: (entriesByDay.get(d) ?? 0) > 0 });
+  }
 
-  const daily = new Map(dailySeries(trades, tz).map((d) => [d.day, d]));
-  const weekStart = startOfWeek(today);
-  const week = Array.from({ length: 5 }, (_, i) => {
-    const d = addDays(weekStart, i);
-    return { day: d, net: daily.get(d)?.net ?? null, future: d > today };
-  });
-  const weekNet = [...daily.values()].filter((d) => d.day >= weekStart).reduce((x, d) => x + d.net, 0);
-  const monthNet = [...daily.values()].filter((d) => d.day >= startOfMonth(today)).reduce((x, d) => x + d.net, 0);
+  // The last 30 days, for the bento.
+  const last30 = inRange(trades, tz, addDays(today, -29), today);
+  const prev30 = inRange(trades, tz, addDays(today, -59), addDays(today, -30));
+  const s30 = summarize(last30, settings.rules.defaultRisk);
+  const p30 = summarize(prev30);
+  const r30 = evaluateRules(last30, settings.rules, tz);
+  const days30 = [...r30.byDay.values()];
+  const best = bySetup(last30).filter((b) => b.trades >= 3).sort((a, b) => b.expectancy - a.expectancy)[0];
 
   // Readiness ↔ results, from your own history.
   const ready = journals.filter((j) => j.readiness && daily.has(j.day));
@@ -79,191 +116,169 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
   const lo = ready.filter((j) => score(j) <= 2.75);
   const readinessInsight =
     hi.length >= 3 && lo.length >= 2
-      ? `When you score high you average ${fmtMoney(avgOf(hi), { sign: true })}/day; when low, ${fmtMoney(avgOf(lo), { sign: true })}.`
-      : "Log it daily — after a few weeks you'll see exactly how your state moves your P&L.";
+      ? `Rested days average ${fmtMoney(avgOf(hi), { sign: true })}; tired days ${fmtMoney(avgOf(lo), { sign: true })}.`
+      : "Log it daily — in a few weeks you'll see what your state is worth.";
 
   const lastSync = conns.map((c) => c.lastSyncAt).filter(Boolean).sort().at(-1) ?? null;
   const connError = conns.find((c) => c.lastError)?.lastError ?? null;
   const capsule = capsules.find((c) => !c.openedAt && c.deliverOn >= addDays(today, -21)) ?? null;
   const prop = settings.prop.enabled ? propStatus(trades, settings.prop, tz) : null;
-  const nowMinute = minuteOfDay(new Date().toISOString(), tz);
 
   // The Observer's one-line read on the last 30 days.
-  const obsFrom = addDays(today, -29);
-  const obsTrades = trades.filter((t) => {
-    const d = dayKey(t.exitTime, tz);
-    return d >= obsFrom && d <= today;
-  });
-  const observer = obsTrades.length
+  const observer = last30.length
     ? buildDossier({
         name: observerName(settings.profile.name, settings.observer.name),
-        trades: obsTrades,
-        journals: journals.filter((j) => j.day >= obsFrom),
-        rules: evaluateRules(obsTrades, settings.rules, tz),
-        tilt: detectTilt(obsTrades, tz),
+        trades: last30,
+        journals: journals.filter((j) => j.day >= addDays(today, -29)),
+        rules: r30,
+        tilt: detectTilt(last30, tz),
         settings,
         tz,
-        from: obsFrom,
+        from: addDays(today, -29),
         to: today,
       })
     : null;
 
-  return (
-    <div className="space-y-6 sm:space-y-7">
-      <header className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <div className="eyebrow mb-2">{longDate(today)}</div>
-          <h1 className="title-xl">
-            {greeting(nowMinute)},<br className="sm:hidden" /> <span className="text-brand">{settings.profile.name}</span>.
-          </h1>
-        </div>
-        <SyncPill lastSyncAt={lastSync} hasConnections={conns.length > 0} error={connError} />
-      </header>
+  // A red day gets one lesson and one next step — never a punishment screen.
+  const todayBreaks = rules.violations.filter((v) => v.day === today);
+  const redDay = s.trades > 0 && s.net < 0;
 
+  const sunday = weekdayIndex(today) === 6;
+  const weekly = stubs.find((x) => x.period === "weekly");
+  const playIntro = prefs.intro && jar.get(INTRO_COOKIE)?.value !== today && sp.welcome !== "1";
+
+  return (
+    <div className="space-y-10 sm:space-y-14">
+      {playIntro && <OpeningSequence day={today} greeting={hello} dayNumber={dayNumber} values={curve} />}
       {sp.welcome === "1" && <Welcome hasPasskey={(await passkeyCount()) > 0} />}
       {counts.total === 0 && conns.length === 0 && <Onboarding />}
 
+      <TodayHero
+        dateLabel={longDate(today)}
+        dayNumber={dayNumber}
+        greeting={hello}
+        name={firstName}
+        curve={curve}
+        todayNet={s.net}
+        todayTrades={s.trades}
+        todayWinRate={s.winRate}
+        weekNet={weekNet}
+        monthNet={monthNet}
+        stubs={stubs}
+        sync={<SyncPill lastSyncAt={lastSync} hasConnections={conns.length > 0} error={connError} />}
+      />
+
+      {redDay && (
+        <section className="glass grid gap-6 rounded-[24px] p-6 sm:grid-cols-[auto_1fr_1fr] sm:items-start sm:p-8">
+          <div className="eyebrow pt-1">A red day</div>
+          <div>
+            <div className="eyebrow mb-2 !text-ink-4">One lesson</div>
+            <p className="text-[15.5px] leading-relaxed">
+              {todayBreaks.length
+                ? `${todayBreaks[0]!.detail}. That rule exists for exactly this moment.`
+                : "Every trade stayed inside your rules. A red day inside the plan is simply the cost of doing business."}
+            </p>
+          </div>
+          <div>
+            <div className="eyebrow mb-2 !text-ink-4">One next step</div>
+            <p className="text-[15.5px] leading-relaxed">
+              {observer?.tell[0] ? `When ${observer.tell[0].when}, ${observer.tell[0].then}` : "Write two lines in tonight's review, then close the laptop. Tomorrow is a new tape."}
+            </p>
+          </div>
+        </section>
+      )}
+
       <section>
-        <div className="eyebrow mb-3">Your briefings</div>
-        <StoryRings stubs={stubs} />
+        <SectionLabel n="01" title="The last thirty days" aside={<Link href="/insights" className="text-[13px] text-ink-3 transition-colors hover:text-ink">All insights →</Link>} />
+        <Bento
+          s={{
+            trades: s30.trades,
+            winRate: s30.winRate,
+            winRatePrev: p30.trades >= 5 ? p30.winRate : null,
+            profitFactor: s30.profitFactor,
+            expectancy: s30.expectancy,
+            avgR: s30.avgR,
+            bestSetup: best ? { name: best.label, expectancy: best.expectancy, trades: best.trades } : null,
+            streak,
+            thread,
+            cleanDays: days30.filter((d) => d.violating === 0).length,
+            tradingDays: days30.length,
+          }}
+        />
       </section>
 
-      <div className="grid gap-5 lg:grid-cols-12">
-        <Card className="lg:col-span-7">
-          <div className="flex items-start justify-between gap-4">
-            <div className="min-w-0">
-              <div className="eyebrow mb-1.5">Today&apos;s P&amp;L</div>
-              <div className={cn("text-[46px] leading-none font-bold tracking-[-0.04em] sm:text-[56px]", s.net > 0 ? "text-pos" : s.net < 0 ? "text-neg" : "text-ink")}>
-                <NumberTicker value={s.net} />
-              </div>
-              <div className="mt-2.5 text-[13.5px] text-ink-2">
-                {s.trades ? (
-                  <>
-                    {plural(s.trades, "trade")} · {fmtPct(s.winRate)} win rate
-                    {s.largestWin > 0 && <> · best {fmtMoney(s.largestWin, { sign: true })}</>}
-                  </>
-                ) : (
-                  "Flat. Patience is a position."
-                )}
-              </div>
-            </div>
-            <div className="hidden pt-2 sm:block">
-              <Sparkline values={curve} width={150} height={56} />
-            </div>
-          </div>
-          <div className="mt-6 grid grid-cols-5 gap-2">
-            {week.map((d, i) => (
-              <Link
-                key={d.day}
-                href={`/journal/${d.day}`}
-                className={cn(
-                  "rounded-2xl border px-2 py-2.5 text-center transition-colors hover:bg-fill-2",
-                  d.day === today ? "border-cyan/50 bg-cyan/5" : "border-line bg-fill",
-                  d.future && "opacity-40",
-                )}
-              >
-                <div className="text-[11px] font-semibold text-ink-3">{WEEKDAYS[i]}</div>
-                <div className={cn("num mt-1 text-[12px] font-semibold whitespace-nowrap sm:text-[12.5px]", d.net === null ? "text-ink-4" : d.net >= 0 ? "text-pos" : "text-neg")}>
-                  {d.net === null ? "—" : fmtMoney(d.net, { sign: true, compact: true, compactFrom: 1000 })}
-                </div>
-              </Link>
-            ))}
-          </div>
-          <div className="mt-4 flex gap-6 border-t border-line pt-4 text-[13px]">
-            <div>
-              <span className="text-ink-3">This week </span>
-              <span className={cn("num font-semibold", weekNet >= 0 ? "text-pos" : "text-neg")}>{fmtMoney(weekNet, { sign: true })}</span>
-            </div>
-            <div>
-              <span className="text-ink-3">This month </span>
-              <span className={cn("num font-semibold", monthNet >= 0 ? "text-pos" : "text-neg")}>{fmtMoney(monthNet, { sign: true })}</span>
-            </div>
-          </div>
-        </Card>
-
-        <Card className="lg:col-span-5">
-          <CardHeader eyebrow="Trader Rings" title="Close all three" />
-          <TraderRingsCard prepare={rings.prepare} discipline={rings.discipline} reflect={rings.reflect} streak={streak} />
-        </Card>
-      </div>
-
-      <div className="grid gap-5 lg:grid-cols-12">
-        <Card className="lg:col-span-7">
-          <CardHeader eyebrow="Daily ritual" title="Tick it off" />
-          <Ritual day={today} items={settings.ritual} checklist={journal.checklist} tasks={journal.tasks} />
-        </Card>
-
-        <div className="space-y-5 lg:col-span-5">
-          {capsule && <CapsuleCard capsule={capsule} />}
-          <Card>
-            <CardHeader eyebrow="Readiness check-in" title="Mind before market" />
-            <Readiness day={today} initial={journal.readiness} initialIntention={journal.intention} insight={readinessInsight} />
+      <section>
+        <SectionLabel n="02" title="Today's session" />
+        <div className="grid gap-5 lg:grid-cols-12">
+          <Card className="lg:col-span-7">
+            <CardHeader eyebrow="Daily ritual" title="Tick it off" />
+            <Ritual day={today} items={settings.ritual} checklist={journal.checklist} tasks={journal.tasks} />
           </Card>
-
-          {prop && (
-            <Link href="/guardian" className="block">
-              <Card className="transition-transform hover:scale-[1.01]">
-                <div className="flex items-center gap-4">
-                  <Gauge value={prop.cushionPct} size={110} stroke={10}>
-                    <div className="text-center">
-                      <div className="num text-[15px] font-bold">{fmtMoney(prop.cushion, { compact: true })}</div>
-                      <div className="text-[10px] text-ink-3">cushion</div>
-                    </div>
-                  </Gauge>
-                  <div className="min-w-0">
-                    <div className="eyebrow mb-1 flex items-center gap-1.5">
-                      <ShieldCheck size={13} /> {settings.prop.firm} Guardian
-                    </div>
-                    <div className="text-[15px] font-semibold">
-                      {prop.breached ? "Max loss breached" : `${fmtMoney(prop.cushion)} above your max loss`}
-                    </div>
-                    {prop.targetProgress !== null && (
-                      <div className="mt-1 text-[13px] text-ink-3">{fmtPct(prop.targetProgress)} of the way to target</div>
-                    )}
-                  </div>
-                  <ArrowUpRight size={18} className="ml-auto shrink-0 text-ink-3" />
-                </div>
-              </Card>
-            </Link>
-          )}
-
-          {observer && (
-            <Link href="/observer" className="block">
-              <Card className="transition-transform hover:scale-[1.01]">
-                <div className="eyebrow mb-2 flex items-center gap-1.5">
-                  <Eye size={13} className="text-cyan" /> From the outside
-                </div>
-                <p className="text-[15.5px] leading-snug font-semibold">{observer.headline}</p>
-                {observer.tell[0] && (
-                  <p className="mt-2 text-[13px] leading-relaxed text-ink-3">
-                    Tell {observer.name}: when {observer.tell[0].when}, {observer.tell[0].then}
-                  </p>
-                )}
-                <div className="mt-3 inline-flex items-center gap-1 text-[13px] font-semibold text-cyan">
-                  Step outside <ArrowUpRight size={14} />
-                </div>
-              </Card>
-            </Link>
-          )}
-
-          <div className="grid grid-cols-2 gap-3">
-            <Link href={`/journal/${today}`} className="glass flex flex-col gap-3 rounded-[24px] p-4 transition-transform hover:scale-[1.02]">
-              <BookOpen size={20} className="text-cyan" />
-              <div>
-                <div className="text-[14px] font-semibold">Journal today</div>
-                <div className="text-[12px] text-ink-3">Plan &amp; review</div>
-              </div>
-            </Link>
-            <Link href="/coach" className="glass flex flex-col gap-3 rounded-[24px] p-4 transition-transform hover:scale-[1.02]">
-              <MessageCircle size={20} className="text-purple" />
-              <div>
-                <div className="text-[14px] font-semibold">Ask Thunder</div>
-                <div className="text-[12px] text-ink-3">Your AI coach</div>
-              </div>
-            </Link>
+          <div className="space-y-5 lg:col-span-5">
+            <Card>
+              <CardHeader eyebrow="Process" title="Close all three" />
+              <TraderRingsCard prepare={rings.prepare} discipline={rings.discipline} reflect={rings.reflect} streak={streak} />
+            </Card>
+            <Card>
+              <CardHeader eyebrow="Readiness" title="Mind before market" />
+              <Readiness day={today} initial={journal.readiness} initialIntention={journal.intention} insight={readinessInsight} />
+            </Card>
           </div>
         </div>
-      </div>
+      </section>
+
+      <section>
+        <SectionLabel n="03" title="Perspective" />
+        <div className="grid gap-5 lg:grid-cols-3">
+          {observer && (
+            <Link href="/observer" className="glass lift group flex min-h-[220px] flex-col rounded-[24px] p-6 sm:p-7">
+              <div className="eyebrow">From the outside</div>
+              <p className="display mt-5 text-[22px] leading-[1.2] !tracking-[-0.025em]">{observer.headline}</p>
+              <span className="mt-auto inline-flex items-center gap-1 pt-6 text-[13.5px] font-medium text-ink-2 transition-colors group-hover:text-ink">
+                Step outside <ArrowUpRight size={15} />
+              </span>
+            </Link>
+          )}
+          <Link href="/briefing/weekly" className="glass lift group flex min-h-[220px] flex-col rounded-[24px] p-6 sm:p-7">
+            <div className="eyebrow">{sunday ? "Unlocked today" : "Weekly replay"}</div>
+            <p className="display mt-5 text-[22px] leading-[1.2] !tracking-[-0.025em]">
+              {sunday ? "Your week, replayed. Ten slides, two minutes." : `Your week so far: ${fmtMoney(weekly?.net ?? weekNet, { sign: true })}.`}
+            </p>
+            <span className="mt-auto inline-flex items-center gap-1 pt-6 text-[13.5px] font-medium text-ink-2 transition-colors group-hover:text-ink">
+              {sunday ? "Play the replay" : "Full replay unlocks Sunday · preview now"} <ArrowUpRight size={15} />
+            </span>
+          </Link>
+          {prop ? (
+            <Link href="/guardian" className="glass lift group flex min-h-[220px] flex-col rounded-[24px] p-6 sm:p-7">
+              <div className="eyebrow">{settings.prop.firm} Guardian</div>
+              <p className="display mt-5 text-[22px] leading-[1.2] !tracking-[-0.025em]">
+                {prop.breached ? "Max loss breached." : `${fmtMoney(prop.cushion)} above the max-loss line.`}
+              </p>
+              <div className="mt-3 h-[3px] overflow-hidden rounded-full bg-fill-3">
+                <div className="h-full rounded-full bg-pos" style={{ width: `${Math.round(Math.max(0, Math.min(1, prop.targetProgress ?? 0)) * 100)}%` }} />
+              </div>
+              <span className="mt-auto inline-flex items-center gap-1 pt-6 text-[13.5px] font-medium text-ink-2 transition-colors group-hover:text-ink">
+                {prop.targetProgress !== null ? `${fmtPct(prop.targetProgress)} to target` : "Open Guardian"} <ArrowUpRight size={15} />
+              </span>
+            </Link>
+          ) : capsule ? (
+            <CapsuleCard capsule={capsule} />
+          ) : (
+            <Link href={`/journal/${today}`} className="glass lift group flex min-h-[220px] flex-col rounded-[24px] p-6 sm:p-7">
+              <div className="eyebrow">Tonight</div>
+              <p className="display mt-5 text-[22px] leading-[1.2] !tracking-[-0.025em]">Two lines on today. Future you will read them.</p>
+              <span className="mt-auto inline-flex items-center gap-1 pt-6 text-[13.5px] font-medium text-ink-2 transition-colors group-hover:text-ink">
+                Open today&apos;s journal <ArrowUpRight size={15} />
+              </span>
+            </Link>
+          )}
+        </div>
+        {prop && capsule && (
+          <div className="mt-5">
+            <CapsuleCard capsule={capsule} />
+          </div>
+        )}
+      </section>
     </div>
   );
 }

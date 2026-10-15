@@ -31,7 +31,7 @@ export function Rings({
         const v = Math.max(0, Math.min(1, r.value));
         return (
           <g key={i}>
-            <circle cx={c} cy={c} r={radius} fill="none" stroke={r.track ?? `${r.color}2e`} strokeWidth={stroke} />
+            <circle cx={c} cy={c} r={radius} fill="none" stroke={r.track ?? "var(--fill-3)"} strokeWidth={stroke} />
             <motion.circle
               cx={c}
               cy={c}
@@ -43,8 +43,8 @@ export function Rings({
               strokeDasharray={circ}
               initial={animate ? { strokeDashoffset: circ } : false}
               animate={{ strokeDashoffset: circ * (1 - Math.max(v, 0.0001)) }}
-              transition={{ type: "spring", stiffness: 40, damping: 14, delay: 0.15 + i * 0.12 }}
-              style={{ filter: v >= 0.999 ? `drop-shadow(0 0 6px ${r.color}88)` : undefined }}
+              transition={{ duration: 1.4, ease: [0.22, 1, 0.36, 1], delay: 0.2 + i * 0.12 }}
+              style={{ filter: v >= 0.999 ? "drop-shadow(0 0 6px color-mix(in oklab, var(--glow) 60%, transparent))" : undefined }}
             />
           </g>
         );
@@ -57,7 +57,7 @@ export function ProgressRing({
   value,
   size = 56,
   stroke = 6,
-  color = "#64d2ff",
+  color = "var(--pos)",
   children,
 }: {
   value: number;

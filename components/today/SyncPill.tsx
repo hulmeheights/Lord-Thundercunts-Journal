@@ -49,13 +49,22 @@ export function SyncPill({ lastSyncAt, hasConnections, error }: { lastSyncAt: st
       onClick={() => sync(false)}
       disabled={busy}
       className={cn(
-        "glass inline-flex h-9 items-center gap-2 rounded-full px-3.5 text-[12.5px] font-medium transition-colors",
-        problem ? "text-orange" : "text-ink-2 hover:text-ink",
+        "inline-flex h-9 shrink-0 items-center gap-2 rounded-full border border-line-2 px-3.5 text-[12.5px] transition-colors",
+        problem ? "text-warn" : "text-ink-2 hover:text-ink",
       )}
       title={problem ?? "Sync trades now"}
     >
-      {problem && !busy ? <TriangleAlert size={14} /> : <RefreshCw size={14} className={busy ? "animate-spin" : ""} />}
-      {busy ? "Syncing…" : problem ? "Sync issue — retry" : `Synced ${timeAgo(lastSyncAt)}`}
+      {problem && !busy ? (
+        <TriangleAlert size={14} />
+      ) : busy ? (
+        <RefreshCw size={13} className="animate-spin" />
+      ) : (
+        <span className="relative grid h-2 w-2 place-items-center">
+          <span className="absolute h-2 w-2 animate-ping rounded-full bg-glow opacity-60" />
+          <span className="h-1.5 w-1.5 rounded-full bg-glow" />
+        </span>
+      )}
+      {busy ? "Syncing…" : problem ? "Sync issue — retry" : `Live · ${timeAgo(lastSyncAt)}`}
     </button>
   );
 }

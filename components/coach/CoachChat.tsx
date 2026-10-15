@@ -146,7 +146,7 @@ export function CoachChat() {
                 <div
                   className={cn(
                     "max-w-[85%] rounded-[22px] px-4 py-3 text-[14.5px] leading-relaxed",
-                    m.role === "user" ? "rounded-br-md bg-ink text-black" : "glass rounded-bl-md text-ink-2",
+                    m.role === "user" ? "rounded-br-md bg-ink text-bg" : "glass rounded-bl-md text-ink-2",
                   )}
                 >
                   {m.role === "assistant" ? (
@@ -202,7 +202,7 @@ export function CoachChat() {
               <Square size={14} fill="currentColor" />
             </button>
           ) : (
-            <button type="submit" disabled={!input.trim()} className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-ink text-black transition-opacity disabled:opacity-30" aria-label="Send">
+            <button type="submit" disabled={!input.trim()} className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-ink text-bg transition-opacity disabled:opacity-30" aria-label="Send">
               <ArrowUp size={18} strokeWidth={2.5} />
             </button>
           )}

@@ -141,7 +141,7 @@ export function Ritual({
                 key={p}
                 type="button"
                 onClick={() => setPronoun(p)}
-                className={cn("rounded-full px-3 py-1 text-[12.5px] font-semibold", pronoun === p ? "bg-ink text-black" : "text-ink-3")}
+                className={cn("rounded-full px-3 py-1 text-[12.5px] font-semibold", pronoun === p ? "bg-ink text-bg" : "text-ink-3")}
               >
                 {p}
               </button>
@@ -190,7 +190,7 @@ export function Ritual({
               onClick={() => toggle(k)}
               className={cn(
                 "rounded-full border px-3.5 py-1.5 text-[13px] font-medium transition-colors",
-                on ? "border-transparent bg-ink text-black" : "border-line bg-fill text-ink-2 hover:text-ink",
+                on ? "border-transparent bg-ink text-bg" : "border-line bg-fill text-ink-2 hover:text-ink",
               )}
             >
               {OBSTACLE_LABELS[k]}

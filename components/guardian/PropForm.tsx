@@ -83,7 +83,7 @@ export function PropForm({ initial, accounts }: { initial: PropSettings; account
                 <button
                   key={a.id}
                   onClick={() => set({ accountIds: on ? p.accountIds.filter((x) => x !== a.id) : [...p.accountIds, a.id] })}
-                  className={`rounded-full border px-3 py-1.5 text-[12.5px] font-medium ${on ? "border-transparent bg-ink text-black" : "border-line bg-fill text-ink-2"}`}
+                  className={`rounded-full border px-3 py-1.5 text-[12.5px] font-medium ${on ? "border-transparent bg-ink text-bg" : "border-line bg-fill text-ink-2"}`}
                 >
                   {a.name}
                 </button>

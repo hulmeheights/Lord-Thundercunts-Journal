@@ -35,8 +35,8 @@ export function Stat({
 }) {
   return (
     <div className={cn("min-w-0", className)}>
-      <div className="text-[12px] font-medium text-ink-3">{label}</div>
-      <div className="num mt-1 truncate text-[22px] font-semibold tracking-[-0.02em]">{value}</div>
+      <div className="eyebrow">{label}</div>
+      <div className="num mt-2 truncate text-[22px] font-medium">{value}</div>
       {sub && <div className="mt-0.5 truncate text-[12px] text-ink-3">{sub}</div>}
     </div>
   );

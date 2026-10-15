@@ -11,7 +11,7 @@ export default function ErrorPage({ reset }: { error: Error & { digest?: string 
         </div>
         <h1 className="title-lg">Something went sideways.</h1>
         <p className="mt-2 text-[14px] text-ink-3">The error has been contained. Try again — if it persists, check the database connection in Vercel.</p>
-        <button onClick={reset} className="mt-5 h-10 rounded-full bg-ink px-5 text-[14px] font-semibold text-black">
+        <button onClick={reset} className="mt-5 h-10 rounded-full bg-ink px-5 text-[14px] font-semibold text-bg">
           Try again
         </button>
       </div>

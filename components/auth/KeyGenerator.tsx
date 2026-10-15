@@ -39,7 +39,7 @@ export function KeyGenerator({ encryptionKeySet }: { encryptionKeySet: boolean }
             {copied === "block" ? <Check size={14} /> : <Copy size={14} />} {copied === "block" ? "Copied" : "Copy block"}
           </Button>
         </div>
-        <pre className="overflow-x-auto rounded-2xl border border-line bg-black/60 p-4 text-[12.5px] leading-relaxed text-ink">
+        <pre className="overflow-x-auto rounded-2xl border border-line bg-fill-2 p-4 text-[12.5px] leading-relaxed text-ink">
           {v ? block : "Generating…"}
         </pre>
         {!encryptionKeySet && (

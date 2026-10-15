@@ -109,3 +109,16 @@ export async function tradeCounts(): Promise<{ total: number; sample: number }> 
   `;
   return { total: r?.total ?? 0, sample: r?.sample ?? 0 };
 }
+
+/** How many distinct days you've shown up — traded or journaled. Powers "Day 47". */
+export async function activeDayCount(tz: string): Promise<number> {
+  const sql = await db();
+  const [r] = await sql<{ n: number }[]>`
+    select count(*)::int as n from (
+      select to_char(exit_time at time zone ${tz}, 'YYYY-MM-DD') as d from trades
+      union
+      select day as d from journal_days
+    ) days
+  `;
+  return Math.max(1, r?.n ?? 1);
+}

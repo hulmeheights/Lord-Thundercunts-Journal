@@ -5,13 +5,15 @@ export function Card({
   className,
   as: As = "section",
   padded = true,
+  lift = false,
 }: {
   children: React.ReactNode;
   className?: string;
   as?: "section" | "div" | "article";
   padded?: boolean;
+  lift?: boolean;
 }) {
-  return <As className={cn("glass relative overflow-hidden rounded-[28px]", padded && "p-5 sm:p-6", className)}>{children}</As>;
+  return <As className={cn("glass relative overflow-hidden rounded-[24px]", padded && "p-5 sm:p-7", lift && "lift", className)}>{children}</As>;
 }
 
 export function CardHeader({
@@ -26,9 +28,9 @@ export function CardHeader({
   className?: string;
 }) {
   return (
-    <div className={cn("mb-4 flex items-start justify-between gap-3", className)}>
+    <div className={cn("mb-5 flex items-start justify-between gap-3", className)}>
       <div className="min-w-0">
-        {eyebrow && <div className="eyebrow mb-1">{eyebrow}</div>}
+        {eyebrow && <div className="eyebrow mb-1.5">{eyebrow}</div>}
         {title && <h2 className="title-lg truncate">{title}</h2>}
       </div>
       {action && <div className="shrink-0">{action}</div>}
@@ -38,9 +40,9 @@ export function CardHeader({
 
 export function PageHeader({ eyebrow, title, children }: { eyebrow?: React.ReactNode; title: React.ReactNode; children?: React.ReactNode }) {
   return (
-    <header className="mb-6 flex flex-wrap items-end justify-between gap-4 sm:mb-8">
-      <div>
-        {eyebrow && <div className="eyebrow mb-2">{eyebrow}</div>}
+    <header className="mb-8 flex flex-wrap items-end justify-between gap-4 sm:mb-12">
+      <div className="min-w-0">
+        {eyebrow && <div className="eyebrow mb-3">{eyebrow}</div>}
         <h1 className="title-xl">{title}</h1>
       </div>
       {children && <div className="flex items-center gap-2">{children}</div>}

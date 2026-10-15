@@ -89,7 +89,7 @@ export function UnlockClient({ hasPasskeys, passkeyOnly }: { hasPasskeys: boolea
             <button
               type="submit"
               disabled={pending}
-              className="absolute top-1.5 right-1.5 grid h-9 w-9 place-items-center rounded-full bg-ink text-black transition-transform active:scale-95 disabled:opacity-50"
+              className="absolute top-1.5 right-1.5 grid h-9 w-9 place-items-center rounded-full bg-ink text-bg transition-transform active:scale-95 disabled:opacity-50"
               aria-label="Unlock"
             >
               {pending ? <LoaderCircle size={16} className="animate-spin" /> : <ArrowRight size={17} />}

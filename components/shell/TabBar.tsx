@@ -6,27 +6,27 @@ import { motion } from "motion/react";
 import { cn } from "@/lib/cn";
 import { isActive, NAV } from "./nav";
 
-// Five tabs max on phones; Guardian and the Observer are reached from cards on Today.
+// Five tabs max on phones; Guardian and the Observer are reached from Today.
 const MOBILE = NAV.filter((n) => n.href !== "/guardian" && n.href !== "/observer");
 
 export function TabBar() {
   const pathname = usePathname();
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-40 px-3 pb-[calc(10px+var(--safe-bottom))] lg:hidden">
-      <div className="glass-strong mx-auto flex max-w-md items-center justify-around rounded-[26px] px-1.5 py-1.5 shadow-[0_20px_50px_-10px_rgba(0,0,0,0.9)]">
+    <nav className="fixed inset-x-0 bottom-0 z-40 px-4 pb-[calc(12px+var(--safe-bottom))] lg:hidden">
+      <div className="glass-strong mx-auto flex max-w-md items-center justify-around rounded-full px-2 py-1.5">
         {MOBILE.map(({ href, label, icon: Icon }) => {
           const active = isActive(pathname, href);
           return (
-            <Link key={href} href={href} className="relative flex h-[52px] flex-1 flex-col items-center justify-center gap-0.5">
+            <Link key={href} href={href} className="relative flex h-[50px] flex-1 flex-col items-center justify-center gap-1">
+              <Icon size={20} className={cn("relative transition-colors", active ? "text-ink" : "text-ink-4")} />
+              <span className={cn("relative text-[10px] font-medium tracking-[0.01em] transition-colors", active ? "text-ink" : "text-ink-4")}>{label}</span>
               {active && (
                 <motion.span
-                  layoutId="tab-active"
-                  className="absolute inset-x-1 inset-y-0 rounded-[20px] bg-fill-2"
-                  transition={{ type: "spring", stiffness: 500, damping: 40 }}
+                  layoutId="tab-dot"
+                  className="absolute top-1 h-1 w-1 rounded-full bg-glow shadow-[0_0_10px_var(--glow)]"
+                  transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
                 />
               )}
-              <Icon size={20} strokeWidth={active ? 2.3 : 1.8} className={cn("relative", active ? "text-ink" : "text-ink-3")} />
-              <span className={cn("relative text-[10px] font-semibold", active ? "text-ink" : "text-ink-3")}>{label}</span>
             </Link>
           );
         })}

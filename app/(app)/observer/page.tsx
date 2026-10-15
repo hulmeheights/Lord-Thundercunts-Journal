@@ -23,7 +23,7 @@ export default async function ObserverPage({ searchParams }: { searchParams: Pro
               href={w === 30 ? "/observer" : "/observer?window=90"}
               className={cn(
                 "rounded-full px-3.5 py-1.5 text-[13px] font-semibold transition-colors",
-                w === window ? "bg-ink text-black" : "text-ink-3 hover:text-ink",
+                w === window ? "bg-ink text-bg" : "text-ink-3 hover:text-ink",
               )}
             >
               {w} days
