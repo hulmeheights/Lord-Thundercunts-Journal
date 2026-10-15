@@ -23,47 +23,49 @@ automatically from **TopstepX** and **Tradovate**, and briefs you every day, wee
 
 ---
 
-## Deploy to Vercel (about 10 minutes)
+## Deploy to Vercel (about 5 minutes)
 
-The code has **no secrets in it**, so a fresh deploy builds and shows a setup screen until you add the variables below.
+The code has **no secrets in it**. A fresh deploy builds with zero variables and shows a setup screen at `/setup`
+that walks you through the rest.
 
-1. **Create the project.** In Vercel, choose *Add New → Project* and import `hulmeheights/Lord-Thundercunts-Journal`. Leave every setting at its default; Next.js is detected automatically.
-2. **Add a database.** In the project, open *Storage → Create Database → Neon (Postgres)* and connect it to the project. This adds `DATABASE_URL` for you. The free tier is plenty, and tables are created automatically on first launch.
-3. **Add secrets.** Under *Settings → Environment Variables*, add each one with **Sensitive** ticked:
-   | Name | Value |
-   | --- | --- |
-   | `OWNER_PASSWORD` | Your unlock passphrase (12+ characters) |
-   | `ENCRYPTION_KEY` | 32+ random characters (the setup screen has a generator) |
-   | `CRON_SECRET` | 16+ random characters (enables nightly auto-sync) |
-   | `ANTHROPIC_API_KEY` | *(optional)* From [console.anthropic.com](https://console.anthropic.com), powers the AI coach |
-4. **Redeploy.** Go to *Deployments → ⋯ → Redeploy*.
-5. **Open your site**, unlock with your passphrase, then go to *Settings → Security → Add passkey* to unlock with Face ID / Touch ID from then on.
+1. **Add the free database.** In the Vercel project, open *Storage → Create Database → Neon* → **Free** plan →
+   region *London* → **Connect** (tick all environments). Vercel fills `DATABASE_URL` for you — nobody, including
+   any AI assistant, ever sees the database password. Tables are created automatically on first launch.
+2. **Paste your secrets.** Open your site's `/setup` page. It generates `ENCRYPTION_KEY` and `CRON_SECRET` *in your
+   browser* as one block. In Vercel, go to *Settings → Environment Variables*, click into **Key**, paste (Vercel splits
+   it into both variables), tick **Sensitive**, and save. Optionally add `ANTHROPIC_API_KEY` for the AI features.
+3. **Redeploy.** *Deployments → latest → ⋯ → Redeploy*.
+4. **Claim it.** Reopen the site on the same device. It asks you to choose your passphrase (the one-time setup code
+   fills itself in), then offers Face ID / Touch ID. Only someone holding `ENCRYPTION_KEY` can derive the setup code,
+   so nobody can claim the journal before you do.
 
 > **Tip:** On iPhone, open the site in Safari and use *Share → Add to Home Screen*. It runs full screen like a native app.
 
-### Why it wouldn't deploy before
-The GitHub repository was empty (no commits on any branch), so Vercel had nothing to build. It now contains a complete
-Next.js 16 app that builds with zero configuration and renders every page per request, so the build never needs the database.
+### Why Neon and not Supabase?
+Both are free Postgres and the app works with either. Supabase's free plan allows only **two active projects per
+account**, so if you already run two, a third means pausing one. Neon through Vercel Storage is free, fully separate
+from your other projects, and injects its credentials straight into Vercel. To use Supabase instead, set
+`DATABASE_URL` to its *transaction pooler* connection string.
 
 ---
 
-## Connecting your accounts (no more CSV imports)
+## Connecting your accounts
 
-### TopstepX (recommended for Topstep)
-1. Subscribe to **ProjectX API Access** at [dashboard.projectx.com](https://dashboard.projectx.com). It's $29/mo, or **$14.50/mo with code `topstep`**.
-2. In TopstepX, go to **Settings → API**, click **Add Link**, then **Add API Key**.
-3. In the journal, open **Settings → Connections → TopstepX** and enter your TopstepX username (not your email) and the API key.
-4. Your full history back-fills (up to 365 days), then syncs every time you open the app and nightly after the close.
+| Route | Cost | Works for | How |
+| --- | --- | --- | --- |
+| **TopstepX share link** | Free | Topstep Combine and Express Funded | TopstepX → *Performance stats* → **Share** → paste the link in *Settings → Connections*. No login or API key is stored. Syncs on open and nightly. |
+| **Import a file** | Free | Lucid, Tradeify, Apex, any Tradovate / Rithmic / NinjaTrader / TopstepX account | Export trades as CSV, then drop the file on *Trades → Import*. The format is detected automatically (Tradovate *Performance* and *Orders/Fills*, TopstepX trades, generic round-trip files). Re-importing the same file never duplicates. Lucid's commission rates can be applied if your export has none. |
+| **TopstepX API** | $14.50/mo (code `topstep`) | Topstep — new accounts appear automatically | Subscribe to ProjectX API at dashboard.projectx.com, then TopstepX → *Settings → API* → *Add API Key*. |
+| **Tradovate API** | Tradovate's paid add-on | Your own funded Tradovate login | Tradovate → *Application Settings → Add-Ons → API Access*. Prop-firm accounts usually can't use it. |
 
-### Tradovate
-1. In Tradovate, go to **Application Settings → Add-Ons** and enable **API Access**. Tradovate requires a funded live account for this.
-2. **API Access → Generate API Key**, then copy the **CID** and **Secret**.
-3. In the journal, open **Settings → Connections → Tradovate** and enter your username, password, CID and Secret.
-4. Tradovate's API only returns recent fills, so the journal stores every sync permanently. Keep the nightly sync on (`CRON_SECRET`) so nothing is missed. Older trades can be added with **Trades → Add trade**.
+**Your logins are safe:** credentials are verified, then encrypted with AES-256-GCM using a key that exists only in
+your Vercel environment. They are never shown again, never logged and never exported. The app **cannot place
+trades** — every broker client is restricted to an allowlist of read endpoints. See [SECURITY.md](./SECURITY.md).
 
-**Your logins are safe:** they're verified, then encrypted with AES-256-GCM using a key that lives only in Vercel. They are
-never shown again, never logged and never exported. The app **cannot place trades**, because its broker clients only
-have read endpoints. See [SECURITY.md](./SECURITY.md).
+### Why not "log in with Tradovate" like a trade copier?
+Copiers such as Tradecopia connect Tradovate prop accounts through Tradovate's partner OAuth, which Tradovate only
+issues to approved vendor apps — a private single-user app can't obtain it. Free CSV import covers those accounts
+today; if Tradovate partner access is ever granted, the journal is built to add it as another connection.
 
 ---
 
@@ -85,9 +87,9 @@ deterministic. The AI adds the narrative verdicts, reflections and chat.
 
 ```bash
 npm install
-cp .env.example .env.local   # fill in DATABASE_URL, OWNER_PASSWORD, ENCRYPTION_KEY
+cp .env.example .env.local   # fill in DATABASE_URL and ENCRYPTION_KEY; choose your passphrase in-app
 npm run dev                  # http://localhost:3000
-npm test                     # analytics + round-trip unit tests
+npm test                     # analytics, round-trip and import unit tests
 npm run typecheck
 ```
 
@@ -97,7 +99,8 @@ Stack: Next.js 16 (App Router, Turbopack), React 19, Tailwind CSS 4, Motion, Pos
 app/                 routes (Today, Trades, Journal, Insights, Guardian, Coach, Settings, Briefings, API)
 components/          UI — briefing story player, charts, rings, forms
 lib/analytics/       pure, tested engines: stats, rules, tilt, what-if, prop/Monte Carlo, report card, insights, briefings
-lib/brokers/         read-only TopstepX + Tradovate clients, FIFO round-trip builder, sync
+lib/brokers/         read-only TopstepX (API + share link) + Tradovate clients, FIFO round-trip builder, sync
+lib/import/          CSV parsing, format detection and fee schedules for free file import
 lib/auth/            sessions, passkeys, rate limiting
 lib/ai/              Claude briefing, reflection and coach
 proxy.ts             auth gate + per-request CSP nonce

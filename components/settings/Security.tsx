@@ -3,7 +3,8 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Fingerprint, LoaderCircle, LogOut, Monitor, Plus, ScanFace, Trash2 } from "lucide-react";
-import { startRegistration } from "@simplewebauthn/browser";
+import { registerPasskey } from "@/lib/passkey-client";
+import { ChangePassphrase } from "./ChangePassphrase";
 import { removePasskey, setPasskeyOnly, signOutEverywhere } from "@/lib/actions/auth";
 import { timeAgo } from "@/lib/format";
 import { Button } from "@/components/ui/Button";
@@ -11,16 +12,6 @@ import { Toggle } from "@/components/ui/Toggle";
 
 type Passkey = { id: string; name: string; createdAt: string; lastUsedAt: string | null };
 type SessionInfo = { id: string; current: boolean; createdAt: string; lastSeenAt: string; device: string; method: string };
-
-function guessDeviceName() {
-  const ua = navigator.userAgent;
-  if (/iPhone/.test(ua)) return "iPhone";
-  if (/iPad/.test(ua)) return "iPad";
-  if (/Mac/.test(ua)) return "Mac";
-  if (/Android/.test(ua)) return "Android";
-  if (/Windows/.test(ua)) return "Windows PC";
-  return "Passkey";
-}
 
 export function Security({ passkeys, sessions, passkeyOnly }: { passkeys: Passkey[]; sessions: SessionInfo[]; passkeyOnly: boolean }) {
   const router = useRouter();
@@ -33,24 +24,10 @@ export function Security({ passkeys, sessions, passkeyOnly }: { passkeys: Passke
     setBusy(true);
     setError(null);
     try {
-      const opt = await fetch("/api/auth/passkey/register", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ step: "options" }),
-      }).then((r) => r.json());
-      if (!opt.options) throw new Error(opt.error ?? "Couldn't start passkey setup");
-      const response = await startRegistration({ optionsJSON: opt.options });
-      const res = await fetch("/api/auth/passkey/register", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ step: "verify", challengeId: opt.challengeId, response, name: guessDeviceName() }),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error ?? "Couldn't save passkey");
+      await registerPasskey();
       router.refresh();
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "Passkey setup failed";
-      setError(/NotAllowed|abort|cancel/i.test(msg) ? "Cancelled." : msg);
+      setError(e instanceof Error ? e.message : "Passkey setup failed");
     } finally {
       setBusy(false);
     }
@@ -118,6 +95,8 @@ export function Security({ passkeys, sessions, passkeyOnly }: { passkeys: Passke
           />
         </div>
       </div>
+
+      <ChangePassphrase />
 
       <div>
         <div className="mb-3 flex items-center justify-between gap-3">

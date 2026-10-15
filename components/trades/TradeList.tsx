@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { ArrowDownRight, ArrowUpRight, Plus, Search } from "lucide-react";
+import { ArrowDownRight, ArrowUpRight, FileUp, Plus, Search } from "lucide-react";
 import type { Trade } from "@/lib/types";
 import { cn } from "@/lib/cn";
 import { fmtMoney, fmtPct, fmtPrice } from "@/lib/format";
@@ -13,15 +13,29 @@ import { Button } from "@/components/ui/Button";
 import { Empty } from "@/components/ui/Empty";
 import { Sheet } from "@/components/ui/Sheet";
 import { ManualTradeForm } from "./ManualTradeForm";
+import { ImportSheet } from "./ImportSheet";
 
 type Range = "7" | "30" | "90" | "all";
 type Result = "all" | "win" | "loss";
 
-export function TradeList({ trades, tz, setups }: { trades: Trade[]; tz: string; setups: string[] }) {
+export function TradeList({
+  trades,
+  tz,
+  setups,
+  accounts,
+  openImport = false,
+}: {
+  trades: Trade[];
+  tz: string;
+  setups: string[];
+  accounts: string[];
+  openImport?: boolean;
+}) {
   const [range, setRange] = useState<Range>("30");
   const [result, setResult] = useState<Result>("all");
   const [q, setQ] = useState("");
   const [adding, setAdding] = useState(false);
+  const [importing, setImporting] = useState(openImport);
 
   const filtered = useMemo(() => {
     const today = todayKey(tz);
@@ -75,6 +89,9 @@ export function TradeList({ trades, tz, setups }: { trades: Trade[]; tz: string;
           <Search size={15} className="absolute top-1/2 left-3.5 -translate-y-1/2 text-ink-4" />
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search symbol, setup, mistake, note…" className="field h-10 rounded-full pl-10 text-[14px]" />
         </div>
+        <Button variant="secondary" size="md" onClick={() => setImporting(true)}>
+          <FileUp size={16} /> Import
+        </Button>
         <Button variant="primary" size="md" onClick={() => setAdding(true)}>
           <Plus size={16} /> Add trade
         </Button>
@@ -152,6 +169,10 @@ export function TradeList({ trades, tz, setups }: { trades: Trade[]; tz: string;
           })}
         </div>
       )}
+
+      <Sheet open={importing} onClose={() => setImporting(false)} title="Import trades (free)" wide>
+        <ImportSheet tz={tz} accounts={accounts} onDone={() => setImporting(false)} />
+      </Sheet>
 
       <Sheet open={adding} onClose={() => setAdding(false)} title="Log a trade manually">
         <ManualTradeForm setups={setups} tz={tz} onDone={() => setAdding(false)} />

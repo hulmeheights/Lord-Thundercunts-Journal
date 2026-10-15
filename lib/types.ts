@@ -1,7 +1,9 @@
 /** Shared, client-safe domain types. */
 
-export type Provider = "topstepx" | "tradovate";
-export type TradeSource = Provider | "manual" | "sample";
+/** Platform family a connection talks to. */
+export type Provider = "projectx" | "tradovate";
+/** A connection id (e.g. "topstepx", "projectx-lucid"), or "manual" | "sample" | "import". */
+export type TradeSource = string;
 export type Direction = "long" | "short";
 
 export type Trade = {
@@ -95,6 +97,7 @@ export type Settings = {
   vocab: { setups: string[]; mistakes: string[]; emotions: string[] };
   security: { passkeyOnly: boolean };
   ai: { enabled: boolean };
+  observer: { name: string | null; pronoun: "they" | "he" | "she" };
 };
 
 export type Capsule = {
@@ -106,7 +109,9 @@ export type Capsule = {
 };
 
 export type ConnectionInfo = {
+  id: string;
   provider: Provider;
+  firm: string | null;
   label: string;
   usernameHint: string | null;
   environment: string;
@@ -117,7 +122,8 @@ export type ConnectionInfo = {
 
 export type BrokerAccount = {
   id: string;
-  provider: Provider;
+  /** Connection id this account belongs to ("import" accounts use "import"). */
+  connectionId: string;
   externalId: string;
   name: string;
   isSim: boolean;

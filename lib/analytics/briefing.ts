@@ -6,6 +6,7 @@ import { ringStreak, ringsForDay, type Rings } from "./rings";
 import { evaluateRules, type RuleReport } from "./rules";
 import { dailySeries, equityCurve, inRange, sortByExit, summarize, summarizeDays } from "./stats";
 import { detectTilt } from "./tilt";
+import { buildDossier, observerName } from "./observer";
 import {
   addDays,
   addMonths,
@@ -85,6 +86,14 @@ export type Slide =
       phase: PropSettings["phase"];
     }
   | { kind: "mind"; readiness: Readiness | null; ritualPct: number; intention: string | null; moodAfter: number | null }
+  | {
+      kind: "observer";
+      name: string;
+      headline: string;
+      doing: string | null;
+      stopping: { title: string; cost: number } | null;
+      tell: { when: string; then: string } | null;
+    }
   | { kind: "ai" }
   | { kind: "capsule"; capsule: Capsule }
   | { kind: "focus"; text: string; why: string }
@@ -331,6 +340,32 @@ export function buildBriefing(args: {
       consistencyShare: st.consistencyShare,
       consistencyPct: settings.prop.consistencyPct,
       phase: settings.prop.phase,
+    });
+  }
+
+  // From the outside: the Observer's read on the trailing 30 days.
+  const obsFrom = addDays(w.end, -29);
+  const obsTrades = inRange(allTrades, tz, obsFrom, w.end);
+  if (obsTrades.length >= 5) {
+    const d = buildDossier({
+      name: observerName(settings.profile.name, settings.observer.name),
+      trades: obsTrades,
+      journals: args.journals.filter((j) => j.day >= obsFrom && j.day <= w.end),
+      rules: evaluateRules(obsTrades, settings.rules, tz),
+      tilt: detectTilt(obsTrades, tz),
+      settings,
+      tz,
+      from: obsFrom,
+      to: w.end,
+    });
+    const top = d.stopping[0];
+    slides.push({
+      kind: "observer",
+      name: d.name,
+      headline: d.headline,
+      doing: d.doing.find((f) => f.tone === "neg")?.text ?? d.doing[0]?.text ?? null,
+      stopping: top ? { title: top.title, cost: top.cost } : null,
+      tell: d.tell[0] ? { when: d.tell[0].when, then: d.tell[0].then } : null,
     });
   }
 

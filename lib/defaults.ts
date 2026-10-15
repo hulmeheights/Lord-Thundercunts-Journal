@@ -51,4 +51,5 @@ export const DEFAULT_SETTINGS: Settings = {
   },
   security: { passkeyOnly: false },
   ai: { enabled: true },
+  observer: { name: null, pronoun: "they" },
 };

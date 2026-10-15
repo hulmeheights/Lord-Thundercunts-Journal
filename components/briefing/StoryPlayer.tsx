@@ -23,6 +23,7 @@ const DURATION: Record<Slide["kind"], number> = {
   ai: 14000,
   capsule: 9000,
   focus: 7500,
+  observer: 10000,
   outro: 0, // stays until you leave
 };
 

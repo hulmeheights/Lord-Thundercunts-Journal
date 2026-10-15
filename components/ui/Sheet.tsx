@@ -2,8 +2,10 @@
 
 import { AnimatePresence, motion } from "motion/react";
 import { X } from "lucide-react";
-import { useEffect } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
+
+const noopSubscribe = () => () => {};
 
 /** A bottom sheet on phones, a centred panel on larger screens. */
 export function Sheet({
@@ -31,7 +33,10 @@ export function Sheet({
     };
   }, [open, onClose]);
 
-  if (typeof document === "undefined") return null;
+  // False on the server and during hydration, true afterwards — so a sheet that
+  // starts open (e.g. /trades?import=1) never causes a hydration mismatch.
+  const mounted = useSyncExternalStore(noopSubscribe, () => true, () => false);
+  if (!mounted) return null;
   return createPortal(
     <AnimatePresence>
       {open && (

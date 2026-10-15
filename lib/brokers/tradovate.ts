@@ -50,7 +50,7 @@ export class TradovateClient implements BrokerClient {
   private base: string;
   private token: string | null = null;
 
-  constructor(private creds: TradovateCreds, private cache: TokenCache) {
+  constructor(private creds: TradovateCreds, private cache: TokenCache, private connectionId = "tradovate") {
     this.base = HOSTS[creds.environment] ?? HOSTS.live;
   }
 
@@ -202,9 +202,9 @@ export class TradovateClient implements BrokerClient {
       if (!acct || !wanted.has(acct)) continue;
       const name = contractName.get(f.contractId) ?? String(f.contractId);
       out.push({
-        id: `tradovate:${f.id}`,
-        provider: "tradovate",
-        accountId: `tradovate:${acct}`,
+        id: `${this.connectionId}:${f.id}`,
+        provider: this.connectionId,
+        accountId: `${this.connectionId}:${acct}`,
         contractId: String(f.contractId),
         symbol: name,
         side: f.action === "Buy" ? "buy" : "sell",

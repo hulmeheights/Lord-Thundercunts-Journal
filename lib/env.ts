@@ -5,10 +5,30 @@ import "server-only";
  * Environment Variables, marked "Sensitive"). Nothing secret is ever committed
  * to the repository, so the source can be public without exposing anything.
  */
+
+// libpq / ORM options that postgres.js would otherwise forward to the server as
+// (invalid) startup parameters — e.g. Neon's `channel_binding=require`.
+const STRIP_PARAMS = [
+  "channel_binding", "sslrootcert", "sslcert", "sslkey", "sslcrl", "sslpassword", "gssencmode", "krbsrvname",
+  "requiressl", "pgbouncer", "schema", "connection_limit", "pool_timeout", "statement_cache_size", "socket_timeout",
+];
+
+function sanitizeDatabaseUrl(raw: string): string {
+  if (!raw) return "";
+  try {
+    const url = new URL(raw);
+    for (const p of STRIP_PARAMS) url.searchParams.delete(p);
+    return url.toString();
+  } catch {
+    return raw;
+  }
+}
+
 export const env = {
   get databaseUrl() {
-    return process.env.DATABASE_URL || process.env.POSTGRES_URL || "";
+    return sanitizeDatabaseUrl(process.env.DATABASE_URL || process.env.POSTGRES_URL || "");
   },
+  /** Legacy: a passphrase set as an env var. New installs set it in-app instead. */
   get ownerPassword() {
     return process.env.OWNER_PASSWORD || "";
   },
@@ -38,38 +58,31 @@ export function setupChecklist(): SetupItem[] {
   return [
     {
       key: "DATABASE_URL",
-      label: "Database",
+      label: "Free database",
       ok: env.databaseUrl.length > 0,
       required: true,
-      help: "Vercel → Storage → Create Database → Neon (free). It auto-adds DATABASE_URL to the project.",
-    },
-    {
-      key: "OWNER_PASSWORD",
-      label: "Owner passphrase",
-      ok: env.ownerPassword.length >= 12,
-      required: true,
-      help: "Your private unlock passphrase. At least 12 characters — a sentence works best.",
+      help: "Vercel → your project → Storage → Create Database → Neon → Free → Connect. Vercel adds DATABASE_URL for you.",
     },
     {
       key: "ENCRYPTION_KEY",
       label: "Encryption key",
       ok: env.encryptionKey.length >= 32,
       required: true,
-      help: "32+ random characters. Encrypts your broker credentials at rest. Use the generator below.",
+      help: "Encrypts your broker logins. Generated below in your browser — paste the block into Vercel.",
     },
     {
       key: "CRON_SECRET",
       label: "Nightly auto-sync",
       ok: env.cronSecret.length >= 16,
       required: false,
-      help: "16+ random characters. Lets Vercel's nightly job sync your trades while you sleep.",
+      help: "Included in the block below. Lets Vercel sync your trades every evening.",
     },
     {
       key: "ANTHROPIC_API_KEY",
-      label: "AI coach (Claude)",
+      label: "AI coach (optional, paid per use)",
       ok: env.anthropicKey.length > 0,
       required: false,
-      help: "From console.anthropic.com → API Keys. Powers AI briefings, journal reflections and the coach.",
+      help: "From console.anthropic.com. Powers AI briefings and the coach — everything else works without it.",
     },
   ];
 }

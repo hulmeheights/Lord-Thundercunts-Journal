@@ -59,7 +59,7 @@ export class ProjectXClient implements BrokerClient {
   private token: string | null = null;
   private contracts = new Map<string, { symbol: string; pointValue: number }>();
 
-  constructor(private creds: ProjectXCreds, private cache: TokenCache) {
+  constructor(private creds: ProjectXCreds, private cache: TokenCache, private connectionId = "topstepx") {
     this.host = validateProjectXHost(creds.host);
   }
 
@@ -163,9 +163,9 @@ export class ProjectXClient implements BrokerClient {
           if (t.voided || !(t.size > 0)) continue;
           const c = await this.contract(t.contractId);
           out.push({
-            id: `topstepx:${t.id}`,
-            provider: "topstepx",
-            accountId: `topstepx:${acc.externalId}`,
+            id: `${this.connectionId}:${t.id}`,
+            provider: this.connectionId,
+            accountId: `${this.connectionId}:${acc.externalId}`,
             contractId: t.contractId,
             symbol: c.symbol,
             side: t.side === 0 ? "buy" : "sell",

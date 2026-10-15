@@ -8,7 +8,10 @@ type Sql = postgres.Sql<Record<string, unknown>>;
 const globalForDb = globalThis as unknown as {
   __ltjSql?: Sql;
   __ltjMigrated?: Promise<void> | null;
+  __ltjMigratedTo?: number;
 };
+
+const LATEST = Math.max(...MIGRATIONS.map((m) => m.version));
 
 function createClient(): Sql {
   const url = env.databaseUrl;
@@ -49,7 +52,9 @@ async function migrate(sql: Sql) {
 /** Returns a ready-to-use SQL client, running pending migrations on first use. */
 export async function db(): Promise<Sql> {
   const sql = getSql();
-  if (!globalForDb.__ltjMigrated) {
+  // Keyed by the latest version so a hot-reloaded dev server picks up new migrations too.
+  if (!globalForDb.__ltjMigrated || globalForDb.__ltjMigratedTo !== LATEST) {
+    globalForDb.__ltjMigratedTo = LATEST;
     globalForDb.__ltjMigrated = migrate(sql).catch((err) => {
       globalForDb.__ltjMigrated = null;
       throw err;

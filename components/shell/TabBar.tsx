@@ -6,7 +6,8 @@ import { motion } from "motion/react";
 import { cn } from "@/lib/cn";
 import { isActive, NAV } from "./nav";
 
-const MOBILE = NAV.filter((n) => n.href !== "/guardian");
+// Five tabs max on phones; Guardian and the Observer are reached from cards on Today.
+const MOBILE = NAV.filter((n) => n.href !== "/guardian" && n.href !== "/observer");
 
 export function TabBar() {
   const pathname = usePathname();

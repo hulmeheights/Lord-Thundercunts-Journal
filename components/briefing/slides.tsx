@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { motion, type Variants } from "motion/react";
 import {
-  ArrowRight, BookOpen, Check, CircleCheckBig, Flame, Mail, RotateCcw, ShieldCheck, Sparkles, Target, TrendingDown, TrendingUp,
+  ArrowRight, BookOpen, Check, CircleCheckBig, Eye, Flame, Mail, RotateCcw, ShieldCheck, Sparkles, Target, TrendingDown, TrendingUp,
   TriangleAlert, Trophy, Zap,
 } from "lucide-react";
 import type { BriefingWindow, Slide } from "@/lib/analytics/briefing";
@@ -42,6 +42,7 @@ export function slideTheme(s: Slide): [string, string] {
     case "ai": return ["#bf5af2", "#64d2ff"];
     case "capsule": return ["#ff9f0a", "#ffd60a"];
     case "focus": return ["#ffd60a", "#ff375f"];
+    case "observer": return ["#5e5ce6", "#64d2ff"];
     case "outro": return ["#64d2ff", "#bf5af2"];
   }
 }
@@ -530,6 +531,35 @@ export function SlideView({ slide, ai, window: w, onReplay }: { slide: Slide; ai
         </Stage>
       );
     }
+
+    case "observer":
+      return (
+        <Stage className="justify-center gap-5">
+          <Item>
+            <div className="mb-5 grid h-14 w-14 place-items-center rounded-2xl bg-cyan/15 text-cyan">
+              <Eye size={26} />
+            </div>
+            <Eyebrow color="#64d2ff">From the outside</Eyebrow>
+          </Item>
+          <Item>
+            <p className="font-[family-name:var(--font-display)] text-[27px] leading-[1.12] font-bold tracking-[-0.03em] sm:text-[30px]">{slide.headline}</p>
+          </Item>
+          {slide.doing && <Item className="text-[14px] leading-relaxed text-white/60">{slide.doing}</Item>}
+          {slide.tell && (
+            <Item>
+              <div className="rounded-2xl bg-white/[0.07] p-4">
+                <div className="mb-1 text-[11px] font-bold tracking-[0.14em] text-purple uppercase">Tell {slide.name}</div>
+                <p className="text-[16px] leading-snug">
+                  <span className="text-white/55">When </span>
+                  <b>{slide.tell.when}</b>
+                  <span className="text-white/55">, </span>
+                  <b>{slide.tell.then}</b>
+                </p>
+              </div>
+            </Item>
+          )}
+        </Stage>
+      );
 
     case "focus":
       return (

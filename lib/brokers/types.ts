@@ -1,4 +1,4 @@
-import type { NormalizedFill } from "./roundtrip";
+import type { BuiltTrade, NormalizedFill } from "./roundtrip";
 
 export type BrokerAccountInfo = {
   externalId: string;
@@ -17,6 +17,8 @@ export type TokenCache = {
 export interface BrokerClient {
   listAccounts(): Promise<BrokerAccountInfo[]>;
   listFills(accounts: BrokerAccountInfo[], since: Date): Promise<NormalizedFill[]>;
+  /** Clients whose source already reports round trips (e.g. TopstepX share links). */
+  listTrades?(accounts: BrokerAccountInfo[], since: Date): Promise<BuiltTrade[]>;
 }
 
 /** Errors whose message is safe to show the user (never contains secrets). */

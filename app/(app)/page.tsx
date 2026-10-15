@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowUpRight, BookOpen, MessageCircle, ShieldCheck } from "lucide-react";
+import { ArrowUpRight, BookOpen, Eye, MessageCircle, ShieldCheck } from "lucide-react";
 import { getSettings } from "@/lib/data/settings";
 import { listTrades, tradeCounts } from "@/lib/data/trades";
 import { dueCapsules, getJournalDay, listJournalDays } from "@/lib/data/journal";
@@ -10,6 +10,8 @@ import { dailySeries, equityCurve, summarize } from "@/lib/analytics/stats";
 import { evaluateRules } from "@/lib/analytics/rules";
 import { ringStreak, ringsForDay } from "@/lib/analytics/rings";
 import { propStatus } from "@/lib/analytics/prop";
+import { detectTilt } from "@/lib/analytics/tilt";
+import { buildDossier, observerName } from "@/lib/analytics/observer";
 import { fmtMoney, fmtPct, plural } from "@/lib/format";
 import { cn } from "@/lib/cn";
 import { Card, CardHeader } from "@/components/ui/Card";
@@ -23,6 +25,8 @@ import { CapsuleCard } from "@/components/today/Capsule";
 import { SyncPill } from "@/components/today/SyncPill";
 import { Onboarding } from "@/components/today/Onboarding";
 import { Gauge } from "@/components/charts/Gauge";
+import { Welcome } from "@/components/today/Welcome";
+import { passkeyCount } from "@/lib/auth/passkeys";
 
 export const metadata = { title: "Today" };
 
@@ -33,7 +37,8 @@ function greeting(minute: number) {
   return "Good evening";
 }
 
-export default async function TodayPage() {
+export default async function TodayPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
+  const sp = await searchParams;
   const settings = await getSettings();
   const tz = settings.profile.timezone;
   const today = todayKey(tz);
@@ -83,6 +88,26 @@ export default async function TodayPage() {
   const prop = settings.prop.enabled ? propStatus(trades, settings.prop, tz) : null;
   const nowMinute = minuteOfDay(new Date().toISOString(), tz);
 
+  // The Observer's one-line read on the last 30 days.
+  const obsFrom = addDays(today, -29);
+  const obsTrades = trades.filter((t) => {
+    const d = dayKey(t.exitTime, tz);
+    return d >= obsFrom && d <= today;
+  });
+  const observer = obsTrades.length
+    ? buildDossier({
+        name: observerName(settings.profile.name, settings.observer.name),
+        trades: obsTrades,
+        journals: journals.filter((j) => j.day >= obsFrom),
+        rules: evaluateRules(obsTrades, settings.rules, tz),
+        tilt: detectTilt(obsTrades, tz),
+        settings,
+        tz,
+        from: obsFrom,
+        to: today,
+      })
+    : null;
+
   return (
     <div className="space-y-6 sm:space-y-7">
       <header className="flex flex-wrap items-end justify-between gap-4">
@@ -95,6 +120,7 @@ export default async function TodayPage() {
         <SyncPill lastSyncAt={lastSync} hasConnections={conns.length > 0} error={connError} />
       </header>
 
+      {sp.welcome === "1" && <Welcome hasPasskey={(await passkeyCount()) > 0} />}
       {counts.total === 0 && conns.length === 0 && <Onboarding />}
 
       <section>
@@ -196,6 +222,25 @@ export default async function TodayPage() {
                     )}
                   </div>
                   <ArrowUpRight size={18} className="ml-auto shrink-0 text-ink-3" />
+                </div>
+              </Card>
+            </Link>
+          )}
+
+          {observer && (
+            <Link href="/observer" className="block">
+              <Card className="transition-transform hover:scale-[1.01]">
+                <div className="eyebrow mb-2 flex items-center gap-1.5">
+                  <Eye size={13} className="text-cyan" /> From the outside
+                </div>
+                <p className="text-[15.5px] leading-snug font-semibold">{observer.headline}</p>
+                {observer.tell[0] && (
+                  <p className="mt-2 text-[13px] leading-relaxed text-ink-3">
+                    Tell {observer.name}: when {observer.tell[0].when}, {observer.tell[0].then}
+                  </p>
+                )}
+                <div className="mt-3 inline-flex items-center gap-1 text-[13px] font-semibold text-cyan">
+                  Step outside <ArrowUpRight size={14} />
                 </div>
               </Card>
             </Link>

@@ -157,4 +157,54 @@ export const MIGRATIONS: { version: number; sql: string }[] = [
       );
     `,
   },
+  {
+    version: 2,
+    sql: /* sql */ `
+      -- The owner's passphrase, set in-app on first launch (scrypt hash, never plain text).
+      create table if not exists owner (
+        id int primary key default 1 check (id = 1),
+        passphrase_hash text not null,
+        created_at timestamptz not null default now(),
+        updated_at timestamptz not null default now()
+      );
+    `,
+  },
+  {
+    version: 3,
+    sql: /* sql */ `
+      -- Several connections per platform (e.g. TopstepX + Lucid + Tradeify on ProjectX).
+      alter table connections add column if not exists id text;
+      alter table connections add column if not exists firm text;
+      update connections set id = provider where id is null;
+      update connections set firm = 'topstep' where firm is null and provider = 'topstepx';
+      update connections set provider = 'projectx' where provider = 'topstepx';
+      alter table connections alter column id set not null;
+      alter table connections drop constraint if exists connections_pkey;
+      alter table connections add constraint connections_pkey primary key (id);
+      create index if not exists trades_account_idx on trades (account_id);
+    `,
+  },
+  {
+    version: 4,
+    sql: /* sql */ `
+      -- The Observer: third-person self-reviews, with the evidence as it stood at the time.
+      create table if not exists observer_sessions (
+        id text primary key,
+        created_at timestamptz not null default now(),
+        day text not null,
+        window_from text not null,
+        window_to text not null,
+        wants text,
+        doing text,
+        stopping text,
+        advice text,
+        believed text[] not null default '{}',
+        snapshot jsonb not null,
+        gap jsonb,
+        ai jsonb,
+        adopted text[] not null default '{}'
+      );
+      create index if not exists observer_sessions_created_idx on observer_sessions (created_at desc);
+    `,
+  },
 ];

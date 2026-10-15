@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { assertSession } from "../auth/session";
 import { db } from "../db";
-import { encryptJson } from "../crypto";
+import { encryptJson, sha256 } from "../crypto";
 import { getSettings, saveSetting } from "../data/settings";
 import { insertTrades } from "../data/trades";
 import { insertSampleJournalDays } from "../data/journal";
@@ -12,7 +12,10 @@ import { maskHint } from "../data/connections";
 import { generateSample } from "../sample";
 import { todayKey } from "../analytics/time";
 import { testCredentials } from "../brokers/sync";
-import { validateProjectXHost } from "../brokers/projectx";
+import { validateProjectXHost, type ProjectXCreds } from "../brokers/projectx";
+import type { TradovateCreds } from "../brokers/tradovate";
+import { firmById, type PlatformKind } from "../brokers/firms";
+import { parseShareInput, type ShareCreds } from "../brokers/topstepshare";
 import { BrokerError } from "../brokers/types";
 
 const num = (max: number) => z.number().min(0).max(max).nullable();
@@ -147,10 +150,12 @@ export async function deleteAllTradingData(confirm: string) {
 
 // ── Broker connections ─────────────────────────────────────────────────────
 
-const TopstepX = z.object({
+const ProjectX = z.object({
+  firm: z.string().trim().min(1).max(40),
   userName: z.string().trim().min(1).max(120),
   apiKey: z.string().trim().min(8).max(500),
   host: z.string().trim().max(200).optional(),
+  label: z.string().trim().max(60).optional(),
 });
 
 const Tradovate = z.object({
@@ -159,76 +164,134 @@ const Tradovate = z.object({
   cid: z.string().trim().min(1).max(40),
   sec: z.string().trim().min(8).max(200),
   environment: z.enum(["live", "demo"]),
+  label: z.string().trim().max(60).optional(),
 });
 
-async function storeConnection(
-  provider: "topstepx" | "tradovate",
-  label: string,
-  username: string,
-  environment: string,
-  creds: unknown,
-) {
-  const enc = encryptJson(creds, `creds:${provider}`);
-  const { accounts, token } = await testCredentials(provider, enc);
+function connSlug(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 30);
+}
+
+async function storeConnection(args: {
+  id: string;
+  kind: PlatformKind;
+  firm: string | null;
+  label: string;
+  username: string;
+  environment: string;
+  creds: ProjectXCreds | TradovateCreds | ShareCreds;
+}) {
+  const { accounts, token } = await testCredentials(args.id, args.kind, args.creds);
+  const enc = encryptJson(args.creds, `creds:${args.id}`);
   const sql = await db();
   await sql`
-    insert into connections (provider, label, username_hint, environment, credentials_enc, status, last_error, last_sync_at, token_enc, token_expires_at)
+    insert into connections (id, provider, firm, label, username_hint, environment, credentials_enc, status, last_error, last_sync_at, token_enc, token_expires_at)
     values (
-      ${provider}, ${label}, ${maskHint(username)}, ${environment}, ${enc}, 'connected', null, null,
-      ${token ? encryptJson(token.token, `token:${provider}`) : null}, ${token?.expiresAt ?? null}
+      ${args.id}, ${args.kind}, ${args.firm}, ${args.label}, ${args.kind === "share" ? args.username : maskHint(args.username)}, ${args.environment}, ${enc}, 'connected', null, null,
+      ${token ? encryptJson(token.token, `token:${args.id}`) : null}, ${token?.expiresAt ?? null}
     )
-    on conflict (provider) do update set
-      label = excluded.label, username_hint = excluded.username_hint, environment = excluded.environment,
-      credentials_enc = excluded.credentials_enc, status = 'connected', last_error = null, last_sync_at = null,
-      token_enc = excluded.token_enc, token_expires_at = excluded.token_expires_at, syncing_at = null, updated_at = now()
+    on conflict (id) do update set
+      provider = excluded.provider, firm = excluded.firm, label = excluded.label, username_hint = excluded.username_hint,
+      environment = excluded.environment, credentials_enc = excluded.credentials_enc, status = 'connected', last_error = null,
+      last_sync_at = null, token_enc = excluded.token_enc, token_expires_at = excluded.token_expires_at, syncing_at = null, updated_at = now()
   `;
   for (const a of accounts) {
     await sql`
       insert into broker_accounts (id, provider, external_id, name, is_sim, balance, active)
-      values (${`${provider}:${a.externalId}`}, ${provider}, ${a.externalId}, ${a.name}, ${a.isSim}, ${a.balance}, ${a.active})
+      values (${`${args.id}:${a.externalId}`}, ${args.id}, ${a.externalId}, ${a.name}, ${a.isSim}, ${a.balance}, ${a.active})
       on conflict (id) do update set name = excluded.name, balance = excluded.balance, active = excluded.active, updated_at = now()
     `;
   }
   return accounts.length;
 }
 
-export async function connectTopstepX(input: z.input<typeof TopstepX>): Promise<{ ok?: boolean; accounts?: number; error?: string }> {
+export async function connectProjectX(input: z.input<typeof ProjectX>): Promise<{ ok?: boolean; id?: string; accounts?: number; error?: string }> {
   await guard();
-  const parsed = TopstepX.safeParse(input);
-  if (!parsed.success) return { error: "Enter your TopstepX username and API key." };
+  const parsed = ProjectX.safeParse(input);
+  if (!parsed.success) return { error: "Enter your platform username and API key." };
+  const v = parsed.data;
+  const preset = firmById(v.firm);
+  if (preset && preset.kind !== "projectx") return { error: "That firm doesn't run on ProjectX." };
   try {
-    const host = validateProjectXHost(parsed.data.host || undefined);
-    const accounts = await storeConnection("topstepx", "TopstepX", parsed.data.userName, "live", {
-      userName: parsed.data.userName,
-      apiKey: parsed.data.apiKey,
-      host,
+    const host = validateProjectXHost(preset?.host ?? v.host);
+    const hostname = new URL(host).hostname;
+    // TopstepX keeps the legacy id "topstepx"; every other gateway gets its own connection.
+    const id = hostname === "api.topstepx.com" ? "topstepx" : `projectx-${connSlug(preset && preset.id !== "custom" ? preset.id : hostname.replace(/\.projectx\.com$/, "").replace(/^api\.|^gateway-api-?/, ""))}`;
+    const label = v.label || (preset && preset.id !== "custom" ? preset.name : hostname.replace(/^api\./, "").replace(/\.projectx\.com$/, ""));
+    const accounts = await storeConnection({
+      id,
+      kind: "projectx",
+      firm: preset?.id ?? "custom",
+      label,
+      username: v.userName,
+      environment: "live",
+      creds: { userName: v.userName, apiKey: v.apiKey, host },
     });
     revalidatePath("/", "layout");
-    return { ok: true, accounts };
+    return { ok: true, id, accounts };
   } catch (err) {
-    return { error: err instanceof BrokerError ? err.message : "Couldn't connect to TopstepX. Check your details." };
+    return { error: err instanceof BrokerError ? err.message : "Couldn't connect. Check your username, API key and gateway URL." };
   }
 }
 
-export async function connectTradovate(input: z.input<typeof Tradovate>): Promise<{ ok?: boolean; accounts?: number; error?: string }> {
+export async function connectTradovate(input: z.input<typeof Tradovate>): Promise<{ ok?: boolean; id?: string; accounts?: number; error?: string }> {
   await guard();
   const parsed = Tradovate.safeParse(input);
   if (!parsed.success) return { error: "Fill in all Tradovate fields." };
+  const v = parsed.data;
+  const id = `tradovate-${sha256(v.username.toLowerCase()).slice(0, 8)}`;
   try {
-    const accounts = await storeConnection("tradovate", "Tradovate", parsed.data.username, parsed.data.environment, parsed.data);
+    const accounts = await storeConnection({
+      id,
+      kind: "tradovate",
+      firm: "tradovate",
+      label: v.label || "Tradovate",
+      username: v.username,
+      environment: v.environment,
+      creds: { username: v.username, password: v.password, cid: v.cid, sec: v.sec, environment: v.environment },
+    });
     revalidatePath("/", "layout");
-    return { ok: true, accounts };
+    return { ok: true, id, accounts };
   } catch (err) {
     return { error: err instanceof BrokerError ? err.message : "Couldn't connect to Tradovate. Check your details." };
   }
 }
 
-/** Disconnecting wipes the stored credentials and tokens. Synced trades and your journal stay. */
-export async function disconnectBroker(provider: string) {
+/** Free TopstepX sync from public share links — no credentials stored at all. */
+export async function connectTopstepShare(links: string): Promise<{ ok?: boolean; id?: string; accounts?: number; error?: string }> {
   await guard();
-  const p = z.enum(["topstepx", "tradovate"]).parse(provider);
+  const ids = parseShareInput(z.string().max(4000).parse(links));
+  if (!ids.length) return { error: "Paste at least one TopstepX share link (it contains ?share=<number>)." };
+  if (ids.length > 25) return { error: "That's a lot of accounts — paste up to 25 links." };
+  try {
+    const accounts = await storeConnection({
+      id: "topstepx-share",
+      kind: "share",
+      firm: "topstep-share",
+      label: "TopstepX (free)",
+      username: `${ids.length} account${ids.length === 1 ? "" : "s"}`,
+      environment: "live",
+      creds: { accountIds: ids },
+    });
+    revalidatePath("/", "layout");
+    return { ok: true, id: "topstepx-share", accounts };
+  } catch (err) {
+    return { error: err instanceof BrokerError ? err.message : "Couldn't read those share links. Check sharing is switched on." };
+  }
+}
+
+/** Disconnecting wipes the stored credentials and tokens. Synced trades and your journal stay. */
+export async function disconnectBroker(id: string) {
+  await guard();
   const sql = await db();
-  await sql`delete from connections where provider = ${p}`;
+  await sql`delete from connections where id = ${z.string().min(1).max(80).parse(id)}`;
+  revalidatePath("/", "layout");
+  return { ok: true };
+}
+
+export async function renameAccount(id: string, name: string) {
+  await guard();
+  const sql = await db();
+  await sql`update broker_accounts set name = ${z.string().trim().min(1).max(80).parse(name)} where id = ${z.string().max(160).parse(id)}`;
   revalidatePath("/", "layout");
   return { ok: true };
 }
@@ -236,7 +299,7 @@ export async function disconnectBroker(provider: string) {
 export async function setAccountIncluded(id: string, included: boolean) {
   await guard();
   const sql = await db();
-  await sql`update broker_accounts set included = ${Boolean(included)} where id = ${z.string().max(120).parse(id)}`;
+  await sql`update broker_accounts set included = ${Boolean(included)} where id = ${z.string().max(160).parse(id)}`;
   revalidatePath("/", "layout");
   return { ok: true };
 }

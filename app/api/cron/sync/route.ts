@@ -17,5 +17,5 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   const results = await syncAll();
-  return NextResponse.json({ ok: true, results: results.map((r) => ({ provider: r.provider, ok: r.ok, newFills: r.newFills ?? 0 })) });
+  return NextResponse.json({ ok: true, results: results.map((r) => ({ connection: r.connection, ok: r.ok, newFills: r.newFills ?? 0 })) });
 }
