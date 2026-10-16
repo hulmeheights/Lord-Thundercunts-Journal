@@ -71,7 +71,7 @@
   }
 }
 
-/* ── Paper (light, default) ─────────────────────────────────────────────── */
+/* ── Meridian (the only theme; the old paper/night/auto names all resolve here) ── */
 :root,
 [data-theme="paper"] {
   color-scheme: dark;
@@ -185,8 +185,8 @@
 }
 @media (prefers-color-scheme: dark) {
   [data-loss="red"][data-theme="auto"] {
-    --neg: #ff6369;
-    --neg-fill: rgba(255, 99, 105, 0.12);
+    --neg: #c9806f;
+    --neg-fill: rgba(201, 128, 111, 0.08);
   }
 }
 

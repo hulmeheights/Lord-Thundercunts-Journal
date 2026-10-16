@@ -16,8 +16,5 @@ export function writeUiPrefs(patch: Partial<UiPrefs>): UiPrefs {
   const root = document.documentElement;
   root.dataset.theme = next.theme;
   root.dataset.loss = next.loss;
-  const meta = document.querySelector('meta[name="theme-color"]');
-  const night = next.theme === "night" || (next.theme === "auto" && matchMedia("(prefers-color-scheme: dark)").matches);
-  meta?.setAttribute("content", night ? "#07110c" : "#fafaf7");
   return next;
 }

@@ -2,18 +2,21 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Check, LoaderCircle, Plus, X } from "lucide-react";
 import type { RitualItem, Settings, TradingRules } from "@/lib/types";
 import { saveProfile, saveRitual, saveRules, saveVocab, setAiEnabled } from "@/lib/actions/settings";
 import { Button } from "@/components/ui/Button";
 import { Toggle } from "@/components/ui/Toggle";
-import { Segmented } from "@/components/ui/Segmented";
+import { Seg } from "@/components/m/Seg";
+import { lineInput, Note, RemoveX, SRow, Sub } from "./ui";
 
 function SaveButton({ pending, saved, onClick }: { pending: boolean; saved: boolean; onClick: () => void }) {
   return (
-    <Button variant="primary" size="md" onClick={onClick} disabled={pending}>
-      {pending ? <LoaderCircle size={15} className="animate-spin" /> : saved ? <Check size={15} /> : null} {saved ? "Saved" : "Save"}
-    </Button>
+    <div className="mt-8 flex items-center gap-5">
+      <Button variant="primary" onClick={onClick} disabled={pending}>
+        {pending ? "Saving…" : "Save"}
+      </Button>
+      {saved && <Note tone="pos">● Saved</Note>}
+    </div>
   );
 }
 
@@ -34,25 +37,25 @@ function useSaver<T>(fn: (v: T) => Promise<unknown>) {
   };
 }
 
-function Num({ label, hint, value, onChange, prefix }: { label: string; hint?: string; value: number | null; onChange: (v: number | null) => void; prefix?: string }) {
+const numInput = "w-28 border-0 border-b border-line-2 bg-transparent py-1.5 text-right font-mono text-[12.5px] text-ink outline-none transition-colors duration-300 placeholder:text-ink-4 focus:border-gold";
+
+function NumRow({ label, hint, value, onChange, prefix }: { label: string; hint?: string; value: number | null; onChange: (v: number | null) => void; prefix?: string }) {
   return (
-    <label className="flex items-center justify-between gap-4 py-3">
-      <span>
-        <span className="block text-[14px]">{label}</span>
-        {hint && <span className="block text-[12px] text-ink-3">{hint}</span>}
-      </span>
-      <span className="relative w-32 shrink-0">
-        {prefix && <span className="absolute top-1/2 left-3 -translate-y-1/2 text-[13px] text-ink-3">{prefix}</span>}
+    <SRow name={label} hint={hint}>
+      <label className="flex items-baseline gap-1.5">
+        {prefix && <span className="font-mono text-[11px] text-ink-4">{prefix}</span>}
         <input
           type="number"
           min="0"
+          inputMode="decimal"
+          aria-label={label}
           value={value ?? ""}
           placeholder="off"
           onChange={(e) => onChange(e.target.value === "" ? null : Math.max(0, Number(e.target.value)))}
-          className={`field h-10 text-right ${prefix ? "pl-6" : ""}`}
+          className={numInput}
         />
-      </span>
-    </label>
+      </label>
+    </SRow>
   );
 }
 
@@ -65,60 +68,58 @@ export function RulesForm({ initial }: { initial: TradingRules }) {
   };
   const [draft, setDraft] = useState("");
   return (
-    <div>
-      <p className="mb-2 text-[13px] leading-relaxed text-ink-3">
-        These are enforced automatically against every synced trade — your Discipline ring, report card and Rule Lab all use them.
-      </p>
-      <div className="divide-y divide-line">
-        <Num label="Max trades per day" value={r.maxTradesPerDay} onChange={(v) => set({ maxTradesPerDay: v })} />
-        <Num label="Daily loss limit" prefix="$" value={r.maxDailyLoss} onChange={(v) => set({ maxDailyLoss: v })} />
-        <Num label="Stop after losses in a row" value={r.stopAfterConsecutiveLosses} onChange={(v) => set({ stopAfterConsecutiveLosses: v })} />
-        <Num label="Max contracts" value={r.maxContracts} onChange={(v) => set({ maxContracts: v })} />
-        <Num label="Max loss per trade" prefix="$" value={r.maxLossPerTrade} onChange={(v) => set({ maxLossPerTrade: v })} />
-        <Num label="Cool-down after a loss" hint="minutes before the next entry" value={r.cooldownMinutesAfterLoss} onChange={(v) => set({ cooldownMinutesAfterLoss: v })} />
-        <Num label="Default risk per trade" hint="used for R-multiples" prefix="$" value={r.defaultRisk} onChange={(v) => set({ defaultRisk: v })} />
-        <div className="flex items-center justify-between gap-4 py-3">
-          <span className="text-[14px]">Trading window</span>
-          <span className="flex items-center gap-2">
-            <input type="time" value={r.sessionStart ?? ""} onChange={(e) => set({ sessionStart: e.target.value || null })} className="field h-10 w-[112px]" />
-            <span className="text-ink-3">–</span>
-            <input type="time" value={r.sessionEnd ?? ""} onChange={(e) => set({ sessionEnd: e.target.value || null })} className="field h-10 w-[112px]" />
+    <div className="grid gap-x-[clamp(3rem,6vw,6rem)] gap-y-12 lg:grid-cols-2">
+      <div>
+        <Sub>Enforced on every trade</Sub>
+        <NumRow label="Max trades a day" value={r.maxTradesPerDay} onChange={(v) => set({ maxTradesPerDay: v })} />
+        <NumRow label="Daily loss limit" prefix="$" value={r.maxDailyLoss} onChange={(v) => set({ maxDailyLoss: v })} />
+        <NumRow label="Stop after losses in a row" value={r.stopAfterConsecutiveLosses} onChange={(v) => set({ stopAfterConsecutiveLosses: v })} />
+        <NumRow label="Max contracts" value={r.maxContracts} onChange={(v) => set({ maxContracts: v })} />
+        <NumRow label="Max loss per trade" prefix="$" value={r.maxLossPerTrade} onChange={(v) => set({ maxLossPerTrade: v })} />
+        <NumRow label="Cool-down after a loss" hint="Minutes before the next entry." value={r.cooldownMinutesAfterLoss} onChange={(v) => set({ cooldownMinutesAfterLoss: v })} />
+        <NumRow label="Risk per trade" hint="Used for R-multiples." prefix="$" value={r.defaultRisk} onChange={(v) => set({ defaultRisk: v })} />
+        <SRow name="Trading window">
+          <span className="flex items-baseline gap-3">
+            <input type="time" aria-label="Window opens" value={r.sessionStart ?? ""} onChange={(e) => set({ sessionStart: e.target.value || null })} className={`${numInput} w-[92px] text-left`} />
+            <span className="font-mono text-ink-4">→</span>
+            <input type="time" aria-label="Window closes" value={r.sessionEnd ?? ""} onChange={(e) => set({ sessionEnd: e.target.value || null })} className={`${numInput} w-[92px] text-left`} />
           </span>
-        </div>
+        </SRow>
       </div>
-      <div className="mt-4">
-        <div className="eyebrow mb-2">Personal rules (checked off in your journal)</div>
-        <div className="space-y-2">
-          {r.custom.map((c) => (
-            <div key={c.id} className="flex items-center gap-2 rounded-[3px] border border-line bg-fill px-4 py-2.5">
-              <span className="flex-1 text-[14px]">{c.label}</span>
-              <button onClick={() => set({ custom: r.custom.filter((x) => x.id !== c.id) })} className="text-ink-4 hover:text-ink" aria-label="Remove">
-                <X size={15} />
-              </button>
-            </div>
-          ))}
-          <form
-            className="flex gap-2"
-            onSubmit={(e) => {
-              e.preventDefault();
-              if (!draft.trim()) return;
-              set({ custom: [...r.custom, { id: Math.random().toString(36).slice(2, 10), label: draft.trim() }] });
-              setDraft("");
-            }}
-          >
-            <input value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="e.g. No trades in the first 5 minutes" className="field h-10" maxLength={160} />
-            <Button type="submit" size="md" variant="secondary">
-              <Plus size={15} />
-            </Button>
-          </form>
-        </div>
-      </div>
-      <div className="mt-5">
+      <div>
+        <Sub>Only you can judge · ticked in the journal</Sub>
+        {r.custom.map((c, i) => (
+          <div key={c.id} className="flex items-center gap-4 border-b border-line py-3.5">
+            <span className="font-mono text-[10.5px] text-gold">{String(i + 1).padStart(2, "0")}</span>
+            <span className="flex-1 font-serif text-[1.1rem] font-light">{c.label}</span>
+            <RemoveX onClick={() => set({ custom: r.custom.filter((x) => x.id !== c.id) })} label={`Remove ${c.label}`} />
+          </div>
+        ))}
+        <form
+          className="flex items-end gap-3 pt-4"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!draft.trim()) return;
+            set({ custom: [...r.custom, { id: Math.random().toString(36).slice(2, 10), label: draft.trim() }] });
+            setDraft("");
+          }}
+        >
+          <input value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="No trades in the first five minutes…" aria-label="New personal rule" className={lineInput} maxLength={160} />
+          <Button type="submit" size="sm">
+            Add
+          </Button>
+        </form>
         <SaveButton pending={s.pending} saved={s.saved} onClick={() => s.save(r)} />
       </div>
     </div>
   );
 }
+
+const GROUPS: { key: RitualItem["group"]; label: string }[] = [
+  { key: "pre", label: "Before the open" },
+  { key: "post", label: "After the close" },
+  { key: "life", label: "Life" },
+];
 
 export function RitualEditor({ initial }: { initial: RitualItem[] }) {
   const [items, setItems] = useState(initial);
@@ -129,37 +130,34 @@ export function RitualEditor({ initial }: { initial: RitualItem[] }) {
     s.dirty();
     setItems(next);
   };
-  const groups: { key: RitualItem["group"]; label: string }[] = [
-    { key: "pre", label: "Pre-market" },
-    { key: "post", label: "Post-session" },
-    { key: "life", label: "Life" },
-  ];
+  let n = 0;
   return (
-    <div className="space-y-4">
-      {groups.map((g) => (
-        <div key={g.key}>
-          <div className="eyebrow mb-2">{g.label}</div>
-          <div className="space-y-1.5">
-            {items
-              .filter((i) => i.group === g.key)
-              .map((i) => (
-                <div key={i.id} className="flex items-center gap-2 rounded-[3px] border border-line bg-fill px-4 py-2">
+    <div>
+      <div className="grid gap-x-[clamp(2rem,5vw,4rem)] gap-y-10 lg:grid-cols-3">
+        {GROUPS.map((g) => {
+          const list = items.filter((i) => i.group === g.key);
+          return (
+            <div key={g.key}>
+              <Sub aside={<span className="num font-mono text-[10px] text-ink-4">{list.length}</span>}>{g.label}</Sub>
+              {list.map((i) => (
+                <div key={i.id} className="flex items-center gap-3 border-b border-line py-2.5">
+                  <span className="font-mono text-[10px] text-gold">{String(++n).padStart(2, "0")}</span>
                   <input
                     value={i.label}
+                    aria-label="Ritual item"
                     onChange={(e) => update(items.map((x) => (x.id === i.id ? { ...x, label: e.target.value } : x)))}
-                    className="flex-1 bg-transparent text-[14px] focus:outline-none"
+                    className="min-w-0 flex-1 bg-transparent font-mono text-[11.5px] text-ink-2 outline-none focus:text-ink"
                     maxLength={160}
                   />
-                  <button onClick={() => update(items.filter((x) => x.id !== i.id))} className="text-ink-4 hover:text-ink" aria-label="Remove">
-                    <X size={15} />
-                  </button>
+                  <RemoveX onClick={() => update(items.filter((x) => x.id !== i.id))} label={`Remove ${i.label}`} />
                 </div>
               ))}
-          </div>
-        </div>
-      ))}
+            </div>
+          );
+        })}
+      </div>
       <form
-        className="flex flex-wrap gap-2"
+        className="mt-10 flex flex-wrap items-end gap-x-6 gap-y-4"
         onSubmit={(e) => {
           e.preventDefault();
           if (!draft.trim()) return;
@@ -167,11 +165,11 @@ export function RitualEditor({ initial }: { initial: RitualItem[] }) {
           setDraft("");
         }}
       >
-        <Segmented size="sm" value={group} onChange={setGroup} options={groups.map((g) => ({ value: g.key, label: g.label }))} />
-        <div className="flex min-w-[220px] flex-1 gap-2">
-          <input value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="Add a ritual item…" className="field h-10" maxLength={160} />
-          <Button type="submit" variant="secondary">
-            <Plus size={15} />
+        <Seg value={group} onChange={setGroup} options={GROUPS.map((g) => ({ value: g.key, label: g.label }))} />
+        <div className="flex min-w-[240px] flex-1 items-end gap-3">
+          <input value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="Add a ritual item…" aria-label="New ritual item" className={lineInput} maxLength={160} />
+          <Button type="submit" size="sm">
+            Add
           </Button>
         </div>
       </form>
@@ -184,14 +182,12 @@ function TagList({ label, values, onChange }: { label: string; values: string[];
   const [draft, setDraft] = useState("");
   return (
     <div>
-      <div className="eyebrow mb-2">{label}</div>
-      <div className="flex flex-wrap gap-1.5">
+      <Sub aside={<span className="num font-mono text-[10px] text-ink-4">{values.length}</span>}>{label}</Sub>
+      <div className="flex flex-wrap items-center gap-2 pt-4">
         {values.map((v) => (
-          <span key={v} className="inline-flex h-8 items-center gap-1.5 rounded-full border border-line bg-fill pr-2 pl-3 text-[13px]">
+          <span key={v} className="inline-flex h-7 items-center gap-1 border border-line pr-0.5 pl-2.5 font-mono text-[10.5px] tracking-[0.06em] text-ink-2">
             {v}
-            <button onClick={() => onChange(values.filter((x) => x !== v))} className="text-ink-4 hover:text-ink" aria-label={`Remove ${v}`}>
-              <X size={13} />
-            </button>
+            <RemoveX onClick={() => onChange(values.filter((x) => x !== v))} label={`Remove ${v}`} />
           </span>
         ))}
         <form
@@ -202,7 +198,7 @@ function TagList({ label, values, onChange }: { label: string; values: string[];
             setDraft("");
           }}
         >
-          <input value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="+ add" className="h-8 w-28 rounded-full border border-dashed border-line-2 bg-transparent px-3 text-[13px] focus:outline-none" maxLength={60} />
+          <input value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="+ add" aria-label={`Add to ${label}`} className="h-7 w-28 border border-dashed border-line-2 bg-transparent px-2.5 font-mono text-[10.5px] text-ink outline-none placeholder:text-ink-4 focus:border-gold" maxLength={60} />
         </form>
       </div>
     </div>
@@ -217,10 +213,12 @@ export function VocabEditor({ initial }: { initial: Settings["vocab"] }) {
     setV((c) => ({ ...c, ...p }));
   };
   return (
-    <div className="space-y-5">
-      <TagList label="Setups" values={v.setups} onChange={(x) => set({ setups: x })} />
-      <TagList label="Mistakes" values={v.mistakes} onChange={(x) => set({ mistakes: x })} />
-      <TagList label="Emotions" values={v.emotions} onChange={(x) => set({ emotions: x })} />
+    <div>
+      <div className="grid gap-x-[clamp(2rem,5vw,4rem)] gap-y-10 lg:grid-cols-3">
+        <TagList label="Setups" values={v.setups} onChange={(x) => set({ setups: x })} />
+        <TagList label="Mistakes" values={v.mistakes} onChange={(x) => set({ mistakes: x })} />
+        <TagList label="Emotions" values={v.emotions} onChange={(x) => set({ emotions: x })} />
+      </div>
       <SaveButton pending={s.pending} saved={s.saved} onClick={() => s.save(v)} />
     </div>
   );
@@ -237,38 +235,36 @@ export function ProfileForm({ initial }: { initial: Settings["profile"] }) {
     }
   }, []);
   return (
-    <div className="space-y-4">
-      <div className="grid gap-4 sm:grid-cols-2">
-        <label className="block space-y-1.5">
-          <span className="text-[12.5px] text-ink-3">What should the app call you?</span>
-          <input
-            value={p.name}
-            maxLength={60}
-            onChange={(e) => {
-              s.dirty();
-              setP({ ...p, name: e.target.value });
-            }}
-            className="field"
-          />
-        </label>
-        <label className="block space-y-1.5">
-          <span className="text-[12.5px] text-ink-3">Timezone (defines your trading day)</span>
-          <select
-            value={p.timezone}
-            onChange={(e) => {
-              s.dirty();
-              setP({ ...p, timezone: e.target.value });
-            }}
-            className="field"
-          >
-            {zones.map((z) => (
-              <option key={z} value={z}>
-                {z}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
+    <div className="max-w-2xl">
+      <SRow name="What should it call you?" hint="Used in greetings, and in the third person on the Observer page." stack>
+        <input
+          value={p.name}
+          maxLength={60}
+          aria-label="Name"
+          onChange={(e) => {
+            s.dirty();
+            setP({ ...p, name: e.target.value });
+          }}
+          className="w-full border-0 border-b border-line-2 bg-transparent pb-2 font-serif text-[clamp(1.4rem,2.6vw,1.9rem)] font-light text-ink outline-none focus:border-gold"
+        />
+      </SRow>
+      <SRow name="Timezone" hint="Defines where your trading day starts and ends.">
+        <select
+          value={p.timezone}
+          aria-label="Timezone"
+          onChange={(e) => {
+            s.dirty();
+            setP({ ...p, timezone: e.target.value });
+          }}
+          className="field h-9 w-64 py-0 text-[11.5px]"
+        >
+          {zones.map((z) => (
+            <option key={z} value={z}>
+              {z}
+            </option>
+          ))}
+        </select>
+      </SRow>
       <SaveButton pending={s.pending} saved={s.saved} onClick={() => s.save({ ...p, name: p.name.trim() || "Lord Thundercunt" })} />
     </div>
   );
@@ -279,16 +275,15 @@ export function AiToggle({ enabled, configured, model }: { enabled: boolean; con
   const [on, setOn] = useState(enabled);
   const [, start] = useTransition();
   return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between gap-4">
-        <div>
-          <div className="text-[14.5px] font-semibold">{configured ? `Claude is connected (${model})` : "No AI key yet"}</div>
-          <div className="text-[12.5px] leading-relaxed text-ink-3">
-            {configured
-              ? "Briefings, reflections and the coach send summarised stats and your journal text to Anthropic's API. Credentials and account numbers are never sent."
-              : "Add ANTHROPIC_API_KEY in Vercel to enable AI briefings, journal reflections and the coach."}
-          </div>
-        </div>
+    <div className="max-w-2xl">
+      <SRow
+        name={configured ? <>Claude is connected <span className="text-ink-4">· {model}</span></> : "No AI key yet"}
+        hint={
+          configured
+            ? "Replays, reflections, the Observer and the coach send summarised stats and your journal text to Anthropic's API. Credentials and account numbers are never sent."
+            : "Add ANTHROPIC_API_KEY in Vercel to switch on AI replays, reflections, the Observer's voice and the coach."
+        }
+      >
         <Toggle
           checked={on && configured}
           disabled={!configured}
@@ -301,7 +296,7 @@ export function AiToggle({ enabled, configured, model }: { enabled: boolean; con
           }}
           label="AI enabled"
         />
-      </div>
+      </SRow>
     </div>
   );
 }

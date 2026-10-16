@@ -43,19 +43,8 @@ export const metadata: Metadata = {
   appleWebApp: { capable: true, title: "Thundercunts", statusBarStyle: "default" },
 };
 
-export async function generateViewport(): Promise<Viewport> {
-  const prefs = parseUiPrefs((await cookies()).get(UI_COOKIE)?.value);
-  const themeColor =
-    prefs.theme === "night"
-      ? "#07110c"
-      : prefs.theme === "paper"
-        ? "#fafaf7"
-        : [
-            { media: "(prefers-color-scheme: dark)", color: "#07110c" },
-            { media: "(prefers-color-scheme: light)", color: "#fafaf7" },
-          ];
-  return { themeColor, width: "device-width", initialScale: 1, viewportFit: "cover" };
-}
+// One theme: the warm void.
+export const viewport: Viewport = { themeColor: "#0a0a0b", width: "device-width", initialScale: 1, viewportFit: "cover" };
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const prefs = parseUiPrefs((await cookies()).get(UI_COOKIE)?.value);

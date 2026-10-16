@@ -3,28 +3,106 @@
 import Link from "next/link";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { CircleCheck, FileUp, KeyRound, Link2, LoaderCircle, Pencil, RefreshCw, ShieldCheck, TriangleAlert, Unplug } from "lucide-react";
 import type { BrokerAccount, ConnectionInfo } from "@/lib/types";
 import { FIRMS, type Firm } from "@/lib/brokers/firms";
 import { connectProjectX, connectTopstepShare, connectTradovate, disconnectBroker, renameAccount, setAccountIncluded } from "@/lib/actions/settings";
 import { fmtMoney, timeAgo } from "@/lib/format";
 import { cn } from "@/lib/cn";
-import { Button } from "@/components/ui/Button";
+import { Button, buttonClass } from "@/components/ui/Button";
 import { Toggle } from "@/components/ui/Toggle";
-import { Segmented } from "@/components/ui/Segmented";
+import { Seg } from "@/components/m/Seg";
+import { Dot, Tag } from "@/components/m";
+import { lineInput, Note, SRow, Sub } from "./ui";
 
-type Option = { key: string; title: string; price: string; free: boolean; firm?: Firm; blurb: string };
+type Key = "tradovate-login" | "topstep-share" | "topstep" | "import" | "tradovate";
+type Option = { key: Key; title: string; who: string; cost: string; firm?: Firm; blurb: string };
 
 const OPTIONS: Option[] = [
-  { key: "topstep-share", title: "TopstepX", price: "Free", free: true, firm: FIRMS.find((f) => f.id === "topstep-share"), blurb: "Auto-sync from each account's Share link. No login or API key." },
-  { key: "import", title: "Lucid · Tradeify · any firm", price: "Free", free: true, blurb: "Drop the trade export (CSV) from Tradovate, Rithmic, TopstepX or NinjaTrader. Takes 10 seconds." },
-  { key: "topstep", title: "TopstepX API", price: "$14.50/mo", free: false, firm: FIRMS.find((f) => f.id === "topstep"), blurb: "Official API. New accounts appear by themselves — no share links." },
-  { key: "tradovate", title: "Tradovate API", price: "Paid add-on", free: false, firm: FIRMS.find((f) => f.id === "tradovate"), blurb: "Only for your own funded Tradovate account. Prop accounts can't use it." },
+  {
+    key: "tradovate-login",
+    title: "Log in with Tradovate",
+    who: "Lucid · Tradeify · any Tradovate prop account",
+    cost: "Free · beta",
+    blurb: "The same sign-in screen Tradecopia sends you to. You log in on Tradovate's own page and tick view-only; we never see your password.",
+  },
+  {
+    key: "topstep",
+    title: "TopstepX",
+    who: "Username + API key",
+    cost: "Same key as Tradecopia",
+    firm: FIRMS.find((f) => f.id === "topstep"),
+    blurb: "Exactly what Tradecopia asks for. New Combines and Express accounts show up by themselves.",
+  },
+  {
+    key: "topstep-share",
+    title: "TopstepX share links",
+    who: "No key at all",
+    cost: "Free",
+    firm: FIRMS.find((f) => f.id === "topstep-share"),
+    blurb: "Paste each account's Share link. Read from TopstepX's public stats, nothing to log in to.",
+  },
+  {
+    key: "import",
+    title: "Import a file",
+    who: "Tradovate · Rithmic · NinjaTrader · TopstepX",
+    cost: "Free",
+    blurb: "Drop a trade export (CSV). Ten seconds, works for every firm, nothing connected.",
+  },
+  {
+    key: "tradovate",
+    title: "Tradovate API key",
+    who: "Advanced · your own funded live account",
+    cost: "Tradovate add-on",
+    firm: FIRMS.find((f) => f.id === "tradovate"),
+    blurb: "Your own CID and secret from Tradovate's API add-on. Prop accounts should use Log in with Tradovate instead.",
+  },
 ];
 
 async function runSync(full: boolean) {
   const res = await fetch("/api/sync", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ full }) });
   return (await res.json()) as { results?: { connection: string; ok: boolean; error?: string; newFills?: number }[] };
+}
+
+function Steps({ firm }: { firm: Firm }) {
+  return (
+    <ol className="mb-6 space-y-2.5">
+      {firm.steps.map((s, i) => (
+        <li key={i} className="grid grid-cols-[2rem_1fr] font-mono text-[11px] leading-[1.85] text-ink-2">
+          <span className="text-gold">{String(i + 1).padStart(2, "0")}</span>
+          {s}
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+function TradovateLogin() {
+  const [env, setEnv] = useState<"demo" | "live">("demo");
+  return (
+    <div>
+      <ol className="mb-7 space-y-2.5">
+        {[
+          "Press the button. Tradovate's own sign-in page opens (web.ninjatrader.com).",
+          "Sign in with the Tradovate login your prop firm gave you, and allow the view-only permissions.",
+          "You come straight back here; accounts and the last year of fills sync on their own.",
+        ].map((s, i) => (
+          <li key={i} className="grid grid-cols-[2rem_1fr] font-mono text-[11px] leading-[1.85] text-ink-2">
+            <span className="text-gold">{String(i + 1).padStart(2, "0")}</span>
+            {s}
+          </li>
+        ))}
+      </ol>
+      <div className="flex flex-wrap items-center gap-x-8 gap-y-4">
+        <a href={`/api/tradovate/connect?env=${env}`} className={buttonClass("primary", "lg")} data-magnetic="">
+          Log in with Tradovate →
+        </a>
+        <Seg value={env} onChange={setEnv} options={[{ value: "demo", label: "Prop / eval" }, { value: "live", label: "Live" }]} />
+      </div>
+      <p className="mt-6 max-w-[60ch] font-mono text-[10.5px] leading-[1.8] text-ink-4">
+        Uses NinjaTrader&apos;s self-service sign-in (in beta). Tradovate keeps a sign-in alive for about a day between uses, and the nightly sync uses it; after a long weekend you may be asked to log in again.
+      </p>
+    </div>
+  );
 }
 
 function ConnectForm({ option, onConnected }: { option: Option; onConnected: () => void }) {
@@ -40,57 +118,45 @@ function ConnectForm({ option, onConnected }: { option: Option; onConnected: () 
           ? await connectTopstepShare(String(fd.get("links") ?? ""))
           : option.key === "topstep"
             ? await connectProjectX({ firm: "topstep", userName: String(fd.get("user")), apiKey: String(fd.get("key")) })
-            : await connectTradovate({
-                username: String(fd.get("user")),
-                password: String(fd.get("password")),
-                cid: String(fd.get("cid")),
-                sec: String(fd.get("sec")),
-                environment: env,
-              });
+            : await connectTradovate({ username: String(fd.get("user")), password: String(fd.get("password")), cid: String(fd.get("cid")), sec: String(fd.get("sec")), environment: env });
       if (res.error) setError(res.error);
       else onConnected();
     });
 
   return (
-    <form action={submit} autoComplete="off" className="space-y-3">
-      {option.firm && (
-        <ol className="space-y-1.5 text-[13px] leading-relaxed text-ink-3">
-          {option.firm.steps.map((s, i) => (
-            <li key={i} className="flex gap-2">
-              <span className="num grid h-5 w-5 shrink-0 place-items-center rounded-full bg-fill-2 text-[11px] font-bold text-ink-2">{i + 1}</span>
-              {s}
-            </li>
-          ))}
-        </ol>
-      )}
+    <form action={submit} autoComplete="off">
+      {option.firm && <Steps firm={option.firm} />}
       {option.key === "topstep-share" && (
-        <textarea name="links" required rows={3} placeholder={"https://www.topstepx.com/share/stats?share=12345678\nhttps://www.topstepx.com/share/stats?share=87654321"} className="field text-[13px]" spellCheck={false} />
+        <textarea
+          name="links"
+          required
+          rows={3}
+          aria-label="Share links"
+          placeholder={"https://www.topstepx.com/share/stats?share=12345678\nhttps://www.topstepx.com/share/stats?share=87654321"}
+          className={cn(lineInput, "resize-none leading-[1.9]")}
+          spellCheck={false}
+        />
       )}
       {option.key === "topstep" && (
-        <div className="grid gap-3 sm:grid-cols-2">
-          <input name="user" required placeholder="TopstepX username" className="field" autoComplete="off" spellCheck={false} />
-          <input name="key" required type="password" placeholder="API key" className="field" autoComplete="new-password" spellCheck={false} />
+        <div className="grid gap-6 sm:grid-cols-2">
+          <input name="user" required placeholder="TopstepX username" aria-label="TopstepX username" className={lineInput} autoComplete="off" spellCheck={false} />
+          <input name="key" required type="password" placeholder="API key" aria-label="API key" className={lineInput} autoComplete="new-password" spellCheck={false} />
         </div>
       )}
       {option.key === "tradovate" && (
         <>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <input name="user" required placeholder="Tradovate username" className="field" autoComplete="off" spellCheck={false} />
-            <input name="password" required type="password" placeholder="Password" className="field" autoComplete="new-password" />
-            <input name="cid" required placeholder="CID" className="field" autoComplete="off" spellCheck={false} />
-            <input name="sec" required type="password" placeholder="Secret" className="field" autoComplete="new-password" spellCheck={false} />
+          <div className="grid gap-6 sm:grid-cols-2">
+            <input name="user" required placeholder="Tradovate username" aria-label="Tradovate username" className={lineInput} autoComplete="off" spellCheck={false} />
+            <input name="password" required type="password" placeholder="Password" aria-label="Password" className={lineInput} autoComplete="new-password" />
+            <input name="cid" required placeholder="CID" aria-label="CID" className={lineInput} autoComplete="off" spellCheck={false} />
+            <input name="sec" required type="password" placeholder="Secret" aria-label="Secret" className={lineInput} autoComplete="new-password" spellCheck={false} />
           </div>
-          <Segmented size="sm" value={env} onChange={setEnv} options={[{ value: "demo", label: "Demo / prop" }, { value: "live", label: "Live" }]} />
+          <Seg className="mt-6" value={env} onChange={setEnv} options={[{ value: "demo", label: "Demo / prop" }, { value: "live", label: "Live" }]} />
         </>
       )}
-      {error && (
-        <div className="flex items-start gap-2 rounded-[3px] bg-neg/10 px-3.5 py-2.5 text-[13px] text-neg">
-          <TriangleAlert size={15} className="mt-0.5 shrink-0" /> {error}
-        </div>
-      )}
-      <Button type="submit" variant="primary" disabled={pending}>
-        {pending ? <LoaderCircle size={15} className="animate-spin" /> : option.free ? <Link2 size={15} /> : <KeyRound size={15} />}{" "}
-        {pending ? "Checking…" : option.free ? "Connect" : "Connect securely"}
+      {error && <Note tone="warn" className="mt-5">{error}</Note>}
+      <Button type="submit" variant="primary" className="mt-7" disabled={pending}>
+        {pending ? "Checking…" : "Connect"}
       </Button>
     </form>
   );
@@ -102,7 +168,7 @@ function AccountRow({ a }: { a: BrokerAccount }) {
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(a.name);
   return (
-    <div className="flex items-center justify-between gap-3 px-4 py-2.5">
+    <div className="flex items-center justify-between gap-4 border-b border-line py-3 pl-[2rem]">
       <div className="min-w-0 flex-1">
         {editing ? (
           <form
@@ -115,17 +181,17 @@ function AccountRow({ a }: { a: BrokerAccount }) {
               });
             }}
           >
-            <input autoFocus value={name} onChange={(e) => setName(e.target.value)} onBlur={() => setEditing(false)} className="field h-8 text-[13px]" maxLength={80} />
+            <input autoFocus value={name} onChange={(e) => setName(e.target.value)} onBlur={() => setEditing(false)} className={lineInput} maxLength={80} aria-label="Account name" />
           </form>
         ) : (
-          <button onClick={() => setEditing(true)} className="group flex max-w-full items-center gap-1.5 text-left">
-            <span className="truncate text-[13.5px] font-medium">{a.name}</span>
-            <Pencil size={11} className="shrink-0 text-ink-4 opacity-0 group-hover:opacity-100" />
+          <button onClick={() => setEditing(true)} className="group max-w-full truncate text-left font-mono text-[11.5px] text-ink" title="Rename">
+            {a.name} <span className="text-ink-4 opacity-0 transition-opacity group-hover:opacity-100">· rename</span>
           </button>
         )}
-        <div className="text-[11.5px] text-ink-3">
+        <div className="mt-0.5 font-mono text-[10px] tracking-[0.06em] text-ink-4">
           {a.active ? "Active" : "Inactive"}
           {a.balance !== null ? ` · ${fmtMoney(a.balance)}` : ""}
+          {!a.included && " · hidden from stats"}
         </div>
       </div>
       <Toggle
@@ -142,10 +208,12 @@ function AccountRow({ a }: { a: BrokerAccount }) {
   );
 }
 
-export function Connections({ connections, accounts }: { connections: ConnectionInfo[]; accounts: BrokerAccount[] }) {
+export type ConnectNotice = { kind: "connected" | "cancelled" | "expired" | "error"; n?: number; msg?: string } | null;
+
+export function Connections({ connections, accounts, notice = null }: { connections: ConnectionInfo[]; accounts: BrokerAccount[]; notice?: ConnectNotice }) {
   const router = useRouter();
   const [, start] = useTransition();
-  const [adding, setAdding] = useState<string | null>(connections.length ? null : "topstep-share");
+  const [adding, setAdding] = useState<Key | null>(connections.length ? null : "tradovate-login");
   const [syncing, setSyncing] = useState<"quick" | "full" | null>(null);
   const [syncMsg, setSyncMsg] = useState<string | null>(null);
 
@@ -155,9 +223,9 @@ export function Connections({ connections, accounts }: { connections: Connection
     try {
       const r = (await runSync(full)).results ?? [];
       const err = r.find((x) => !x.ok);
-      setSyncMsg(err ? err.error ?? "Sync failed" : `Synced · ${r.reduce((a, x) => a + (x.newFills ?? 0), 0)} new`);
+      setSyncMsg(err ? (err.error ?? "Sync failed") : `Synced · ${r.reduce((a, x) => a + (x.newFills ?? 0), 0)} new`);
     } catch {
-      setSyncMsg("Sync failed — check your connection.");
+      setSyncMsg("Sync failed. Check your connection.");
     } finally {
       setSyncing(null);
       router.refresh();
@@ -167,37 +235,68 @@ export function Connections({ connections, accounts }: { connections: Connection
   const importAccounts = accounts.filter((a) => a.connectionId === "import");
 
   return (
-    <div className="space-y-5">
-      <div className="flex items-start gap-3 rounded-[3px] border border-pos/20 bg-pos/[0.06] p-4 text-[13px] leading-relaxed text-ink-2">
-        <ShieldCheck size={18} className="mt-0.5 shrink-0 text-pos" />
-        <div>
-          <span className="font-semibold text-ink">Read-only by design.</span> Nothing here can place, change or cancel a trade. Any key you enter is verified, then
-          encrypted with AES-256-GCM using a key that lives only in your Vercel settings — never in the database or the code. Disconnecting erases it instantly.
+    <div>
+      {notice && (
+        <div className="mb-10 border-l border-gold py-1 pl-5">
+          {notice.kind === "connected" ? (
+            <Note tone="pos">
+              ● Tradovate connected · {notice.n ?? 0} account{notice.n === 1 ? "" : "s"} found. Your history is syncing.
+            </Note>
+          ) : notice.kind === "cancelled" ? (
+            <Note>Tradovate sign-in was cancelled. Nothing was connected.</Note>
+          ) : notice.kind === "expired" ? (
+            <Note tone="warn">That sign-in took too long or came from another browser. Start again from here.</Note>
+          ) : (
+            <Note tone="warn">{notice.msg || "Tradovate sign-in failed."}</Note>
+          )}
         </div>
-      </div>
+      )}
+
+      <p className="mb-12 max-w-[64ch] font-mono text-[11.5px] leading-[1.9] text-ink-2">
+        <span className="text-ink">Read-only by design.</span> Nothing here can place, change or cancel a trade. Keys are checked, then sealed with AES-256-GCM using a key
+        that lives only in your Vercel settings, never in the database or the code. Disconnect and they&apos;re erased.
+      </p>
 
       {connections.length > 0 && (
-        <div className="space-y-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <Button size="sm" variant="secondary" onClick={() => sync(false)} disabled={!!syncing}>
-              <RefreshCw size={14} className={syncing === "quick" ? "animate-spin" : ""} /> Sync now
-            </Button>
-            <Button size="sm" variant="ghost" onClick={() => sync(true)} disabled={!!syncing}>
-              {syncing === "full" && <LoaderCircle size={14} className="animate-spin" />} Full re-sync (1 year)
-            </Button>
-            {syncMsg && <span className="text-[12.5px] text-ink-3">{syncMsg}</span>}
-          </div>
-          {connections.map((c) => {
+        <div className="mb-16">
+          <Sub
+            aside={
+              <span className="flex items-center gap-5">
+                {syncMsg && <span className="font-mono text-[10.5px] text-ink-3">{syncMsg}</span>}
+                <button onClick={() => sync(false)} disabled={!!syncing} className="font-mono text-[9.5px] tracking-[0.3em] text-ink-2 uppercase hover:text-ink disabled:opacity-40">
+                  {syncing === "quick" ? "Syncing…" : "↻ Sync now"}
+                </button>
+                <button onClick={() => sync(true)} disabled={!!syncing} className="font-mono text-[9.5px] tracking-[0.3em] text-ink-4 uppercase hover:text-ink disabled:opacity-40">
+                  {syncing === "full" ? "Re-syncing…" : "Full year"}
+                </button>
+              </span>
+            }
+          >
+            Connected
+          </Sub>
+          {connections.map((c, i) => {
             const accs = accounts.filter((a) => a.connectionId === c.id);
+            const bad = c.status === "error";
             return (
-              <div key={c.id} className="rounded-[3px] border border-line bg-fill p-4 sm:p-5">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <div className="text-[15.5px] font-semibold">{c.label}</div>
-                    <div className={cn("inline-flex items-center gap-1 text-[12.5px]", c.status === "error" ? "text-orange" : "text-pos")}>
-                      {c.status === "error" ? <TriangleAlert size={12} /> : <CircleCheck size={12} />}
-                      {c.status === "error" ? "Needs attention" : "Connected"} · {c.usernameHint} · synced {timeAgo(c.lastSyncAt)}
+              <div key={c.id}>
+                <div className="grid grid-cols-[2rem_1fr_auto] items-baseline gap-x-4 gap-y-2 border-b border-line py-5">
+                  <span className="font-mono text-[11px] text-gold">{String(i + 1).padStart(2, "0")}</span>
+                  <div className="min-w-0">
+                    <div className="font-serif text-[clamp(1.2rem,2.2vw,1.55rem)] font-light">{c.label}</div>
+                    <div className="mt-1.5 flex flex-wrap items-center gap-x-3 font-mono text-[10px] tracking-[0.08em] text-ink-3">
+                      <span className={cn("inline-flex items-center gap-2", bad ? "text-ink" : "text-pos")}>
+                        {bad ? <span className="text-gold">◆</span> : <Dot />}
+                        {bad ? "Needs attention" : "Connected"}
+                      </span>
+                      {c.usernameHint && <span>· {c.usernameHint}</span>}
+                      <span>· synced {timeAgo(c.lastSyncAt)}</span>
                     </div>
+                    {c.lastError && <Note tone="warn" className="mt-3">{c.lastError}</Note>}
+                    {bad && c.id.startsWith("ntmcp") && (
+                      <a href={`/api/tradovate/connect?env=${c.environment === "live" ? "live" : "demo"}`} className={cn(buttonClass("secondary", "sm"), "mt-4")}>
+                        Log in with Tradovate again
+                      </a>
+                    )}
                   </div>
                   <Button
                     size="sm"
@@ -210,11 +309,12 @@ export function Connections({ connections, accounts }: { connections: Connection
                       })
                     }
                   >
-                    <Unplug size={14} /> Disconnect
+                    Disconnect
                   </Button>
                 </div>
-                {c.lastError && <div className="mt-3 rounded-[3px] bg-orange/10 px-3.5 py-2.5 text-[13px] text-orange">{c.lastError}</div>}
-                {accs.length > 0 && <div className="mt-3 divide-y divide-line rounded-[3px] border border-line bg-fill">{accs.map((a) => <AccountRow key={a.id} a={a} />)}</div>}
+                {accs.map((a) => (
+                  <AccountRow key={a.id} a={a} />
+                ))}
               </div>
             );
           })}
@@ -222,55 +322,63 @@ export function Connections({ connections, accounts }: { connections: Connection
       )}
 
       {importAccounts.length > 0 && (
-        <div className="rounded-[3px] border border-line bg-fill p-4 sm:p-5">
-          <div className="mb-1 text-[15.5px] font-semibold">Imported accounts</div>
-          <div className="mb-3 text-[12.5px] text-ink-3">Accounts you&apos;ve added from export files. Rename them or hide them from your stats.</div>
-          <div className="divide-y divide-line rounded-[3px] border border-line bg-fill">{importAccounts.map((a) => <AccountRow key={a.id} a={a} />)}</div>
+        <div className="mb-16">
+          <Sub>Imported accounts</Sub>
+          {importAccounts.map((a) => (
+            <AccountRow key={a.id} a={a} />
+          ))}
         </div>
       )}
 
-      <div>
-        <div className="eyebrow mb-3">Add an account</div>
-        <div className="grid gap-3 sm:grid-cols-2">
-          {OPTIONS.map((o) =>
-            o.key === "import" ? (
-              <Link key={o.key} href="/trades?import=1" className="rounded-[3px] border border-line bg-fill p-4 text-left transition-colors hover:bg-fill-2">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="flex items-center gap-2 text-[14.5px] font-semibold">
-                    <FileUp size={16} className="text-cyan" /> {o.title}
-                  </span>
-                  <span className="rounded-full bg-pos/15 px-2 py-0.5 text-[11px] font-bold text-pos">{o.price}</span>
-                </div>
-                <p className="mt-1.5 text-[12.5px] leading-relaxed text-ink-3">{o.blurb}</p>
+      <Sub>Add an account</Sub>
+      {OPTIONS.map((o, i) => {
+        const open = adding === o.key;
+        const head = (
+          <>
+            <span className="font-mono text-[11px] text-gold">{String(i + 1).padStart(2, "0")}</span>
+            <span className="min-w-0">
+              <span className="block font-serif text-[clamp(1.25rem,2.4vw,1.75rem)] leading-[1.2] font-light">{o.title}</span>
+              <span className="mt-1.5 block font-mono text-[10px] tracking-[0.12em] text-ink-4 uppercase">{o.who}</span>
+            </span>
+            <span className="hidden max-w-[44ch] font-mono text-[11.5px] leading-[1.85] text-ink-2 md:block">{o.blurb}</span>
+            <span className="flex items-center gap-4">
+              <Tag tone={o.cost.startsWith("Free") ? "pos" : o.key === "topstep" ? "gold" : undefined}>{o.cost}</Tag>
+              <span className="font-mono text-[12px] text-ink-4">{o.key === "import" ? "→" : open ? "−" : "+"}</span>
+            </span>
+          </>
+        );
+        const cls = "m-row grid w-full grid-cols-[2rem_1fr_auto] items-baseline gap-x-4 gap-y-2 border-b border-line py-6 text-left md:grid-cols-[2rem_minmax(0,1fr)_minmax(0,1.3fr)_auto] md:gap-x-8";
+        return (
+          <div key={o.key}>
+            {o.key === "import" ? (
+              <Link href="/trades?import=1" className={cls}>
+                {head}
               </Link>
             ) : (
-              <button
-                key={o.key}
-                onClick={() => setAdding(adding === o.key ? null : o.key)}
-                className={cn("rounded-[3px] border p-4 text-left transition-colors", adding === o.key ? "border-cyan/50 bg-cyan/[0.05]" : "border-line bg-fill hover:bg-fill-2")}
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-[14.5px] font-semibold">{o.title}</span>
-                  <span className={cn("rounded-full px-2 py-0.5 text-[11px] font-bold", o.free ? "bg-pos/15 text-pos" : "bg-fill-3 text-ink-2")}>{o.price}</span>
-                </div>
-                <p className="mt-1.5 text-[12.5px] leading-relaxed text-ink-3">{o.blurb}</p>
+              <button onClick={() => setAdding(open ? null : o.key)} aria-expanded={open} className={cls}>
+                {head}
               </button>
-            ),
-          )}
-        </div>
-        {adding && (
-          <div className="mt-4 rounded-[3px] border border-line bg-fill p-4 sm:p-5">
-            <ConnectForm
-              key={adding}
-              option={OPTIONS.find((o) => o.key === adding)!}
-              onConnected={async () => {
-                setAdding(null);
-                await sync(true);
-              }}
-            />
+            )}
+            {open && (
+              <div className="border-b border-line py-8 pl-[2rem] md:pl-[calc(2rem+2rem)]">
+                <p className="mb-6 max-w-[60ch] font-mono text-[11.5px] leading-[1.85] text-ink-2 md:hidden">{o.blurb}</p>
+                {o.key === "tradovate-login" ? (
+                  <TradovateLogin />
+                ) : (
+                  <ConnectForm
+                    key={o.key}
+                    option={o}
+                    onConnected={async () => {
+                      setAdding(null);
+                      await sync(true);
+                    }}
+                  />
+                )}
+              </div>
+            )}
           </div>
-        )}
-      </div>
+        );
+      })}
     </div>
   );
 }
