@@ -1,7 +1,9 @@
-# ⚡ Lord Thundercunts Journal
+# Lord Thundercunts Journal ◆
 
-A private, AI-powered trading journal for futures traders. It feels like an Apple app, logs your trades
-automatically from **TopstepX** and **Tradovate**, and briefs you every day, week and month as a swipeable slideshow.
+A private, AI-powered trading journal for futures prop traders, in the same warm-black, cream-and-gold editorial
+style as Meridian (see [docs/DESIGN.md](./docs/DESIGN.md)). It logs your trades automatically from **TopstepX** and
+**Tradovate** (Lucid, Tradeify and other Tradovate prop accounts), tracks what your evals cost against what they
+paid, and replays every day, week and month as a full-screen keynote.
 
 ---
 
@@ -9,8 +11,10 @@ automatically from **TopstepX** and **Tradovate**, and briefs you every day, wee
 
 | Feature | What it does |
 | --- | --- |
-| **Briefings (Stories)** | Daily, weekly and monthly debriefs as full-screen slides: money made and lost, scoreboard, equity curve, best and worst trade, your edge, your leak, discipline, report card, prop status, AI coach verdict, and the *one thing* to fix next. They refresh as new trades sync. |
-| **Trader Rings** | Three rings for what you control: **Prepare** (pre-market ritual + readiness + intention), **Discipline** (every trade inside your rules) and **Reflect** (review written). P&L is deliberately not a ring. Streaks reward process. |
+| **The Observer** | Your trading written up in the third person, like a coach watching from across the room: what you want, what you actually do, what's stopping you (ranked by what it costs), and the order you'd give yourself. You can pin one order a day and it gets checked against the real trades. |
+| **Eval ledger** | In Guardian: every evaluation, reset, activation and subscription you paid, against every payout. Refund-aware, per firm, with the real return on what the evals cost. |
+| **Replays** | Daily, weekly and monthly debriefs as full-screen slides: money made and lost, scoreboard, equity curve, best and worst trade, your edge, your leak, discipline, report card, prop status, AI coach verdict, and the *one thing* to fix next. They refresh as new trades sync. |
+| **Process, not P&L** | Three things you control are scored every day: **Prepared** (ritual, readiness, intention), **Disciplined** (every trade inside your rules) and **Reflected** (review written). Streaks reward process. |
 | **Auto-enforced rules** | Max trades, daily loss, losing-streak stop, size, trading window and cool-down are checked against every synced trade. No self-reporting needed. |
 | **Rule Lab (ghost curve)** | Replays your real trades under different rules ("stop after 2 losses", "done by 11:30", "skip Fridays") and draws the equity curve you *would* have had. It also suggests the rules that would have paid you most. |
 | **Tilt Radar** | Detects revenge trading from behaviour alone: fast re-entries after a loss, sizing up, trading through a losing streak. It shows what tilt costs you in dollars. |
@@ -53,19 +57,23 @@ from your other projects, and injects its credentials straight into Vercel. To u
 
 | Route | Cost | Works for | How |
 | --- | --- | --- | --- |
-| **TopstepX share link** | Free | Topstep Combine and Express Funded | TopstepX → *Performance stats* → **Share** → paste the link in *Settings → Connections*. No login or API key is stored. Syncs on open and nightly. |
-| **Import a file** | Free | Lucid, Tradeify, Apex, any Tradovate / Rithmic / NinjaTrader / TopstepX account | Export trades as CSV, then drop the file on *Trades → Import*. The format is detected automatically (Tradovate *Performance* and *Orders/Fills*, TopstepX trades, generic round-trip files). Re-importing the same file never duplicates. Lucid's commission rates can be applied if your export has none. |
-| **TopstepX API** | $14.50/mo (code `topstep`) | Topstep — new accounts appear automatically | Subscribe to ProjectX API at dashboard.projectx.com, then TopstepX → *Settings → API* → *Add API Key*. |
-| **Tradovate API** | Tradovate's paid add-on | Your own funded Tradovate login | Tradovate → *Application Settings → Add-Ons → API Access*. Prop-firm accounts usually can't use it. |
+| **Log in with Tradovate** | Free (beta) | Lucid, Tradeify and any Tradovate prop / eval account | *Settings → Connections → Log in with Tradovate*. You sign in on Tradovate's own page (web.ninjatrader.com) and allow view-only, exactly like Tradecopia. Uses NinjaTrader's self-service OAuth (dynamic registration + PKCE), so no API add-on and no password is ever stored here. Tradovate keeps a sign-in for about a day between uses; the nightly sync uses it, and after a long weekend you may be asked to log in again. |
+| **TopstepX username + API key** | The same key Tradecopia uses | Topstep: new Combines and Express accounts appear by themselves | TopstepX → *Settings → API*. If you already linked Tradecopia, the key comes from the same place, and if you already pay for ProjectX API access it costs nothing extra here. |
+| **TopstepX share link** | Free | Topstep Combine and Express Funded | TopstepX → *Performance stats* → **Share** → paste the link. Nothing to log in to. |
+| **Import a file** | Free | Any Tradovate / Rithmic / NinjaTrader / TopstepX account | Drop a CSV export on *Trades → Import*. The format is detected automatically and re-importing never duplicates. |
+| **Tradovate API key** | Tradovate's add-on | Your own funded live account | Advanced. Prop accounts should use *Log in with Tradovate*. |
 
 **Your logins are safe:** credentials are verified, then encrypted with AES-256-GCM using a key that exists only in
 your Vercel environment. They are never shown again, never logged and never exported. The app **cannot place
 trades** — every broker client is restricted to an allowlist of read endpoints. See [SECURITY.md](./SECURITY.md).
 
-### Why not "log in with Tradovate" like a trade copier?
-Copiers such as Tradecopia connect Tradovate prop accounts through Tradovate's partner OAuth, which Tradovate only
-issues to approved vendor apps — a private single-user app can't obtain it. Free CSV import covers those accounts
-today; if Tradovate partner access is ever granted, the journal is built to add it as another connection.
+### How "Log in with Tradovate" works
+Tradecopia uses Tradovate's partner OAuth, which is only issued to approved vendors. NinjaTrader (Tradovate's owner)
+now runs a public, self-service OAuth server for its read-only MCP service, and the journal uses that: it registers
+itself, sends you to Tradovate's sign-in with a PKCE challenge, and keeps only an encrypted, rotating refresh token.
+It can only call read tools (accounts, fill history). The flow state travels in a sealed, ten-minute cookie and is
+checked against the `state` Tradovate echoes back. The service is labelled beta by NinjaTrader; if it ever changes,
+CSV import still covers every account.
 
 ---
 

@@ -4,7 +4,7 @@ import { db } from "../db";
 import { encryptJson, randomToken } from "../crypto";
 import type { NormalizedFill } from "./roundtrip";
 import { BrokerError, type BrokerAccountInfo, type BrokerClient, type TokenCache } from "./types";
-import { ACCOUNT_TOOLS, FILL_TOOLS, NT_HOSTS, parseAccounts, parseFills, parseRpcBody, pickTool, toolPayload, ymd, type NtEnv } from "./ntmcp-parse";
+import { ACCOUNT_TOOLS, FILL_TOOLS, isReadTool, NT_HOSTS, parseAccounts, parseFills, parseRpcBody, pickTool, toolPayload, ymd, type NtEnv } from "./ntmcp-parse";
 
 /**
  * "Log in with Tradovate": the same sign-in screen Tradecopia sends you to,
@@ -134,6 +134,8 @@ class Mcp {
   }
 
   async call(name: string, args: Record<string, unknown>): Promise<unknown> {
+    // Belt and braces: even a mis-picked name can never reach a tool that acts on the account.
+    if (!isReadTool(name)) throw new BrokerError("Refused: the journal only reads from Tradovate.");
     await this.init();
     const r = (await this.post({ jsonrpc: "2.0", id: ++this.seq, method: "tools/call", params: { name, arguments: args } }, true)) as { isError?: boolean } | null;
     if (r?.isError) throw new BrokerError(`Tradovate couldn't run "${name}" right now.`);

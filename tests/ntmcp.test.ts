@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { ACCOUNT_TOOLS, FILL_TOOLS, parseAccounts, parseFills, parseRpcBody, pickTool, toolPayload } from "../lib/brokers/ntmcp-parse";
+import { ACCOUNT_TOOLS, FILL_TOOLS, isReadTool, parseAccounts, parseFills, parseRpcBody, pickTool, toolPayload } from "../lib/brokers/ntmcp-parse";
 
 const wrap = (v: unknown) => ({ content: [{ type: "text", text: JSON.stringify(v) }] });
 
@@ -47,4 +47,10 @@ test("parseRpcBody reads plain JSON and SSE frames", () => {
   assert.deepEqual(parseRpcBody("application/json", '{"jsonrpc":"2.0","id":1,"result":{}}', 1), { jsonrpc: "2.0", id: 1, result: {} });
   const sse = 'event: message\ndata: {"jsonrpc":"2.0","method":"note"}\n\nevent: message\ndata: {"jsonrpc":"2.0","id":3,"result":{"ok":true}}\n\n';
   assert.deepEqual(parseRpcBody("text/event-stream", sse, 3), { jsonrpc: "2.0", id: 3, result: { ok: true } });
+});
+
+test("write tools are never picked or callable", () => {
+  for (const w of ["place_order", "cancel_order", "close_position", "liquidate_account", "flatten_all", "modify_order", "close_account"]) assert.equal(isReadTool(w), false, w);
+  for (const r of ["fill_history", "order_history", "list_accounts", "my_portfolio", "cash_history"]) assert.equal(isReadTool(r), true, r);
+  assert.equal(pickTool(["close_account", "place_order", "fill_history"], ACCOUNT_TOOLS), null);
 });

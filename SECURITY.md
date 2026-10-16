@@ -11,7 +11,7 @@ Vercel environment variables, and nothing sensitive is ever committed.
 | Your journal & trades | Owner-only login (passkey or passphrase) + per-request session validation against the database |
 | Your passphrase | Never stored — only a scrypt hash (N=2¹⁵, r=8, p=1, 64-byte key, random salt) in the `owner` table |
 | Broker credentials | AES-256-GCM encryption with a key (`ENCRYPTION_KEY`) that exists only in Vercel env — a database leak alone reveals nothing usable |
-| Ability to trade | **Impossible from this app.** Broker clients can only call an explicit allowlist of read endpoints (`lib/brokers/projectx.ts`, `lib/brokers/tradovate.ts`, `lib/brokers/topstepshare.ts`). No code path can place, modify or cancel an order |
+| Ability to trade | **Impossible from this app.** Broker clients can only call an explicit allowlist of read endpoints (`lib/brokers/projectx.ts`, `lib/brokers/tradovate.ts`, `lib/brokers/topstepshare.ts`). The Tradovate login (`lib/brokers/ntmcp.ts`) refuses any MCP tool whose name could act on an account (place, cancel, modify, close, liquidate, flatten…) before the request is made. No code path can place, modify or cancel an order |
 | Sessions | 256-bit random tokens; only their SHA-256 hash is stored. `__Host-` cookie, `HttpOnly`, `Secure`, `SameSite=Strict`, 30-day sliding expiry, "sign out everywhere" |
 
 ## Controls

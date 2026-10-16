@@ -24,7 +24,7 @@ export function PageHead({
 }) {
   return (
     <header className="pt-6 pb-[clamp(3rem,8vh,5.5rem)] sm:pt-10">
-      <div className="flex flex-wrap items-start justify-between gap-x-10 gap-y-6">
+      <div className="flex items-start justify-between gap-x-10 gap-y-6 max-sm:flex-col">
         <div className="min-w-0 flex-1">
           {eyebrow && (
             <div className="eyebrow reveal mb-[clamp(1.4rem,3.5vh,2.4rem)] !tracking-[0.42em]">

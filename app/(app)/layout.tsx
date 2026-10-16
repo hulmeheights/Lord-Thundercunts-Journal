@@ -5,6 +5,7 @@ import { requireSession } from "@/lib/auth/session";
 import { Sidebar } from "@/components/shell/Sidebar";
 import { TabBar } from "@/components/shell/TabBar";
 import { Hud } from "@/components/shell/Hud";
+import { MobileIndex } from "@/components/shell/MobileIndex";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   if (!isConfigured()) redirect("/setup");
@@ -21,9 +22,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           </div>
           <div className="eyebrow !text-[9px]">Private journal</div>
         </Link>
-        <Link href="/settings" className="font-mono text-[9.5px] tracking-[0.22em] text-ink-4 uppercase">
-          Settings
-        </Link>
+        <MobileIndex />
       </div>
       <main className="relative z-[5] px-6 pt-4 pb-32 sm:px-10 lg:ml-[232px] lg:px-[clamp(3rem,6vw,6rem)] lg:pt-10 lg:pb-24">
         <div className="mx-auto max-w-[1160px]">{children}</div>

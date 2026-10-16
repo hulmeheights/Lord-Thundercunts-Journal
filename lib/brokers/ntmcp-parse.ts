@@ -140,10 +140,14 @@ export function parseFills(payloads: unknown[], ctx: { connectionId: string; acc
   return fills;
 }
 
-/** Choose the tool that lists accounts from whatever the server advertises. */
+/** Anything that could act on an account. The journal never calls these, whatever they're named. */
+const WRITE = /(place|cancel|modify|replace|close|liquidat|flatten|submit|exit|bracket|oco|transfer|withdraw|deposit|set_|update|create|delete|start|stop|order(?!_history))/i;
+export const isReadTool = (name: string) => !WRITE.test(name);
+
+/** Choose a read tool from whatever the server advertises. */
 export function pickTool(names: string[], prefs: RegExp[]): string | null {
   for (const re of prefs) {
-    const hit = names.find((n) => re.test(n));
+    const hit = names.filter(isReadTool).find((n) => re.test(n));
     if (hit) return hit;
   }
   return null;
