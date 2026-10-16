@@ -244,4 +244,23 @@ export const MIGRATIONS: { version: number; sql: string }[] = [
       create index if not exists journal_photos_day_idx on journal_photos (day, created_at);
     `,
   },
+  {
+    version: 7,
+    sql: /* sql */ `
+      -- Coach conversations, kept so they follow you across devices. Each one gets a
+      -- short note (what was discussed, what you committed to); new chats read the
+      -- recent notes, never the old transcripts. Deleting a chat deletes its note.
+      create table if not exists coach_chats (
+        id text primary key,
+        title text not null default 'Conversation',
+        messages jsonb not null default '[]',
+        note text,
+        commitments jsonb not null default '[]',
+        noted_count int not null default 0,
+        created_at timestamptz not null default now(),
+        updated_at timestamptz not null default now()
+      );
+      create index if not exists coach_chats_updated_idx on coach_chats (updated_at desc);
+    `,
+  },
 ];

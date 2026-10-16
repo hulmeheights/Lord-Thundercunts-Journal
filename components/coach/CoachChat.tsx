@@ -15,7 +15,13 @@ const SUGGESTIONS = [
   "Am I on track to pass my evaluation?",
 ];
 
-const STORE = "ltj:coach";
+type Past = { id: string; title: string; note: string | null; commitments: string[]; messageCount: number; updatedAt: string };
+
+const when = (iso: string) => {
+  const d = new Date(iso);
+  const days = Math.floor((Date.now() - d.getTime()) / 86_400_000);
+  return days <= 0 ? "Today" : days === 1 ? "Yesterday" : days < 7 ? `${days} days ago` : d.toLocaleDateString(undefined, { day: "numeric", month: "short" });
+};
 
 /** Tiny, safe formatter: paragraphs, bullet lists and **bold** — no HTML injection. */
 function Rich({ text }: { text: string }) {
@@ -55,27 +61,42 @@ function Rich({ text }: { text: string }) {
 
 export function CoachChat() {
   const [messages, setMessages] = useState<Msg[]>([]);
+  const [chatId, setChatId] = useState<string | null>(null);
+  const [past, setPast] = useState<Past[] | null>(null);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const abort = useRef<AbortController | null>(null);
   const bottom = useRef<HTMLDivElement>(null);
 
+  const loadPast = async () => {
+    const r = await fetch("/api/coach/chats").then((x) => x.json()).catch(() => null);
+    if (r?.chats) setPast(r.chats);
+  };
   useEffect(() => {
-    try {
-      const saved = sessionStorage.getItem(STORE);
-      if (saved) setMessages(JSON.parse(saved));
-    } catch {
-      /* ignore */
-    }
+    void loadPast();
   }, []);
   useEffect(() => {
-    try {
-      sessionStorage.setItem(STORE, JSON.stringify(messages.slice(-30)));
-    } catch {
-      /* ignore */
-    }
-    bottom.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+    if (messages.length) bottom.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [messages]);
+
+  const fresh = () => {
+    setMessages([]);
+    setChatId(null);
+    void loadPast();
+  };
+  const open = async (id: string) => {
+    const r = await fetch(`/api/coach/chats/${id}`).then((x) => x.json()).catch(() => null);
+    if (r?.chat) {
+      setChatId(r.chat.id);
+      setMessages(r.chat.messages);
+    }
+  };
+  const forget = async (id: string) => {
+    if (!confirm("Delete this conversation? The coach forgets it completely.")) return;
+    await fetch(`/api/coach/chats/${id}`, { method: "DELETE" });
+    setPast((p) => p?.filter((c) => c.id !== id) ?? null);
+    if (id === chatId) fresh();
+  };
 
   async function send(text: string) {
     const q = text.trim();
@@ -90,10 +111,12 @@ export function CoachChat() {
       const res = await fetch("/api/coach", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ messages: history.slice(-20).filter((m) => m.content.trim()) }),
+        body: JSON.stringify({ chatId, messages: history.filter((m) => m.content.trim()).slice(-40) }),
         signal: ctrl.signal,
       });
       if (!res.ok || !res.body) throw new Error(await res.text());
+      const id = res.headers.get("x-chat-id");
+      if (id) setChatId(id);
       const reader = res.body.getReader();
       const dec = new TextDecoder();
       let acc = "";
@@ -133,6 +156,44 @@ export function CoachChat() {
                 </button>
               ))}
             </div>
+
+            {past && past.length > 0 && (
+              <div className="mt-[clamp(3.5rem,9vh,6rem)]">
+                <div className="mb-3 flex flex-wrap items-baseline justify-between gap-4">
+                  <div className="label">02 — What the coach remembers</div>
+                  <span className="font-mono text-[9.5px] tracking-[0.26em] text-ink-4 uppercase">Delete anything pointless · it&apos;s forgotten</span>
+                </div>
+                <p className="mb-6 max-w-[60ch] font-mono text-[11px] leading-[1.85] text-ink-3">
+                  After each chat the coach keeps a short note: what you talked about and what you committed to. New chats read the recent notes, not the old transcripts.
+                </p>
+                <div className="border-t border-line">
+                  {past.map((c) => (
+                    <div key={c.id} className="grid grid-cols-[1fr_auto] items-start gap-x-6 gap-y-2 border-b border-line py-5">
+                      <button onClick={() => open(c.id)} className="m-row min-w-0 text-left">
+                        <span className="block font-serif text-[clamp(1.1rem,2vw,1.35rem)] leading-[1.3] font-light">{c.title}</span>
+                        {c.note ? (
+                          <span className="mt-2 block max-w-[70ch] font-mono text-[11px] leading-[1.8] text-ink-2">{c.note}</span>
+                        ) : (
+                          <span className="mt-2 block font-mono text-[11px] text-ink-4">Note on its way…</span>
+                        )}
+                        {c.commitments.length > 0 && (
+                          <span className="mt-2 block font-mono text-[10.5px] leading-[1.8] text-ink-3">
+                            <span className="mr-2 text-gold">◆ Committed</span>
+                            {c.commitments.join(" · ")}
+                          </span>
+                        )}
+                        <span className="mt-2 block font-mono text-[9px] tracking-[0.28em] text-ink-4 uppercase">
+                          {when(c.updatedAt)} · {Math.ceil(c.messageCount / 2)} exchange{c.messageCount > 2 ? "s" : ""} · open →
+                        </span>
+                      </button>
+                      <button onClick={() => forget(c.id)} className="pt-1 font-mono text-[9.5px] tracking-[0.26em] text-ink-4 uppercase hover:text-ink" aria-label={`Delete ${c.title}`}>
+                        Delete
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         ) : (
           <div className="border-t border-line">
@@ -184,10 +245,15 @@ export function CoachChat() {
             placeholder="Ask about your trading…"
             className="field-sizing-content max-h-40 min-h-9 flex-1 resize-none bg-transparent py-1.5 font-serif text-[clamp(1.15rem,2vw,1.4rem)] font-light text-ink placeholder:text-ink-4 placeholder:italic focus:outline-none"
           />
-          <div className="flex shrink-0 items-center gap-5 pb-1.5 font-mono text-[9.5px] tracking-[0.3em] uppercase">
+          <div className="flex shrink-0 items-center gap-5 pb-1.5 font-mono text-[9.5px] tracking-[0.3em] uppercase [&_button]:uppercase">
             {messages.length > 0 && !busy && (
-              <button type="button" onClick={() => setMessages([])} className="text-ink-4 hover:text-ink">
+              <button type="button" onClick={fresh} className="text-ink-4 hover:text-ink">
                 New
+              </button>
+            )}
+            {chatId && !busy && (
+              <button type="button" onClick={() => forget(chatId)} className="text-ink-4 hover:text-ink">
+                Delete
               </button>
             )}
             {busy ? (

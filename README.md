@@ -24,7 +24,7 @@ paid, and replays every day, week and month as a full-screen keynote.
 | **Photos in the journal** | Add photos to any journal day (marked-up charts, a screenshot of the moment it went wrong, a notebook page): drop them in on a computer or take one on your phone. They're shrunk on your device, stored **encrypted** (AES-256-GCM) in your own database and only ever shown to you signed in. |
 | **The eye (privacy)** | One tap blurs every figure, P&L, price, chart, money mention and photo, so you can show someone the journal without showing what your accounts are doing. It stays on across pages and reloads until you tap it again. |
 | **Time Capsules** | Letters to your future self that arrive inside a future briefing. |
-| **Thunder, the AI coach** | A chat coach that has read your last 90 days of trades, rule breaks and journal entries, plus AI-written briefing verdicts and journal reflections. |
+| **Thunder, the AI coach** | A chat coach that has read your last 90 days of trades, rule breaks and journal entries. Conversations are saved (on every device) and after each one the coach keeps a short **note**: what you discussed and what you committed to. New chats read the recent notes, not the old transcripts, so it follows up like a real coach without the cost creeping up. Delete any conversation and it's forgotten completely. |
 | **Daily ritual** | Tick off your pre-market, post-session and life habits, plus ad-hoc to-dos for the day. |
 
 ---
