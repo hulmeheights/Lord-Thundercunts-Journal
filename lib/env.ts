@@ -24,9 +24,21 @@ function sanitizeDatabaseUrl(raw: string): string {
   }
 }
 
+/**
+ * The database URL under whatever name Vercel gave it. Connecting Neon with a custom
+ * prefix produces e.g. NEON_DATABASE_URL or STORAGE_POSTGRES_URL; the pooled URL wins.
+ */
+function findDatabaseUrl(): string {
+  const direct = process.env.DATABASE_URL || process.env.POSTGRES_URL;
+  if (direct) return direct;
+  const keys = Object.keys(process.env).filter((k) => /(^|_)(DATABASE_URL|POSTGRES_URL)$/.test(k));
+  const key = keys.sort((a, b) => a.length - b.length)[0];
+  return key ? (process.env[key] ?? "") : "";
+}
+
 export const env = {
   get databaseUrl() {
-    return sanitizeDatabaseUrl(process.env.DATABASE_URL || process.env.POSTGRES_URL || "");
+    return sanitizeDatabaseUrl(findDatabaseUrl());
   },
   /** Legacy: a passphrase set as an env var. New installs set it in-app instead. */
   get ownerPassword() {
