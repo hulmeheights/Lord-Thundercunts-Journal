@@ -185,3 +185,31 @@ export function parseRpcBody(contentType: string, body: string, id: number): unk
 export function ymd(d: Date): string {
   return d.toISOString().slice(0, 10);
 }
+
+/**
+ * Tradovate only lets this sign-in return to a loopback address, so the browser
+ * lands on a page that can't load with the code in its address bar. This reads
+ * the code and state back out of whatever gets pasted: the whole address, the
+ * part after "?", or the bare code.
+ */
+export const LOOPBACK_REDIRECT = "http://localhost:8765/callback";
+
+export function readPastedCallback(input: string): { code: string; state: string | null; error: string | null } | null {
+  const raw = input.trim();
+  if (!raw || raw.length > 4000) return null;
+  let params: URLSearchParams | null = null;
+  try {
+    if (/^https?:\/\//i.test(raw)) params = new URL(raw).searchParams;
+  } catch {
+    /* not a URL */
+  }
+  if (!params && raw.includes("=")) params = new URLSearchParams(raw.replace(/^[^?]*\?/, ""));
+  if (params) {
+    const error = params.get("error");
+    const code = params.get("code");
+    if (error && !code) return { code: "", state: params.get("state"), error };
+    return code ? { code, state: params.get("state"), error: null } : null;
+  }
+  // A bare code: no spaces, URL-safe characters only.
+  return /^[\w.~-]{8,}$/.test(raw) ? { code: raw, state: null, error: null } : null;
+}

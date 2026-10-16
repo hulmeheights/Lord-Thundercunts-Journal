@@ -79,7 +79,11 @@ async function tokenRequest(env: NtEnv, params: Record<string, string>): Promise
   };
   if (!res.ok || !j.access_token) {
     throw new BrokerError(
-      j.error === "invalid_grant" ? "Your Tradovate sign-in has expired. Log in with Tradovate again." : "Tradovate refused the sign-in. Log in with Tradovate again.",
+      params.grant_type === "authorization_code"
+        ? "That code didn't work. Codes last a few minutes and work once: press Log in with Tradovate again and paste the new address straight away."
+        : j.error === "invalid_grant"
+          ? "Your Tradovate sign-in has expired. Log in with Tradovate again."
+          : "Tradovate refused the sign-in. Log in with Tradovate again.",
     );
   }
   const now = Date.now();

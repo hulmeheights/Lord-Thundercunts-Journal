@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { ACCOUNT_TOOLS, FILL_TOOLS, isReadTool, parseAccounts, parseFills, parseRpcBody, pickTool, toolPayload } from "../lib/brokers/ntmcp-parse";
+import { ACCOUNT_TOOLS, FILL_TOOLS, isReadTool, readPastedCallback, parseAccounts, parseFills, parseRpcBody, pickTool, toolPayload } from "../lib/brokers/ntmcp-parse";
 
 const wrap = (v: unknown) => ({ content: [{ type: "text", text: JSON.stringify(v) }] });
 
@@ -53,4 +53,15 @@ test("write tools are never picked or callable", () => {
   for (const w of ["place_order", "cancel_order", "close_position", "liquidate_account", "flatten_all", "modify_order", "close_account"]) assert.equal(isReadTool(w), false, w);
   for (const r of ["fill_history", "order_history", "list_accounts", "my_portfolio", "cash_history"]) assert.equal(isReadTool(r), true, r);
   assert.equal(pickTool(["close_account", "place_order", "fill_history"], ACCOUNT_TOOLS), null);
+});
+
+test("readPastedCallback reads the code from the address, the query, or bare", () => {
+  const url = "http://localhost:8765/callback?code=AbC123_xyz-9&state=s7a7e";
+  assert.deepEqual(readPastedCallback(url), { code: "AbC123_xyz-9", state: "s7a7e", error: null });
+  assert.deepEqual(readPastedCallback("  code=AbC123_xyz-9&state=s7a7e "), { code: "AbC123_xyz-9", state: "s7a7e", error: null });
+  assert.deepEqual(readPastedCallback("localhost:8765/callback?state=q&code=zz%2Fyy"), { code: "zz/yy", state: "q", error: null });
+  assert.deepEqual(readPastedCallback("AbC123_xyz-9"), { code: "AbC123_xyz-9", state: null, error: null });
+  assert.deepEqual(readPastedCallback("http://localhost:8765/callback?error=access_denied&state=s"), { code: "", state: "s", error: "access_denied" });
+  assert.equal(readPastedCallback("hello there"), null);
+  assert.equal(readPastedCallback(""), null);
 });

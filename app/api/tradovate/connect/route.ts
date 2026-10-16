@@ -3,11 +3,18 @@ import { assertSession } from "@/lib/auth/session";
 import { randomToken } from "@/lib/crypto";
 import { authorizeUrl, pkcePair, registerClient } from "@/lib/brokers/ntmcp";
 import { FLOW_COOKIE, FLOW_TTL_S, sealFlow } from "@/lib/brokers/ntmcp-flow";
+import { LOOPBACK_REDIRECT } from "@/lib/brokers/ntmcp-parse";
 import { BrokerError } from "@/lib/brokers/types";
 
 export const dynamic = "force-dynamic";
 
-/** Step 1 of "Log in with Tradovate": register this app, then send you to Tradovate's own sign-in page. */
+/**
+ * Step 1 of "Log in with Tradovate": register, then send you to Tradovate's own
+ * sign-in. Tradovate only allows this sign-in to return to a loopback address,
+ * so the code comes back in the address bar and you paste it into Settings
+ * (step 2, /api/tradovate/finish). Opened in a new tab; the sealed flow cookie
+ * is shared with the Settings tab.
+ */
 export async function GET(request: NextRequest) {
   try {
     await assertSession();
@@ -15,7 +22,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(new URL("/unlock", request.url));
   }
   const env = request.nextUrl.searchParams.get("env") === "live" ? "live" : "demo";
-  const redirectUri = new URL("/api/tradovate/callback", request.nextUrl.origin).toString();
+  const redirectUri = LOOPBACK_REDIRECT;
   try {
     const clientId = await registerClient(env, redirectUri);
     const { verifier, challenge } = pkcePair();
@@ -24,8 +31,7 @@ export async function GET(request: NextRequest) {
     res.cookies.set(FLOW_COOKIE, sealFlow({ state, verifier, clientId, env, redirectUri, exp: Date.now() + FLOW_TTL_S * 1000 }), {
       httpOnly: true,
       secure: request.nextUrl.protocol === "https:",
-      // Lax so it comes back with Tradovate's top-level redirect to the callback.
-      sameSite: "lax",
+      sameSite: "strict",
       path: "/api/tradovate",
       maxAge: FLOW_TTL_S,
     });

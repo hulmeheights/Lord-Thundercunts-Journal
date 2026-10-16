@@ -23,7 +23,7 @@ const OPTIONS: Option[] = [
     title: "Log in with Tradovate",
     who: "Lucid · Tradeify · any Tradovate prop account",
     cost: "Free · beta",
-    blurb: "The same sign-in screen Tradecopia sends you to. You log in on Tradovate's own page and tick view-only; we never see your password.",
+    blurb: "You log in on Tradovate's own page and allow view-only; your password never comes here. One paste, then it syncs by itself.",
   },
   {
     key: "topstep",
@@ -76,30 +76,90 @@ function Steps({ firm }: { firm: Firm }) {
   );
 }
 
-function TradovateLogin() {
-  const [env, setEnv] = useState<"demo" | "live">("demo");
+/**
+ * Two steps, because Tradovate only lets this sign-in return to a localhost
+ * address: sign in on their page (new tab), then paste the address of the page
+ * that didn't load. After that it renews itself on every sync.
+ */
+function TradovateLogin({ initialEnv = "demo" }: { initialEnv?: "demo" | "live" }) {
+  const router = useRouter();
+  const [env, setEnv] = useState<"demo" | "live">(initialEnv);
+  const [opened, setOpened] = useState(false);
+  const [pasted, setPasted] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState<string | null>(null);
+
+  const finish = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/tradovate/finish", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ pasted }) });
+      const j = (await res.json().catch(() => ({}))) as { ok?: boolean; accounts?: number; trades?: number | null; syncError?: string | null; error?: string };
+      if (!res.ok || !j.ok) throw new Error(j.error ?? "Tradovate sign-in failed.");
+      setDone(
+        `● Connected · ${j.accounts ?? 0} account${j.accounts === 1 ? "" : "s"}` +
+          (j.syncError ? ` · first sync: ${j.syncError}` : j.trades !== null && j.trades !== undefined ? ` · ${j.trades} trades synced` : ""),
+      );
+      setPasted("");
+      router.refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Tradovate sign-in failed.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const step = "grid grid-cols-[2rem_1fr] font-mono text-[11px] leading-[1.85] text-ink-2";
+  if (done) return <Note tone="pos">{done}. From now on it syncs by itself, every night and whenever you open the journal.</Note>;
+
   return (
     <div>
       <ol className="mb-7 space-y-2.5">
-        {[
-          "Press the button. Tradovate's own sign-in page opens (web.ninjatrader.com).",
-          "Sign in with the Tradovate login your prop firm gave you, and allow the view-only permissions.",
-          "You come straight back here; accounts and the last year of fills sync on their own.",
-        ].map((s, i) => (
-          <li key={i} className="grid grid-cols-[2rem_1fr] font-mono text-[11px] leading-[1.85] text-ink-2">
-            <span className="text-gold">{String(i + 1).padStart(2, "0")}</span>
-            {s}
-          </li>
-        ))}
+        <li className={step}>
+          <span className="text-gold">01</span>Press the button. Tradovate&apos;s own sign-in opens in a new tab (web.ninjatrader.com). Sign in with the login your prop firm gave you and allow view-only.
+        </li>
+        <li className={step}>
+          <span className="text-gold">02</span>That tab then lands on a page that won&apos;t load (it says localhost). That&apos;s expected: the address holds a one-time code.
+        </li>
+        <li className={step}>
+          <span className="text-gold">03</span>Copy that whole address, come back to this tab, paste it below and press Finish. Do it within ten minutes.
+        </li>
       </ol>
       <div className="flex flex-wrap items-center gap-x-8 gap-y-4">
-        <a href={`/api/tradovate/connect?env=${env}`} className={buttonClass("primary", "lg")} data-magnetic="">
-          Log in with Tradovate →
+        <a href={`/api/tradovate/connect?env=${env}`} target="_blank" rel="noopener" onClick={() => setOpened(true)} className={buttonClass(opened ? "secondary" : "primary", "lg")}>
+          {opened ? "Open sign-in again ↗" : "Log in with Tradovate ↗"}
         </a>
         <Seg value={env} onChange={setEnv} options={[{ value: "demo", label: "Prop / eval" }, { value: "live", label: "Live" }]} />
       </div>
+      <div className={cn("mt-8 transition-opacity duration-500", opened ? "opacity-100" : "opacity-60")}>
+        <label className="mb-2 block font-mono text-[9.5px] tracking-[0.3em] text-ink-4 uppercase" htmlFor="nt-paste">
+          The address from that tab
+        </label>
+        <div className="flex flex-wrap items-end gap-4">
+          <input
+            id="nt-paste"
+            value={pasted}
+            onChange={(e) => setPasted(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && pasted.trim() && !busy && finish()}
+            placeholder="http://localhost:8765/callback?code=…"
+            className={cn(lineInput, "min-w-[240px] flex-1")}
+            autoComplete="off"
+            spellCheck={false}
+          />
+          <Button variant="primary" onClick={finish} disabled={busy || !pasted.trim()}>
+            {busy ? "Connecting…" : "Finish"}
+          </Button>
+        </div>
+        {error && <Note tone="warn" className="mt-4">{error}</Note>}
+      </div>
       <p className="mt-6 max-w-[60ch] font-mono text-[10.5px] leading-[1.8] text-ink-4">
-        Uses NinjaTrader&apos;s self-service sign-in (in beta). Tradovate keeps a sign-in alive for about a day between uses, and the nightly sync uses it; after a long weekend you may be asked to log in again.
+        One time only. Tradovate&apos;s sign-in lasts about a day and every sync renews it, so the nightly sync keeps it alive on its own.
+      </p>
+      <p className="mt-3 max-w-[60ch] font-mono text-[10.5px] leading-[1.8] text-ink-4">
+        <span className="text-gold">◆</span> Tradovate&apos;s screen lists &ldquo;Orders, Alerts, Risks&rdquo; under full access. That&apos;s their fixed permission set for this sign-in and
+        can&apos;t be narrowed. The journal never uses it: any tool that could place, change or close a trade is refused in code before a request is sent, and the
+        sign-in is stored sealed with AES-256-GCM. Disconnect erases it.
       </p>
     </div>
   );
@@ -293,9 +353,9 @@ export function Connections({ connections, accounts, notice = null }: { connecti
                     </div>
                     {c.lastError && <Note tone="warn" className="mt-3">{c.lastError}</Note>}
                     {bad && c.id.startsWith("ntmcp") && (
-                      <a href={`/api/tradovate/connect?env=${c.environment === "live" ? "live" : "demo"}`} className={cn(buttonClass("secondary", "sm"), "mt-4")}>
-                        Log in with Tradovate again
-                      </a>
+                      <div className="mt-6 border-l border-gold pl-5">
+                        <TradovateLogin initialEnv={c.environment === "live" ? "live" : "demo"} />
+                      </div>
                     )}
                   </div>
                   <Button

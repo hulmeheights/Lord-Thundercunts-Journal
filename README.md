@@ -57,7 +57,7 @@ from your other projects, and injects its credentials straight into Vercel. To u
 
 | Route | Cost | Works for | How |
 | --- | --- | --- | --- |
-| **Log in with Tradovate** | Free (beta) | Lucid, Tradeify and any Tradovate prop / eval account | *Settings → Connections → Log in with Tradovate*. You sign in on Tradovate's own page (web.ninjatrader.com) and allow view-only, exactly like Tradecopia. Uses NinjaTrader's self-service OAuth (dynamic registration + PKCE), so no API add-on and no password is ever stored here. Tradovate keeps a sign-in for about a day between uses; the nightly sync uses it, and after a long weekend you may be asked to log in again. |
+| **Log in with Tradovate** | Free (beta) | Lucid, Tradeify and any Tradovate prop / eval account | *Settings → Connections → Log in with Tradovate*. You sign in on Tradovate's own page (web.ninjatrader.com), then paste the address it lands on back into the journal once. Uses NinjaTrader's self-service OAuth (dynamic registration + PKCE), so no API add-on and no password is ever stored here. Tradovate keeps a sign-in for about a day and every sync renews it; the journal syncs twice a day (09:20 and 21:20 UTC) plus whenever you open it, so it stays connected on its own. |
 | **TopstepX username + API key** | The same key Tradecopia uses | Topstep: new Combines and Express accounts appear by themselves | TopstepX → *Settings → API*. If you already linked Tradecopia, the key comes from the same place, and if you already pay for ProjectX API access it costs nothing extra here. |
 | **TopstepX share link** | Free | Topstep Combine and Express Funded | TopstepX → *Performance stats* → **Share** → paste the link. Nothing to log in to. |
 | **Import a file** | Free | Any Tradovate / Rithmic / NinjaTrader / TopstepX account | Drop a CSV export on *Trades → Import*. The format is detected automatically and re-importing never duplicates. |
@@ -71,8 +71,12 @@ trades** — every broker client is restricted to an allowlist of read endpoints
 Tradecopia uses Tradovate's partner OAuth, which is only issued to approved vendors. NinjaTrader (Tradovate's owner)
 now runs a public, self-service OAuth server for its read-only MCP service, and the journal uses that: it registers
 itself, sends you to Tradovate's sign-in with a PKCE challenge, and keeps only an encrypted, rotating refresh token.
-It can only call read tools (accounts, fill history). The flow state travels in a sealed, ten-minute cookie and is
-checked against the `state` Tradovate echoes back. The service is labelled beta by NinjaTrader; if it ever changes,
+Tradovate only lets this sign-in return to a `localhost` address, so after you log in the tab lands on a page that
+can't load; you paste that address into *Settings* once and the journal swaps the code for tokens. It can only call
+read tools (accounts, fill history): Tradovate's consent screen lists orders under full access because that's the fixed
+permission set for this sign-in, but every tool that could act on an account is refused in code before a request is
+made. The flow state travels in a sealed, ten-minute, this-browser-only cookie and is checked against the `state`
+Tradovate echoes back. The refresh token lasts about a day and rotates on every use, so the twice-daily sync keeps it alive. The service is labelled beta by NinjaTrader; if it ever changes,
 CSV import still covers every account.
 
 ---
