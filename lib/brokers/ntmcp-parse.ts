@@ -146,21 +146,28 @@ export function parseFills(payloads: unknown[], ctx: { connectionId: string; acc
   return fills;
 }
 
-/** Anything that could act on an account. The journal never calls these, whatever they're named. */
-const WRITE = /(place|cancel|modify|replace|close|liquidat|flatten|submit|exit|bracket|oco|transfer|withdraw|deposit|set_|update|create|delete|start|stop|order(?!_history))/i;
-export const isReadTool = (name: string) => !WRITE.test(name);
+/**
+ * The ONLY tools the journal may ever call, by exact name. Each one reads history
+ * or balances. Anything not on this list (placing, changing, cancelling or closing
+ * orders, positions, alerts, risk settings, accounts) is refused before a request
+ * is made, whatever the server offers. An unknown name fails safe: no sync, no call.
+ */
+export const READ_TOOLS = {
+  accounts: ["list_accounts", "accounts", "get_accounts", "my_accounts", "account_list", "my_portfolio"],
+  fills: ["fill_history"],
+} as const;
+export const ACCOUNT_TOOLS = READ_TOOLS.accounts;
+export const FILL_TOOLS = READ_TOOLS.fills;
+const ALLOWED = new Set<string>([...READ_TOOLS.accounts, ...READ_TOOLS.fills]);
+/** Second, independent check: no allowed name may even contain a word that acts on an account. */
+const WRITE = /(place|cancel|modify|replace|close|liquidat|flatten|submit|exit|bracket|oco|transfer|withdraw|deposit|set|update|create|delete|start|stop|reset|risk|alert|order)/i;
+export const isReadTool = (name: string) => ALLOWED.has(name) && !WRITE.test(name);
 
-/** Choose a read tool from whatever the server advertises. */
-export function pickTool(names: string[], prefs: RegExp[]): string | null {
-  for (const re of prefs) {
-    const hit = names.filter(isReadTool).find((n) => re.test(n));
-    if (hit) return hit;
-  }
-  return null;
+/** The first allowed tool, in our order of preference, that the server actually offers. */
+export function pickTool(offered: string[], preferred: readonly string[]): string | null {
+  const have = new Set(offered);
+  return preferred.find((n) => have.has(n) && isReadTool(n)) ?? null;
 }
-
-export const ACCOUNT_TOOLS = [/^(list_)?accounts?(_list)?$/i, /^my_accounts?$/i, /account/i, /^my_portfolio$/i, /portfolio/i];
-export const FILL_TOOLS = [/^fill_history$/i, /fills?/i, /executions?/i];
 
 /** Reads a Streamable HTTP reply: plain JSON, or SSE whose `data:` lines carry the JSON-RPC message. */
 export function parseRpcBody(contentType: string, body: string, id: number): unknown {

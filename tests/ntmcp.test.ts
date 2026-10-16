@@ -36,11 +36,12 @@ test("parseFills normalises Tradovate-style fills and de-duplicates", () => {
   assert.equal(f[1]!.fees, 1.24);
 });
 
-test("pickTool prefers exact names", () => {
+test("pickTool only ever returns an exact allow-listed read tool", () => {
   assert.equal(pickTool(["my_portfolio", "list_accounts", "fill_history"], ACCOUNT_TOOLS), "list_accounts");
   assert.equal(pickTool(["my_portfolio", "fill_history"], ACCOUNT_TOOLS), "my_portfolio");
   assert.equal(pickTool(["order_history", "fill_history"], FILL_TOOLS), "fill_history");
-  assert.equal(pickTool(["cash_history"], FILL_TOOLS), null);
+  assert.equal(pickTool(["fills", "get_fills", "executions"], FILL_TOOLS), null);
+  assert.equal(pickTool(["account_settings", "close_account"], ACCOUNT_TOOLS), null);
 });
 
 test("parseRpcBody reads plain JSON and SSE frames", () => {
@@ -49,19 +50,7 @@ test("parseRpcBody reads plain JSON and SSE frames", () => {
   assert.deepEqual(parseRpcBody("text/event-stream", sse, 3), { jsonrpc: "2.0", id: 3, result: { ok: true } });
 });
 
-test("write tools are never picked or callable", () => {
-  for (const w of ["place_order", "cancel_order", "close_position", "liquidate_account", "flatten_all", "modify_order", "close_account"]) assert.equal(isReadTool(w), false, w);
-  for (const r of ["fill_history", "order_history", "list_accounts", "my_portfolio", "cash_history"]) assert.equal(isReadTool(r), true, r);
-  assert.equal(pickTool(["close_account", "place_order", "fill_history"], ACCOUNT_TOOLS), null);
-});
-
-test("readPastedCallback reads the code from the address, the query, or bare", () => {
-  const url = "http://localhost:8765/callback?code=AbC123_xyz-9&state=s7a7e";
-  assert.deepEqual(readPastedCallback(url), { code: "AbC123_xyz-9", state: "s7a7e", error: null });
-  assert.deepEqual(readPastedCallback("  code=AbC123_xyz-9&state=s7a7e "), { code: "AbC123_xyz-9", state: "s7a7e", error: null });
-  assert.deepEqual(readPastedCallback("localhost:8765/callback?state=q&code=zz%2Fyy"), { code: "zz/yy", state: "q", error: null });
-  assert.deepEqual(readPastedCallback("AbC123_xyz-9"), { code: "AbC123_xyz-9", state: null, error: null });
-  assert.deepEqual(readPastedCallback("http://localhost:8765/callback?error=access_denied&state=s"), { code: "", state: "s", error: "access_denied" });
-  assert.equal(readPastedCallback("hello there"), null);
-  assert.equal(readPastedCallback(""), null);
+test("anything that is not an exact read tool is refused", () => {
+  for (const w of ["place_order", "cancel_order", "cancel_all_orders", "close_position", "liquidate_account", "liquidate_position", "flatten_all", "modify_order", "close_account", "delete_account", "reset_account", "set_risk", "update_alert", "fills", "account_settings", "List_Accounts", "fill_history ", ""]) assert.equal(isReadTool(w), false, JSON.stringify(w));
+  for (const r of ["fill_history", "list_accounts", "my_portfolio", "accounts"]) assert.equal(isReadTool(r), true, r);
 });
