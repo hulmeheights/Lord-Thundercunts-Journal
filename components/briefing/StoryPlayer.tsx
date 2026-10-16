@@ -3,10 +3,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "motion/react";
-import { ChevronLeft, ChevronRight, Pause, Play, X } from "lucide-react";
 import type { BriefingWindow, Slide } from "@/lib/analytics/briefing";
 import { seenKey } from "@/components/today/StoryRings";
-import { SlideView, slideTheme, type AiState } from "./slides";
+import { cn } from "@/lib/cn";
+import { SLIDE_NAMES, SlideView, type AiState } from "./slides";
 
 const DURATION: Record<Slide["kind"], number> = {
   cover: 5500,
@@ -156,121 +156,85 @@ export function StoryPlayer({
     else go(1);
   };
 
-  const theme = slideTheme(slide);
+  const pad = (n: number) => String(n).padStart(2, "0");
 
   return (
-    <div className="fixed inset-0 z-50 overflow-hidden bg-black">
-      {/* Blurred stage lighting for large screens */}
+    <div className="stage fixed inset-0 z-50 overflow-hidden bg-bg text-ink" data-lenis-prevent>
+      <div aria-hidden className="grain pointer-events-none absolute inset-0" />
       <motion.div
-        key={`bg-${index}`}
-        className="absolute inset-0 hidden sm:block"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ duration: 1.2 }}
-        style={{
-          background: `radial-gradient(60% 60% at 30% 30%, ${theme[0]}40, transparent 70%), radial-gradient(50% 50% at 75% 70%, ${theme[1]}35, transparent 70%)`,
+        drag="y"
+        dragConstraints={{ top: 0, bottom: 0 }}
+        dragElastic={{ top: 0, bottom: 0.5 }}
+        onDragEnd={(_, info) => {
+          if (info.offset.y > 120) close();
         }}
-      />
-
-      <div className="relative mx-auto flex h-full w-full items-center justify-center sm:py-6">
-        <button
-          onClick={() => go(-1)}
-          className="mr-6 hidden h-11 w-11 place-items-center rounded-full bg-fill-2 text-ink-2 backdrop-blur hover:text-ink disabled:opacity-20 sm:grid"
-          disabled={index === 0}
-          aria-label="Previous"
-        >
-          <ChevronLeft size={22} />
-        </button>
-
-        <motion.div
-          drag="y"
-          dragConstraints={{ top: 0, bottom: 0 }}
-          dragElastic={{ top: 0, bottom: 0.6 }}
-          onDragEnd={(_, info) => {
-            if (info.offset.y > 120) close();
-          }}
-          className="noise relative h-full w-full overflow-hidden bg-[#050507] sm:aspect-[9/16] sm:h-[min(92vh,860px)] sm:w-auto sm:rounded-[3px] sm:border sm:border-white/10 sm:shadow-[0_40px_120px_-20px_rgba(0,0,0,0.9)]"
-          onPointerDown={onPointerDown}
-          onPointerUp={onPointerUp}
-          onPointerCancel={() => holdTimer.current && clearTimeout(holdTimer.current)}
-        >
-          {/* Animated mesh background */}
-          <AnimatePresence>
-            <motion.div
-              key={`mesh-${index}`}
-              className="absolute inset-0"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.9 }}
-            >
-              <div
-                className="absolute -top-1/4 -left-1/4 h-[80%] w-[90%] animate-drift rounded-full blur-3xl"
-                style={{ background: `radial-gradient(closest-side, ${theme[0]}66, transparent)` }}
+        className="relative flex h-full w-full flex-col px-[clamp(1.25rem,5vw,5rem)] pt-[calc(clamp(1rem,3vh,2rem)+var(--safe-top))] pb-[calc(clamp(1rem,3vh,2rem)+var(--safe-bottom))]"
+        onPointerDown={onPointerDown}
+        onPointerUp={onPointerUp}
+        onPointerCancel={() => holdTimer.current && clearTimeout(holdTimer.current)}
+      >
+        {/* Chapter rule: one hairline per slide, the current one filling in ink. */}
+        <div className="flex gap-1.5" aria-hidden>
+          {slides.map((_, i) => (
+            <div key={i} className="relative h-px flex-1 bg-line-2">
+              <i
+                className={cn("absolute inset-y-0 left-0 block", i === index ? "bg-gold" : "bg-ink-2")}
+                style={{ width: `${i < index ? 100 : i === index ? (duration ? progress * 100 : 100) : 0}%` }}
               />
-              <div
-                className="absolute -right-1/4 -bottom-1/4 h-[70%] w-[90%] animate-drift rounded-full blur-3xl"
-                style={{ background: `radial-gradient(closest-side, ${theme[1]}55, transparent)`, animationDelay: "-7s" }}
-              />
-            </motion.div>
-          </AnimatePresence>
+            </div>
+          ))}
+        </div>
 
-          {/* Progress */}
-          <div className="absolute inset-x-0 top-0 z-20 px-3 pt-[calc(10px+var(--safe-top))]">
-            <div className="flex gap-1">
-              {slides.map((_, i) => (
-                <div key={i} className="h-[3px] flex-1 overflow-hidden rounded-full bg-white/20">
-                  <div
-                    className="h-full rounded-full bg-white"
-                    style={{ width: `${i < index ? 100 : i === index ? (duration ? progress * 100 : 100) : 0}%` }}
-                  />
-                </div>
-              ))}
+        <header className="mt-4 flex items-start justify-between gap-6 font-mono text-[9.5px] tracking-[0.34em] uppercase">
+          <div className="min-w-0">
+            <div className="text-ink">
+              Replay <span className="text-gold">◆</span> <span className="text-ink-3">{w.title}</span>
             </div>
-            <div className="mt-3 flex items-center justify-between">
-              <div className="min-w-0">
-                <div className="text-[13px] font-semibold text-white">{w.title}</div>
-                <div className="truncate text-[11.5px] text-white/60">{w.label}</div>
-              </div>
-              <div className="flex items-center gap-1">
-                <button
-                  onClick={() => setPaused((p) => !p)}
-                  className="grid h-9 w-9 place-items-center rounded-full text-white/80 hover:bg-white/10"
-                  aria-label={paused ? "Play" : "Pause"}
-                >
-                  {paused ? <Play size={17} /> : <Pause size={17} />}
-                </button>
-                <button onClick={close} className="grid h-9 w-9 place-items-center rounded-full text-white/80 hover:bg-white/10" aria-label="Close">
-                  <X size={19} />
-                </button>
-              </div>
-            </div>
+            <div className="mt-1.5 truncate text-ink-4">{w.label}</div>
           </div>
+          <div className="flex shrink-0 items-center gap-6">
+            <span className="num text-ink-3">
+              {pad(index + 1)} / {pad(slides.length)}
+            </span>
+            <button onClick={() => setPaused((p) => !p)} className="text-ink-3 hover:text-ink" aria-label={paused ? "Play" : "Pause"}>
+              {paused ? "▶ Play" : "‖ Pause"}
+            </button>
+            <button onClick={close} className="text-[13px] tracking-normal text-ink-3 hover:text-ink" aria-label="Close">
+              ×
+            </button>
+          </div>
+        </header>
 
-          {/* Slide */}
+        <div className="relative mx-auto flex min-h-0 w-full max-w-6xl flex-1 py-[clamp(1.5rem,5vh,3.5rem)]">
           <AnimatePresence mode="wait">
             <motion.div
               key={index}
-              className="absolute inset-0 z-10 flex flex-col px-6 pt-[calc(92px+var(--safe-top))] pb-[calc(28px+var(--safe-bottom))] sm:px-8"
-              initial={{ opacity: 0, scale: 1.04, filter: "blur(12px)" }}
-              animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
-              exit={{ opacity: 0, scale: 0.97, filter: "blur(10px)" }}
-              transition={{ duration: 0.55, ease: [0.16, 1, 0.3, 1] }}
+              className="flex min-h-0 w-full"
+              initial={{ opacity: 0, y: 26 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -14 }}
+              transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
             >
               <SlideView slide={slide} ai={ai} window={w} onReplay={() => jump(0)} />
             </motion.div>
           </AnimatePresence>
-        </motion.div>
+        </div>
 
-        <button
-          onClick={() => go(1)}
-          className="ml-6 hidden h-11 w-11 place-items-center rounded-full bg-fill-2 text-ink-2 backdrop-blur hover:text-ink disabled:opacity-20 sm:grid"
-          disabled={index === slides.length - 1}
-          aria-label="Next"
-        >
-          <ChevronRight size={22} />
-        </button>
-      </div>
+        <footer className="flex items-center justify-between gap-6 font-mono text-[9.5px] tracking-[0.3em] uppercase">
+          <span className="text-gold">
+            {pad(index + 1)} — <span className="text-ink-3">{SLIDE_NAMES[slide.kind]}</span>
+          </span>
+          <span className="flex items-center gap-6 text-ink-4">
+            <span className="hidden md:inline">← → to move · space to pause · hold to read</span>
+            <button onClick={() => go(-1)} disabled={index === 0} className="hover:text-ink disabled:opacity-30" aria-label="Previous">
+              ← Back
+            </button>
+            <button onClick={() => go(1)} disabled={index === slides.length - 1} className="text-ink-2 hover:text-ink disabled:opacity-30" aria-label="Next">
+              Next →
+            </button>
+          </span>
+        </footer>
+      </motion.div>
     </div>
   );
 }
