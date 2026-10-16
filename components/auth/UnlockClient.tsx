@@ -91,7 +91,8 @@ export function UnlockClient({ hasPasskeys, passkeyOnly, name }: { hasPasskeys: 
       </div>
 
       <p className={cn(RISE, "mt-6 max-w-[40ch] font-mono text-[10.5px] leading-[1.85] text-ink-4")} style={at(320)}>
-        Broker connections are read-only and sealed with AES-256-GCM. Nobody, not even this app, can place a trade with them.
+        One journal, every device: the same passphrase opens it anywhere, and each device can add its own Face ID in Settings. Broker connections are read-only
+        and sealed with AES-256-GCM.
       </p>
     </div>
   );
