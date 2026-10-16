@@ -9,7 +9,7 @@ export function Bars({ data, format = (v: number) => fmtMoney(v, { sign: true })
   return (
     <div className={cn("divide-y divide-line border-y border-line", className)}>
       {data.map((d, i) => (
-        <div key={d.label} className="reveal grid grid-cols-[minmax(4.5rem,9rem)_1fr_auto] items-center gap-4 py-3" style={{ "--d": `${i * 40}ms` } as React.CSSProperties}>
+        <div key={d.label} className="reveal grid grid-cols-[minmax(4.5rem,14rem)_1fr_auto] items-center gap-4 py-3" style={{ "--d": `${i * 40}ms` } as React.CSSProperties}>
           <div className="truncate font-mono text-[10.5px] tracking-[0.14em] text-ink-3 uppercase">{d.label}</div>
           <div className="relative h-[2px] bg-line">
             <i
