@@ -120,15 +120,15 @@ export function PropForm({ initial, accounts }: { initial: PropSettings; account
       <div className="mt-10 grid grid-cols-2 gap-x-6 gap-y-7 lg:grid-cols-3">
         <NumField label="Starting balance" prefix="$" value={p.startBalance} onChange={(v) => set({ startBalance: v ?? 0, preset: "custom" })} />
         <NumField label="Profit target" prefix="$" value={p.profitTarget} nullable onChange={(v) => set({ profitTarget: v, preset: "custom" })} />
-        <NumField label="Max loss · trailing" prefix="$" value={p.maxLossLimit} onChange={(v) => set({ maxLossLimit: v ?? 0, preset: "custom" })} />
-        <NumField label="Daily loss limit" prefix="$" value={p.dailyLossLimit} nullable onChange={(v) => set({ dailyLossLimit: v, preset: "custom" })} />
+        <NumField label="Max loss" prefix="$" value={p.maxLossLimit} onChange={(v) => set({ maxLossLimit: v ?? 0, preset: "custom" })} />
+        <NumField label="Daily limit" prefix="$" value={p.dailyLossLimit} nullable onChange={(v) => set({ dailyLossLimit: v, preset: "custom" })} />
         <NumField label="Best day ≤" suffix="%" value={p.consistencyPct} nullable onChange={(v) => set({ consistencyPct: v, preset: "custom" })} />
         <NumField label="Max contracts" suffix="mini" value={p.maxContracts} nullable onChange={(v) => set({ maxContracts: v, preset: "custom" })} />
       </div>
 
       {accounts.length > 0 && (
         <div className="mt-10">
-          <span className={eyebrow}>Accounts to track · none selected = all</span>
+          <span className={eyebrow}>Track accounts · none = all</span>
           <div className="flex flex-wrap gap-2.5">
             {accounts.map((a) => {
               const on = p.accountIds.includes(a.id);
@@ -153,14 +153,15 @@ export function PropForm({ initial, accounts }: { initial: PropSettings; account
       )}
 
       <p className="mt-10 max-w-[64ch] font-mono text-[11px] leading-[1.85] text-ink-4">
-        Presets follow Topstep&apos;s published Combine rules: an end-of-day trailing max loss that locks at your starting balance, and a 50%
-        consistency target. Firms change their rules — check them against your dashboard.
+        The max loss trails your best end-of-day balance and locks at the starting balance. Presets follow Topstep&apos;s published Combine
+        rules, with a 50% consistency target. Firms change their rules — check them against your dashboard.
       </p>
 
       <div className="mt-9 flex flex-wrap items-center gap-x-7 gap-y-4">
         <Btn
           variant="primary"
           size="lg"
+          className="max-sm:w-full"
           disabled={pending}
           onClick={() =>
             start(async () => {

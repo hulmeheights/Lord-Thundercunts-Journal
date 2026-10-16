@@ -26,7 +26,8 @@ export default async function GuardianPage() {
   ]);
 
   const st = prop.enabled ? propStatus(trades, prop, tz) : null;
-  const mc = st ? simulateProp(st, prop, { sims: 4000, horizon: 30 }) : null;
+  // A breached account has no future to simulate: every path would start below the line.
+  const mc = st && !st.breached ? simulateProp(st, prop, { sims: 4000, horizon: 30 }) : null;
   const target = st && prop.profitTarget !== null ? prop.startBalance + (st.requiredProfit ?? prop.profitTarget) : null;
   const tracked = prop.accountIds.length === 1 ? accounts.find((a) => a.id === prop.accountIds[0]) : null;
 
@@ -44,7 +45,7 @@ export default async function GuardianPage() {
 
       {st ? (
         <>
-          <StatusSection prop={prop} st={st} brokerBalance={tracked?.balance ?? null} n={++n} />
+          <StatusSection prop={prop} st={st} mc={mc} brokerBalance={tracked?.balance ?? null} n={++n} />
           <OddsSection prop={prop} st={st} mc={mc} target={target} n={++n} />
           <GuardianQuote />
         </>

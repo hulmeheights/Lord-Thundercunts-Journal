@@ -221,29 +221,37 @@ export function TradeEditor({ trade, vocab, defaultRisk }: { trade: Trade; vocab
       </div>
 
       {(trade.source === "manual" || trade.source === "sample") && (
-        <div className="mt-[clamp(3rem,8vh,5rem)] flex flex-wrap items-center gap-x-6 gap-y-3">
-          <Btn
-            variant={confirmDelete ? "secondary" : "ghost"}
-            size="sm"
-            disabled={deleting}
-            className={cn(confirmDelete ? "border-ink text-ink" : "px-0")}
-            onClick={() => {
-              if (!confirmDelete) {
-                setConfirmDelete(true);
-                return;
-              }
-              startDelete(async () => {
-                await removeTrade(trade.id);
-                router.push("/trades");
-              });
-            }}
-          >
-            {deleting ? "Deleting…" : confirmDelete ? "Yes, delete it" : "Delete this trade"}
-          </Btn>
-          {confirmDelete && !deleting && (
-            <button type="button" onClick={() => setConfirmDelete(false)} className="font-mono text-[9.5px] tracking-[0.24em] text-ink-4 uppercase transition-colors hover:text-ink">
-              Keep it
+        <div className="mt-[clamp(3.5rem,9vh,5.5rem)] flex min-h-10 flex-wrap items-center gap-x-8 gap-y-4">
+          {!confirmDelete ? (
+            <button
+              type="button"
+              onClick={() => setConfirmDelete(true)}
+              className="m-link pb-1 font-mono text-[9.5px] tracking-[0.28em] text-ink-4 uppercase transition-colors duration-300 hover:text-ink"
+            >
+              Delete this trade
             </button>
+          ) : (
+            <>
+              <span className="font-mono text-[11px] leading-[1.8] text-ink-3">Gone for good — notes and all.</span>
+              <Btn
+                variant="secondary"
+                size="sm"
+                disabled={deleting}
+                onClick={() =>
+                  startDelete(async () => {
+                    await removeTrade(trade.id);
+                    router.push("/trades");
+                  })
+                }
+              >
+                {deleting ? "Deleting…" : "Yes, delete it"}
+              </Btn>
+              {!deleting && (
+                <button type="button" onClick={() => setConfirmDelete(false)} className="font-mono text-[9.5px] tracking-[0.28em] text-ink-4 uppercase transition-colors duration-300 hover:text-ink">
+                  Keep it
+                </button>
+              )}
+            </>
           )}
         </div>
       )}

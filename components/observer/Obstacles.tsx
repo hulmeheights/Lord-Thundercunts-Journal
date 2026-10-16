@@ -6,6 +6,7 @@ import type { Obstacle } from "@/lib/analytics/observer";
 import { Tag } from "@/components/m";
 import { fmtMoney } from "@/lib/format";
 import { cn } from "@/lib/cn";
+import { Figures } from "./ui";
 
 const EASE = [0.16, 1, 0.3, 1] as const;
 const GRID = "grid grid-cols-1 gap-x-[clamp(1.2rem,4vw,3.5rem)] md:grid-cols-[2.5rem_minmax(0,1fr)_minmax(0,1.4fr)_7.5rem]";
@@ -36,7 +37,7 @@ function ObstacleRow({ o, rank, max, d }: { o: Obstacle; rank: number; max: numb
         </span>
         <span className="font-serif text-[clamp(1.3rem,2.6vw,1.9rem)] leading-[1.2] font-normal tracking-[-0.01em]">{o.title}</span>
         <span className="font-mono text-[12px] leading-[1.9] tracking-[0.02em] text-ink-2">
-          {o.detail}
+          <Figures text={o.detail} />
           <span className="mt-3 block font-mono text-[9.5px] tracking-[0.28em] text-ink-4 uppercase transition-colors duration-300 group-hover:text-ink-2">
             {open ? "− Close the evidence" : "+ The evidence"}
           </span>

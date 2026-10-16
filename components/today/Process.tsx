@@ -26,14 +26,14 @@ export function Process({ prepare, discipline, reflect, streak }: { prepare: num
         </Aside>
       }
     >
-      <div className="border-b border-line">
+      {/* Each row's hairline is its own progress track: the jade fills along it. */}
+      <div className="border-t border-line">
         {ROWS.map((r, i) => {
           const val = Math.max(0, Math.min(1, v[r.key]));
           const done = val >= 0.999;
           return (
-            <div key={r.key} className="reveal border-t border-line" style={{ "--d": `${i * 80}ms` } as React.CSSProperties}>
-             <div className="m-row py-[clamp(1.4rem,3.4vh,2.1rem)]">
-              <div className="grid grid-cols-[2.2rem_minmax(0,1fr)_auto] items-baseline gap-x-3 sm:grid-cols-[2.5rem_minmax(0,1fr)_auto] sm:gap-x-4">
+            <div key={r.key} className="reveal relative" style={{ "--d": `${i * 80}ms` } as React.CSSProperties}>
+              <div className="m-row grid grid-cols-[2.2rem_minmax(0,1fr)_auto] items-baseline gap-x-3 py-[clamp(1.5rem,3.6vh,2.2rem)] sm:grid-cols-[2.5rem_minmax(0,1fr)_auto] sm:gap-x-4">
                 <span className="font-mono text-[11px] tracking-[0.1em] text-gold">{String(i + 1).padStart(2, "0")}</span>
                 <div className="min-w-0">
                   <div className="font-serif text-[clamp(1.3rem,2.4vw,1.75rem)] leading-[1.2] font-normal tracking-[-0.01em]">{r.title}</div>
@@ -41,13 +41,12 @@ export function Process({ prepare, discipline, reflect, streak }: { prepare: num
                 </div>
                 <span className={cn("num text-[13px]", done ? "text-pos" : "text-ink-3")}>{Math.round(val * 100)}%</span>
               </div>
-              <div className="mt-5 h-px bg-line sm:ml-[3.5rem]">
+              <div aria-hidden className="absolute inset-x-0 bottom-0 h-px bg-line">
                 <div
                   className="h-px w-0 bg-pos transition-[width] duration-[1600ms] ease-[cubic-bezier(0.16,1,0.3,1)] [.in_&]:w-[var(--w)]"
                   style={{ "--w": `${val * 100}%`, transitionDelay: `${300 + i * 120}ms` } as React.CSSProperties}
                 />
               </div>
-             </div>
             </div>
           );
         })}

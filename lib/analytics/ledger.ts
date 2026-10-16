@@ -47,8 +47,11 @@ const round2 = (n: number) => Math.round(n * 100) / 100;
 export type FirmLedger = {
   firm: string;
   spent: number;
+  /** spent less refunds: what this firm has actually cost. */
+  cost: number;
   received: number;
   paidOut: number;
+  refunds: number;
   net: number;
   evals: number;
   payouts: number;
@@ -69,20 +72,22 @@ export type LedgerSummary = {
   count: number;
   /** Everything that went out: evaluations, resets, activations, subscriptions, other. */
   spent: number;
+  /** What the evals have actually cost: spent less refunds. paidOut − cost = net. */
+  cost: number;
   /** Everything that came back: payouts plus refunds. */
   received: number;
   /** Payouts only. */
   paidOut: number;
   refunds: number;
   net: number;
-  /** net / spent, or null before anything has been spent. */
+  /** net / cost, or null before anything has been spent. */
   roi: number | null;
   /** Evaluation accounts bought. */
   evals: number;
   resets: number;
   activations: number;
   payouts: number;
-  /** What each payout has cost on average (spent / payouts), null before the first payout. */
+  /** What each payout has cost on average (cost / payouts), null before the first payout. */
   costPerPayout: number | null;
   /** How much a further payout would need to be to square the ledger (0 when already square). */
   toBreakEven: number;
@@ -136,7 +141,7 @@ export function summarizeLedger(entries: readonly LedgerEntry[]): LedgerSummary 
     if (!lastDay || e.day > lastDay) lastDay = e.day;
 
     const key = firmKey(e.firm) || "other";
-    const f = firms.get(key) ?? { firm: e.firm.trim().replace(/\s+/g, " ") || "Other", spent: 0, received: 0, paidOut: 0, net: 0, evals: 0, payouts: 0, entries: 0 };
+    const f = firms.get(key) ?? { firm: e.firm.trim().replace(/\s+/g, " ") || "Other", spent: 0, cost: 0, received: 0, paidOut: 0, refunds: 0, net: 0, evals: 0, payouts: 0, entries: 0 };
     f.entries++;
     if (inflow) f.received += amt;
     else f.spent += amt;
@@ -144,6 +149,7 @@ export function summarizeLedger(entries: readonly LedgerEntry[]): LedgerSummary 
       f.paidOut += amt;
       f.payouts++;
     }
+    if (e.kind === "refund") f.refunds += amt;
     if (e.kind === "evaluation") f.evals++;
     firms.set(key, f);
 
@@ -155,7 +161,15 @@ export function summarizeLedger(entries: readonly LedgerEntry[]): LedgerSummary 
   }
 
   const byFirm = [...firms.values()]
-    .map((f) => ({ ...f, spent: round2(f.spent), received: round2(f.received), paidOut: round2(f.paidOut), net: round2(f.received - f.spent) }))
+    .map((f) => ({
+      ...f,
+      spent: round2(f.spent),
+      cost: round2(f.spent - f.refunds),
+      received: round2(f.received),
+      paidOut: round2(f.paidOut),
+      refunds: round2(f.refunds),
+      net: round2(f.received - f.spent),
+    }))
     // Most money moved first: that's the relationship that matters most.
     .sort((a, b) => b.spent + b.received - (a.spent + a.received) || a.firm.localeCompare(b.firm));
 
@@ -181,21 +195,23 @@ export function summarizeLedger(entries: readonly LedgerEntry[]): LedgerSummary 
 
   for (const k of LEDGER_KINDS) byKind[k].total = round2(byKind[k].total);
   const net = round2(received - spent);
+  const cost = round2(spent - refunds);
   const payouts = byKind.payout.count;
 
   return {
     count: entries.length,
     spent: round2(spent),
+    cost,
     received: round2(received),
     paidOut: round2(paidOut),
     refunds: round2(refunds),
     net,
-    roi: spent > 0 ? net / spent : null,
+    roi: cost > 0 ? net / cost : null,
     evals: byKind.evaluation.count,
     resets: byKind.reset.count,
     activations: byKind.activation.count,
     payouts,
-    costPerPayout: payouts > 0 ? round2(spent / payouts) : null,
+    costPerPayout: payouts > 0 ? round2(Math.max(0, cost) / payouts) : null,
     toBreakEven: net < 0 ? -net : 0,
     firstDay,
     lastDay,

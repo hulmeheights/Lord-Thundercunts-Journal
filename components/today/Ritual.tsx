@@ -5,6 +5,7 @@ import { cn } from "@/lib/cn";
 import { saveJournal, toggleChecklistItem } from "@/lib/actions/journal";
 import type { DayTask, RitualItem } from "@/lib/types";
 import { Aside, GroupHead, Split } from "./Layout";
+import { Rise } from "./Rise";
 
 const GROUPS: { key: RitualItem["group"]; label: string }[] = [
   { key: "pre", label: "Before the open" },
@@ -136,17 +137,17 @@ export function Ritual({
         if (!rows.length) return null;
         const gDone = rows.filter((i) => checked[i.id]).length;
         return (
-          <div key={g.key} className="reveal">
+          <Rise key={g.key}>
             <GroupHead right={`${gDone} / ${rows.length}`}>{g.label}</GroupHead>
             <div className="border-b border-line">
               {rows.map((i) => (
                 <CheckRow key={i.id} i={++n} done={!!checked[i.id]} label={i.label} onToggle={() => toggle(i.id)} />
               ))}
             </div>
-          </div>
+          </Rise>
         );
       })}
-      <div className="reveal">
+      <Rise>
         <GroupHead right={tasks.length ? `${tasks.filter((t) => t.done).length} / ${tasks.length}` : undefined}>Today&apos;s to-dos</GroupHead>
         <div>
           {tasks.map((t) => (
@@ -184,7 +185,7 @@ export function Ritual({
             </button>
           </form>
         </div>
-      </div>
+      </Rise>
     </div>
   );
 

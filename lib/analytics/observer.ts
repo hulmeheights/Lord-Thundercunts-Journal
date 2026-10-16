@@ -26,7 +26,7 @@ export const OBSTACLE_LABELS: Record<ObstacleKey, string> = {
   revenge: "Revenge trading after losses",
   "holding-losers": "Holding losers too long",
   "cutting-winners": "Cutting winners too early",
-  "rule-breaks": "Breaking my own rules",
+  "rule-breaks": "Breaking the rules already set",
   "bad-hours": "Trading at the wrong times",
   "sizing-up": "Sizing up after losses",
   unprepared: "Trading without preparing",
@@ -315,6 +315,47 @@ export function checkOrder(key: ObstacleKey, p: OrderParams, day: string, ctx: O
     case "cutting-winners":
       return out("self", "The data can't see where the target was. Only you can say.");
   }
+}
+
+/** Tallies a run of order checks: how many were kept, broken, and actually tested. */
+export function tallyChecks(checks: OrderCheck[]): { kept: number; broken: number; tested: number } {
+  const kept = checks.filter((c) => c.verdict === "kept").length;
+  const broken = checks.filter((c) => c.verdict === "broken").length;
+  return { kept, broken, tested: kept + broken };
+}
+
+/**
+ * What of an instruction is already enforced: rules at least as strict as the
+ * patch, and its checklist line already on the list. `complete` means "Hold
+ * them to it" would change nothing.
+ */
+export function instructionInPlace(ins: Pick<Instruction, "rulesPatch" | "checklist">, rules: TradingRules, ritual: RitualItem[]): { done: string[]; complete: boolean } {
+  const done: string[] = [];
+  let missing = 0;
+  const p = ins.rulesPatch;
+  const atMost = (cur: number | null | undefined, want: number) => cur != null && cur <= want;
+  if (p?.maxTradesPerDay != null) {
+    if (atMost(rules.maxTradesPerDay, p.maxTradesPerDay)) done.push(`Rule: max ${rules.maxTradesPerDay} trades a day`);
+    else missing++;
+  }
+  if (p?.maxContracts != null) {
+    if (atMost(rules.maxContracts, p.maxContracts)) done.push(`Rule: max ${rules.maxContracts} contracts`);
+    else missing++;
+  }
+  if (p?.stopAfterConsecutiveLosses != null) {
+    if (atMost(rules.stopAfterConsecutiveLosses, p.stopAfterConsecutiveLosses)) done.push(`Rule: stop after ${rules.stopAfterConsecutiveLosses} losses in a row`);
+    else missing++;
+  }
+  if (p?.cooldownMinutesAfterLoss != null) {
+    const cur = rules.cooldownMinutesAfterLoss;
+    if (cur != null && cur >= p.cooldownMinutesAfterLoss) done.push(`Rule: ${cur}-minute cool-down after a loss`);
+    else missing++;
+  }
+  if (ins.checklist) {
+    if (ritual.some((i) => i.label.toLowerCase() === ins.checklist!.toLowerCase())) done.push(`Checklist: ${ins.checklist}`);
+    else missing++;
+  }
+  return { done, complete: done.length > 0 && missing === 0 };
 }
 
 export type ObserverInput = {

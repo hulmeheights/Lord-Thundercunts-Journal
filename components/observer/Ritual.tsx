@@ -7,7 +7,7 @@ import { createPortal } from "react-dom";
 import { OBSTACLE_KEYS, OBSTACLE_LABELS, type Instruction, type ObstacleKey, type PerceptionGap } from "@/lib/analytics/observer";
 import type { ObserverWindow } from "@/lib/data/observer";
 import type { Settings } from "@/lib/types";
-import { saveObserverPrefs, saveObserverSession } from "@/lib/actions/observer";
+import { pinOrder, saveObserverPrefs, saveObserverSession } from "@/lib/actions/observer";
 import { Btn, Dot } from "@/components/m";
 import { Seg } from "@/components/m/Seg";
 import { cn } from "@/lib/cn";
@@ -101,8 +101,48 @@ function Writing({ value, onChange, placeholder, label }: { value: string; onCha
       maxLength={2000}
       placeholder={placeholder}
       spellCheck
+      // The global :focus-visible ring is unlayered and beats utilities; the brightening hairline is the focus cue here.
+      style={{ outline: "none" }}
       className="block w-full resize-none overflow-hidden border-0 border-b border-line-2 bg-transparent pb-5 font-serif text-[clamp(1.3rem,2.7vw,1.9rem)] leading-[1.5] font-light tracking-[-0.005em] text-ink caret-gold transition-colors duration-500 outline-none placeholder:text-ink-4 focus:border-ink-3 focus-visible:outline-none"
     />
+  );
+}
+
+/** The reveal's last beat: carry one order out of the room, pinned so every session is checked against it. */
+function CarryOrder({ ins, win, pinned: initiallyPinned, sentence }: { ins: Instruction; win: ObserverWindow; pinned: boolean; sentence: boolean }) {
+  const [pinned, setPinned] = useState(initiallyPinned);
+  const [error, setError] = useState<string | null>(null);
+  const [pending, start] = useTransition();
+  const pin = () =>
+    start(async () => {
+      setError(null);
+      const r = await pinOrder({ obstacle: ins.obstacle, window: win });
+      if ("error" in r && r.error) setError(r.error);
+      else setPinned(true);
+    });
+  return (
+    <div className="mt-[clamp(3.5rem,9vh,5.5rem)] border-t border-line pt-[clamp(1.8rem,4.5vh,2.6rem)]">
+      <div className="font-mono text-[9.5px] tracking-[0.3em] text-gold uppercase">
+        <span aria-hidden className="mr-2.5">◆</span>Carry one order out
+      </div>
+      {sentence && (
+        <p className="mt-6 max-w-[32ch] font-serif text-[clamp(1.3rem,2.6vw,1.85rem)] leading-[1.32] font-light [&_em]:italic">
+          <IfThen when={ins.when} then={ins.then} />
+        </p>
+      )}
+      <div className="mt-6">
+        {pinned ? (
+          <p className="font-mono text-[11px] leading-[1.9] tracking-[0.04em] text-pos">
+            Pinned. From now on every session is checked against it — automatically, from the trades.
+          </p>
+        ) : (
+          <button type="button" onClick={pin} disabled={pending} className={cn(textBtn, "text-ink")}>
+            {pending ? "Pinning…" : sentence ? "Pin it as today's order →" : "Pin 01 as today's order →"}
+          </button>
+        )}
+        {error && <p className="mt-3 font-mono text-[11px] text-ink-3">{error}</p>}
+      </div>
+    </div>
   );
 }
 
@@ -114,6 +154,7 @@ export function Ritual({
   window,
   aiReady,
   prefs,
+  pinned,
 }: {
   open: boolean;
   onClose: () => void;
@@ -122,6 +163,8 @@ export function Ritual({
   window: ObserverWindow;
   aiReady: boolean;
   prefs: Settings["observer"];
+  /** The order already pinned, if any. */
+  pinned: ObstacleKey | null;
 }) {
   const router = useRouter();
   const mounted = useSyncExternalStore(noop, () => true, () => false);
@@ -233,14 +276,14 @@ export function Ritual({
       return (
         <div>
           <div className="label">00 — Step outside</div>
-          <h2 className="mt-[clamp(1.6rem,4vh,2.6rem)] max-w-[13ch] font-serif text-[clamp(2.5rem,7.4vw,5.6rem)] leading-[1.02] font-light tracking-[-0.01em] [&_em]:italic">
+          <h2 className="mt-[clamp(1.4rem,3.5vh,2.4rem)] max-w-[17ch] font-serif text-[clamp(2.5rem,6.6vw,5.2rem)] leading-[1.02] font-light tracking-[-0.01em] [&_em]:italic">
             For three minutes, you&apos;re <em>not you</em>.
           </h2>
-          <p className={cn(monoBody, "mt-[clamp(1.6rem,4vh,2.4rem)] max-w-[46ch]")}>
+          <p className={cn(monoBody, "mt-[clamp(1.4rem,3.5vh,2.2rem)] max-w-[54ch]")}>
             Picture {who} at the desk this morning — the screens, the first trade, what happened after it. You&apos;re across the room: a
             calm coach who has watched every trade. Write about {who} the way you&apos;d write about someone else.
           </p>
-          <div className="mt-[clamp(2.8rem,7vh,4.5rem)] grid gap-10 border-t border-line pt-[clamp(1.8rem,4vh,2.4rem)] sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end sm:gap-16">
+          <div className="mt-[clamp(2.2rem,5.5vh,3.6rem)] grid gap-10 border-t border-line pt-[clamp(1.6rem,3.5vh,2.2rem)] sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end sm:gap-16">
             <label className="block">
               <span className="eyebrow mb-3 block">The Observer calls you</span>
               <input
@@ -248,6 +291,7 @@ export function Ritual({
                 onChange={(e) => setName(e.target.value)}
                 placeholder={dossierName}
                 maxLength={40}
+                style={{ outline: "none" }}
                 className="block w-full max-w-[22rem] border-0 border-b border-line-2 bg-transparent pb-3 font-serif text-[1.6rem] leading-[1.2] font-light text-ink caret-gold transition-colors duration-500 outline-none placeholder:text-ink-4 focus:border-ink-3"
               />
             </label>
@@ -327,7 +371,10 @@ export function Ritual({
           <div className="mt-[clamp(4rem,11vh,7rem)]">
             <div className="label mb-[clamp(2rem,5vh,3rem)]">The Observer&apos;s case file</div>
             {aiReady ? (
-              <CaseFileLoader sessionId={saved.id} name={who} initial={null} auto />
+              <>
+                <CaseFileLoader sessionId={saved.id} name={who} initial={null} auto />
+                {tell[0] && <CarryOrder ins={tell[0]} win={window} pinned={pinned === tell[0].obstacle} sentence />}
+              </>
             ) : (
               <div>
                 {tell.map((t, i) => (
@@ -342,6 +389,7 @@ export function Ritual({
                 <p className="mt-6 max-w-[52ch] font-mono text-[10.5px] leading-[1.8] tracking-[0.04em] text-ink-4">
                   Add an Anthropic key in Settings and the Observer will write the full case file, with a note to {who}.
                 </p>
+                {tell[0] && <CarryOrder ins={tell[0]} win={window} pinned={pinned === tell[0].obstacle} sentence={false} />}
               </div>
             )}
           </div>
@@ -393,10 +441,12 @@ export function Ritual({
 
           {/* The one question */}
           <div ref={scroller} data-lenis-prevent className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
-            <div className="mx-auto flex min-h-full w-full max-w-[1040px] flex-col justify-center px-[clamp(1.5rem,6vw,6rem)] py-[clamp(2.5rem,8vh,6rem)]">
+            {/* Centred with auto margins, not justify-center, so a long step never clips its top when it overflows. */}
+            <div className="mx-auto flex min-h-full w-full max-w-[1040px] flex-col px-[clamp(1.5rem,6vw,6rem)] py-[clamp(2.5rem,8vh,6rem)]">
               <AnimatePresence mode="wait" initial={false}>
                 <motion.div
                   key={step}
+                  className="my-auto"
                   initial={{ opacity: 0, y: 26 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -14 }}

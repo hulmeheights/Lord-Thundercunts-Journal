@@ -1,7 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { LivingLine } from "@/components/charts/LivingLine";
+import { Odometer } from "@/components/motion/Odometer";
 import { cn } from "@/lib/cn";
 import { prefersReducedMotion } from "@/lib/motion";
 
@@ -12,7 +14,9 @@ export type Moment = {
   also?: string[];
   /** Serif line; wrap the italic word in *asterisks*. */
   line: string;
-  figure: string;
+  /** The figure, rolled in by the odometer. */
+  value: number;
+  format: "money" | "number";
   caption: string;
   sub: string;
   /** Forced by ?moment= — shown even if already seen, and not remembered. */
@@ -42,7 +46,7 @@ function serif(line: string) {
 export function Milestone({ moments, curve, delay = 900 }: { moments: Moment[]; curve: number[]; delay?: number }) {
   const [m, setM] = useState<Moment | null>(null);
   const [phase, setPhase] = useState<"off" | "in" | "out">("off");
-  const btn = useRef<HTMLButtonElement>(null);
+  const dialog = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const forced = moments.find((x) => x.preview);
@@ -79,7 +83,7 @@ export function Milestone({ moments, curve, delay = 900 }: { moments: Moment[]; 
     // A short grace period so the tap that loaded the page can't skip the moment.
     const arm = setTimeout(() => {
       armed = true;
-      btn.current?.focus({ preventScroll: true });
+      dialog.current?.focus({ preventScroll: true });
     }, 700);
     const go = () => armed && close();
     window.addEventListener("keydown", go);
@@ -109,15 +113,19 @@ export function Milestone({ moments, curve, delay = 900 }: { moments: Moment[]; 
     transition: `opacity 1.2s ${EASE} ${on ? d : 0}ms, transform 1.2s ${EASE} ${on ? d : 0}ms`,
   });
 
-  return (
+  // Portalled to <body>: the app's <main> is its own stacking context, and the
+  // moment has to sit above the sidebar, the top bar and the tab bar.
+  return createPortal(
     <div
+      ref={dialog}
+      tabIndex={-1}
       role="dialog"
       aria-modal="true"
       aria-label="Milestone"
-      className="fixed inset-0 z-[95] flex flex-col overflow-hidden bg-bg px-6 pt-[calc(1.4rem+var(--safe-top))] pb-[calc(1.6rem+var(--safe-bottom))] sm:px-[clamp(1.5rem,6vw,6rem)]"
+      className="fixed inset-0 z-[200] outline-none flex flex-col overflow-hidden bg-bg px-6 pt-[calc(1.4rem+var(--safe-top))] pb-[calc(1.6rem+var(--safe-bottom))] sm:px-[clamp(1.5rem,6vw,6rem)]"
       style={{ opacity: phase === "out" ? 0 : on ? 1 : 0, transition: `opacity ${phase === "out" ? 0.8 : 1}s ${EASE}` }}
     >
-      <div className="flex items-start justify-between gap-6 font-mono text-[10px] tracking-[0.2em] text-ink-4 uppercase" style={rise(150)}>
+      <div className="mx-auto flex w-full max-w-[1160px] items-start justify-between gap-6 font-mono text-[10px] tracking-[0.2em] text-ink-4 uppercase" style={rise(150)}>
         <div>
           <div className="text-[12px] tracking-[0.42em] text-ink">
             THUNDER <span className="text-gold">◆</span>
@@ -146,13 +154,20 @@ export function Milestone({ moments, curve, delay = 900 }: { moments: Moment[]; 
         <div className="flex flex-wrap items-end justify-between gap-x-8 gap-y-6 max-sm:flex-col max-sm:items-start" style={rise(900)}>
           <p className="max-w-[34ch] font-mono text-[12px] leading-[1.9] tracking-[0.04em] text-ink-2">{m.sub}</p>
           <div className="text-right max-sm:text-left">
-            <div className="num text-[clamp(1.8rem,3.4vw,2.6rem)] leading-none font-light tracking-[0.01em]">{m.figure}</div>
+            <Odometer
+              value={m.value}
+              format={m.format}
+              sign={m.format === "money"}
+              tone={m.format === "money"}
+              delay={1100}
+              duration={1600}
+              className="text-[clamp(1.8rem,3.4vw,2.6rem)] leading-none font-light tracking-[0.01em]"
+            />
             <div className="mt-2 font-mono text-[9px] tracking-[0.3em] text-ink-4 uppercase">{m.caption}</div>
           </div>
         </div>
         <div className="mt-[clamp(2.4rem,6vh,3.6rem)] flex flex-wrap items-center gap-x-7 gap-y-4" style={rise(1050)}>
           <button
-            ref={btn}
             type="button"
             onClick={close}
             className={cn(
@@ -162,9 +177,13 @@ export function Milestone({ moments, curve, delay = 900 }: { moments: Moment[]; 
           >
             Continue
           </button>
-          <span className="font-mono text-[10px] tracking-[0.3em] text-ink-4 uppercase">Any key · or tap</span>
+          <span className="font-mono text-[10px] tracking-[0.3em] text-ink-4 uppercase">
+            <span className="[@media(hover:none)]:hidden">Any key · or click</span>
+            <span className="[@media(hover:hover)]:hidden">Or tap anywhere</span>
+          </span>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

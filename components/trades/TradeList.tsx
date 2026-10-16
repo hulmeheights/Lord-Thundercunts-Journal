@@ -8,7 +8,7 @@ import { fmtMoney } from "@/lib/format";
 import { addDays, dayKey, holdMinutes, todayKey } from "@/lib/analytics/time";
 import { summarize } from "@/lib/analytics/stats";
 import { motionKit, prefersReducedMotion } from "@/lib/motion";
-import { Btn, Empty, Label, Lead, Num, Stat, Stats } from "@/components/m";
+import { Btn, Label, Num, Stats } from "@/components/m";
 import { Seg } from "@/components/m/Seg";
 import { SectionIndex } from "@/components/m/SectionIndex";
 import { Odometer } from "@/components/motion/Odometer";
@@ -16,15 +16,18 @@ import { Sheet } from "@/components/ui/Sheet";
 import { ManualTradeForm } from "./ManualTradeForm";
 import { ImportSheet } from "./ImportSheet";
 import { Tape } from "./Tape";
+import { DayTicks } from "./DayTicks";
 import { TradeRow } from "./TradeRow";
-import { dayLabel, holdParts, spell } from "./lib";
+import { dayLabel, spell } from "./lib";
+import { d, RiseStyle } from "./Rise";
+import { RevealScope } from "./RevealScope";
+import { Empty, Lead, Stat } from "./kit";
 
 type Range = "7" | "30" | "90" | "all";
 type Result = "all" | "win" | "loss";
 
 const RANGE_WORD: Record<Range, string> = { "7": "7 days", "30": "30 days", "90": "90 days", all: "all time" };
 const SESSIONS_PER_PAGE = 10;
-const d = (ms: number) => ({ "--d": `${ms}ms` }) as React.CSSProperties;
 
 export function TradeList({
   trades,
@@ -80,6 +83,7 @@ export function TradeList({
   }, [filtered, tz]);
 
   const oldestFirst = useMemo(() => [...filtered].reverse(), [filtered]);
+  const tickMax = useMemo(() => filtered.reduce((m, t) => Math.max(m, Math.abs(t.netPnl)), 1), [filtered]);
   const s = summarize(filtered, defaultRisk);
   const avgHold = filtered.length ? filtered.reduce((x, t) => x + holdMinutes(t.entryTime, t.exitTime), 0) / filtered.length : 0;
   const shown = groups.slice(0, pages * SESSIONS_PER_PAGE);
@@ -121,7 +125,13 @@ export function TradeList({
   const losses = filtered.filter((t) => t.netPnl < 0).length;
   const kept = s.totalWon > 0 ? s.net / s.totalWon : null;
   const share = s.totalWon + s.totalLost > 0 ? s.totalWon / (s.totalWon + s.totalLost) : 0.5;
-  const hp = holdParts(avgHold);
+  // Average hold as a rolling figure: seconds, minutes, or hours to one decimal.
+  const hold =
+    avgHold < 1
+      ? { value: Math.max(1, Math.round(avgHold * 60)), unit: "sec", decimals: 0 }
+      : avgHold < 60
+        ? { value: Math.round(avgHold), unit: "min", decimals: 0 }
+        : { value: Math.round((avgHold / 60) * 10) / 10, unit: "hrs", decimals: 1 };
   const filtersOn = result !== "all" || query.trim() !== "";
 
   const sub = filtered.length
@@ -153,22 +163,27 @@ export function TradeList({
 
   return (
     <div>
-      <SectionIndex ids={["tape", "numbers", "log"]} />
+      <RiseStyle />
+      <RevealScope />
+      {/* The fixed index only clears the money column on very wide screens. */}
+      <div className="hidden min-[1600px]:block">
+        <SectionIndex ids={["tape", "numbers", "log"]} />
+      </div>
 
       {/* ── 00 · the tape ─────────────────────────────────────────── */}
       <header id="tape" className="scroll-mt-24 pt-6 sm:pt-10">
-        <div className="eyebrow reveal mb-[clamp(1.4rem,3.5vh,2.4rem)] !tracking-[0.42em]">Every execution, paired and costed</div>
-        <h1 className="reveal font-serif text-[clamp(2.6rem,7vw,6rem)] leading-[1] font-light tracking-[-0.01em]" style={d(80)}>
+        <div className="t-rise eyebrow mb-[clamp(1.4rem,3.5vh,2.4rem)] !tracking-[0.3em] sm:!tracking-[0.42em]">Every execution, paired and costed</div>
+        <h1 className="t-rise font-serif text-[clamp(3.2rem,8.2vw,7rem)] leading-[1] font-light tracking-[-0.01em]" style={d(80)}>
           The <em className="italic">tape</em>.
         </h1>
 
-        <Tape trades={oldestFirst} tz={tz} className="reveal mt-[clamp(2.4rem,7vh,4rem)]" />
+        <Tape trades={oldestFirst} tz={tz} className="t-rise mt-[clamp(2.4rem,7vh,4rem)]" style={d(160)} />
 
         <div className="mt-[clamp(2rem,5vh,3rem)] flex flex-wrap items-end justify-between gap-x-10 gap-y-8">
-          <p className="reveal max-w-[40ch] font-mono text-[12px] leading-[1.9] tracking-[0.04em] text-ink-2" style={d(120)}>
+          <p className="t-rise max-w-[40ch] font-mono text-[12px] leading-[1.9] tracking-[0.04em] text-ink-2" style={d(240)}>
             {sub}
           </p>
-          <div className="reveal shrink-0 text-right font-mono max-sm:text-left" style={d(200)}>
+          <div className="t-rise shrink-0 text-right font-mono max-sm:text-left" style={d(300)}>
             <Odometer value={s.net} className="text-[clamp(1.9rem,3.6vw,2.8rem)] font-light" delay={250} />
             <div className="mt-2 font-mono text-[9px] tracking-[0.3em] text-ink-4 uppercase">
               Net · {RANGE_WORD[range]} · {s.trades} trade{s.trades === 1 ? "" : "s"}
@@ -176,7 +191,7 @@ export function TradeList({
           </div>
         </div>
 
-        <div className="reveal mt-[clamp(2.4rem,6vh,3.6rem)] flex flex-wrap items-center gap-x-4 gap-y-4" style={d(260)}>
+        <div className="t-rise mt-[clamp(2.4rem,6vh,3.6rem)] flex flex-wrap items-center gap-x-4 gap-y-4" style={d(360)}>
           <Btn variant="primary" size="lg" onClick={() => setAdding(true)}>
             Add trade
           </Btn>
@@ -190,7 +205,7 @@ export function TradeList({
       </header>
 
       {/* ── filters: a hairline band that stays with you on desktop ───── */}
-      <div className="reveal z-20 mt-[clamp(4.5rem,11vh,8rem)] border-y border-line bg-bg py-5 lg:sticky lg:top-0">
+      <div className="t-rise z-20 mt-[clamp(4.5rem,11vh,8rem)] border-y border-line bg-bg py-5 lg:sticky lg:top-0" style={d(440)}>
         <div className="flex flex-wrap items-center gap-x-10 gap-y-5">
           <div className="flex items-center gap-5">
             <span className="w-12 font-mono text-[9px] tracking-[0.3em] text-ink-4 uppercase sm:w-auto">Range</span>
@@ -227,7 +242,7 @@ export function TradeList({
                 setQ(e.target.value);
               }}
               placeholder="Search symbol, setup, mistake, note"
-              className="min-w-0 flex-1 bg-transparent py-2 font-mono text-[12px] tracking-[0.04em] text-ink outline-none placeholder:text-ink-4"
+              className="min-w-0 flex-1 bg-transparent py-2 font-mono text-[12px] tracking-[0.04em] text-ink outline-none placeholder:text-ink-4 focus-visible:!outline-none"
             />
             {q ? (
               <button type="button" onClick={() => setQ("")} className="font-mono text-[13px] text-ink-4 transition-colors hover:text-ink" aria-label="Clear search">
@@ -243,11 +258,11 @@ export function TradeList({
       {/* ── 01 · the numbers ─────────────────────────────────────── */}
       {s.trades > 0 && (
         <section id="numbers" className="scroll-mt-28 py-[clamp(4rem,10vh,8rem)]">
-          <div className="reveal mb-[clamp(2rem,5vh,3rem)]">
+          <div className="t-rv mb-[clamp(2rem,5vh,3rem)]">
             <Label n={1}>The numbers</Label>
           </div>
           {lead && <Lead className="mb-[clamp(2.5rem,7vh,4.5rem)] max-w-[22ch]">{lead}</Lead>}
-          <Stats>
+          <Stats className="[&_.num]:!text-[clamp(2.4rem,4.2vw,3.6rem)]">
             <Stat
               value={<Odometer value={Math.round(s.winRate * 100)} format="number" sign={false} tone={false} />}
               unit="%"
@@ -261,16 +276,22 @@ export function TradeList({
               d={80}
             />
             <Stat
-              value={<Odometer value={s.expectancy} sign tone delay={160} decimals={Math.abs(s.expectancy) < 100 ? 2 : 0} />}
+              value={<Odometer value={s.expectancy} sign tone delay={160} decimals={Math.abs(s.expectancy) < 10 ? 2 : 0} />}
               label="Per trade"
               sub={s.avgR !== null ? `${s.avgR >= 0 ? "+" : "−"}${Math.abs(s.avgR).toFixed(2)}R on average` : "Expectancy, after fees"}
               d={160}
             />
-            <Stat value={hp.value} unit={hp.unit} label="Average hold" sub={`Winners ${Math.round(s.avgHoldWin)}m · losers ${Math.round(s.avgHoldLoss)}m`} d={240} />
+            <Stat
+              value={<Odometer value={hold.value} format="number" decimals={hold.decimals} sign={false} tone={false} delay={240} />}
+              unit={hold.unit}
+              label="Average hold"
+              sub={`Winners ${Math.round(s.avgHoldWin)}m · losers ${Math.round(s.avgHoldLoss)}m`}
+              d={240}
+            />
           </Stats>
 
           {/* made vs lost: one hairline, split where the money went */}
-          <div className="reveal mt-[clamp(3.5rem,9vh,5.5rem)]" style={d(120)}>
+          <div className="t-rv mt-[clamp(3.5rem,9vh,5.5rem)]" style={d(120)}>
             <div className="flex items-baseline justify-between gap-6 font-mono">
               <div>
                 <div className="text-[9px] tracking-[0.3em] text-ink-4 uppercase">Made</div>
@@ -305,7 +326,7 @@ export function TradeList({
 
       {/* ── 02 · the log ──────────────────────────────────────────── */}
       <section id="log" className={cn("scroll-mt-28 pb-[clamp(3rem,8vh,6rem)]", s.trades === 0 && "pt-[clamp(4rem,10vh,8rem)]")}>
-        <div className="reveal mb-[clamp(2.5rem,6vh,3.5rem)] flex flex-wrap items-baseline justify-between gap-4">
+        <div className="t-rv mb-[clamp(2.5rem,6vh,3.5rem)] flex flex-wrap items-baseline justify-between gap-4">
           <Label n={s.trades > 0 ? 2 : 1}>The log</Label>
           {groups.length > 0 && (
             <span className="font-mono text-[9.5px] tracking-[0.28em] text-ink-4 uppercase">
@@ -375,7 +396,7 @@ export function TradeList({
             {shown.map(([day, list]) => {
               const net = list.reduce((x, t) => x + t.netPnl, 0);
               return (
-                <div key={day} className="reveal mb-[clamp(2.6rem,6vh,4rem)]">
+                <div key={day} className="t-rv mb-[clamp(2.6rem,6vh,4rem)]">
                   <div data-flip-id={`day-${day}`} className="flex items-baseline justify-between gap-4 border-b border-line-2 pb-3">
                     <div className="flex items-baseline gap-4">
                       <Link href={`/journal/${day}`} className="font-mono text-[10.5px] tracking-[0.3em] text-ink-2 uppercase transition-colors duration-300 hover:text-ink">
@@ -385,7 +406,10 @@ export function TradeList({
                         {spell(list.length)} trade{list.length === 1 ? "" : "s"}
                       </span>
                     </div>
-                    <Num value={net} className="text-[13px]" />
+                    <div className="flex items-center gap-6">
+                      <DayTicks trades={list} max={tickMax} className="max-sm:hidden" />
+                      <Num value={net} className="text-[13px]" />
+                    </div>
                   </div>
                   {list.map((t) => (
                     <TradeRow key={t.id} t={t} tz={tz} defaultRisk={defaultRisk} open={open === t.id} onToggle={() => setOpen((o) => (o === t.id ? null : t.id))} />

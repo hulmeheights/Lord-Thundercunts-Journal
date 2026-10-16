@@ -23,6 +23,11 @@ export type ThirtyStats = {
 
 const fig = "font-light";
 
+/** The kit's gold unit, kept on the same line as its figure. */
+function Unit({ children }: { children: React.ReactNode }) {
+  return <span className="ml-[0.3em] text-[0.42em] tracking-[0.04em] text-gold">{children}</span>;
+}
+
 /** 01 — the last thirty days: four figures, the process vine, the setup that pays. */
 export function Thirty({ s, today }: { s: ThirtyStats; today: string }) {
   const delta = s.winRatePrev === null ? null : Math.round((s.winRate - s.winRatePrev) * 100);
@@ -45,8 +50,12 @@ export function Thirty({ s, today }: { s: ThirtyStats; today: string }) {
     <div>
       <Stats>
         <Stat
-          value={<Odometer value={Math.round(s.winRate * 100)} format="number" sign={false} tone={false} className={fig} />}
-          unit="%"
+          value={
+            <span className="whitespace-nowrap">
+              <Odometer value={Math.round(s.winRate * 100)} format="number" sign={false} tone={false} className={fig} />
+              <Unit>%</Unit>
+            </span>
+          }
           label="Win rate"
           sub={
             delta === null ? (
@@ -63,16 +72,25 @@ export function Thirty({ s, today }: { s: ThirtyStats; today: string }) {
         />
         <Stat
           d={80}
-          value={pf === null ? "∞" : <Odometer value={pf} format="ratio" decimals={2} tone={false} className={fig} />}
-          unit="×"
+          value={
+            <span className="whitespace-nowrap">
+              {pf === null ? "∞" : <Odometer value={pf} format="ratio" decimals={2} tone={false} className={fig} />}
+              <Unit>×</Unit>
+            </span>
+          }
           label="Profit factor"
           sub={pf === null ? "No losing trades yet" : pf > 0 ? `${fmtMoney(pf, { cents: true })} won per $1 lost` : "Nothing won yet"}
         />
         {s.avgR !== null ? (
           <Stat
             d={160}
-            value={<Odometer value={s.avgR} format="number" decimals={2} tone={false} className={fig} />}
-            unit="R"
+            value={
+              <span className="whitespace-nowrap">
+                {s.avgR < -0.004 && "−"}
+                <Odometer value={Math.abs(s.avgR)} format="number" sign={false} decimals={2} tone={false} className={fig} />
+                <Unit>R</Unit>
+              </span>
+            }
             tone={s.avgR > 0.004 ? "pos" : s.avgR < -0.004 ? "neg" : null}
             label="Average R"
             sub="Against your planned risk"
@@ -80,7 +98,7 @@ export function Thirty({ s, today }: { s: ThirtyStats; today: string }) {
         ) : (
           <Stat
             d={160}
-            value={<Odometer value={s.expectancy} decimals={s.expectancy !== 0 && Math.abs(s.expectancy) < 100 ? 2 : 0} tone={false} className={fig} />}
+            value={<Odometer value={s.expectancy} decimals={s.expectancy !== 0 && Math.abs(s.expectancy) < 10 ? 2 : 0} tone={false} className={fig} />}
             tone={s.expectancy > 0.004 ? "pos" : s.expectancy < -0.004 ? "neg" : null}
             label="Per trade"
             sub="Average net result"
@@ -88,8 +106,12 @@ export function Thirty({ s, today }: { s: ThirtyStats; today: string }) {
         )}
         <Stat
           d={240}
-          value={<Odometer value={s.cleanDays} format="number" sign={false} tone={false} className={fig} />}
-          unit={`/ ${s.tradingDays}`}
+          value={
+            <span className="whitespace-nowrap">
+              <Odometer value={s.cleanDays} format="number" sign={false} tone={false} className={fig} />
+              <Unit>/ {s.tradingDays}</Unit>
+            </span>
+          }
           label="Clean days"
           sub="Sessions inside every rule"
         />

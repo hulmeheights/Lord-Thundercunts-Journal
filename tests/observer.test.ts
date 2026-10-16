@@ -216,3 +216,28 @@ test("checkOrder: rule breaks, mistakes, fees, preparation, self-report", () => 
 
   assert.equal(checkOrder("cutting-winners", {}, DAY, ctx(six)).verdict, "self");
 });
+
+test("tallyChecks counts only tested sessions", async () => {
+  const { tallyChecks } = await import("../lib/analytics/observer");
+  const c = (verdict: "kept" | "broken" | "untested" | "self") => ({ day: DAY, verdict, reason: "", trades: 0 });
+  assert.deepEqual(tallyChecks([c("kept"), c("broken"), c("untested"), c("kept"), c("self")]), { kept: 2, broken: 1, tested: 3 });
+  assert.deepEqual(tallyChecks([]), { kept: 0, broken: 0, tested: 0 });
+});
+
+test("instructionInPlace: complete only when every part is already enforced", async () => {
+  const { instructionInPlace } = await import("../lib/analytics/observer");
+  const ins = { rulesPatch: { maxTradesPerDay: 3 }, checklist: "Stopped at 3 trades" };
+  const loose = instructionInPlace(ins, { ...RULES, maxTradesPerDay: 5 }, RITUAL);
+  assert.equal(loose.complete, false);
+  assert.equal(loose.done.length, 0);
+  const half = instructionInPlace(ins, { ...RULES, maxTradesPerDay: 2 }, RITUAL);
+  assert.equal(half.complete, false);
+  assert.deepEqual(half.done, ["Rule: max 2 trades a day"]);
+  const full = instructionInPlace(ins, { ...RULES, maxTradesPerDay: 3 }, [...RITUAL, { id: "x", label: "stopped at 3 trades", group: "post" }]);
+  assert.equal(full.complete, true);
+  // A longer cool-down already counts; a shorter one doesn't.
+  assert.equal(instructionInPlace({ rulesPatch: { cooldownMinutesAfterLoss: 10 }, checklist: null }, { ...RULES, cooldownMinutesAfterLoss: 15 }, []).complete, true);
+  assert.equal(instructionInPlace({ rulesPatch: { cooldownMinutesAfterLoss: 10 }, checklist: null }, { ...RULES, cooldownMinutesAfterLoss: 5 }, []).complete, false);
+  // Nothing to apply is never "complete".
+  assert.equal(instructionInPlace({ rulesPatch: null, checklist: null }, RULES, []).complete, false);
+});

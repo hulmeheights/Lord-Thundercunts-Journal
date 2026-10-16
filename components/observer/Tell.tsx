@@ -11,14 +11,14 @@ import { cn } from "@/lib/cn";
 import { IfThen, monoBody, textBtn } from "./ui";
 
 /** What "Hold them to it" will change, said before it's pressed. */
-function consequence(patch: Partial<TradingRules> | null, checklist: string | null): string | null {
+function consequence(name: string, patch: Partial<TradingRules> | null, checklist: string | null): string | null {
   const rules: string[] = [];
   if (patch?.maxTradesPerDay != null) rules.push(`a ${patch.maxTradesPerDay}-trade daily limit`);
   if (patch?.maxContracts != null) rules.push(`a ${patch.maxContracts}-contract cap`);
   if (patch?.cooldownMinutesAfterLoss != null) rules.push(`a ${patch.cooldownMinutesAfterLoss}-minute cool-down after a loss`);
   if (patch?.stopAfterConsecutiveLosses != null) rules.push(`a stop after ${patch.stopAfterConsecutiveLosses} losses in a row`);
   const bits = [rules.length ? `${rules.join(" and ")} to the rules` : null, checklist ? `“${checklist}” to the evening checklist` : null].filter(Boolean);
-  return bits.length ? `Adds ${bits.join(", and ")}. Rules only ever get stricter.` : null;
+  return bits.length ? `Holding ${name} to it adds ${bits.join(", and ")}. Rules only ever get stricter.` : null;
 }
 
 export function TellItem({
@@ -28,6 +28,7 @@ export function TellItem({
   window,
   sessionId,
   pinned,
+  inPlace,
 }: {
   ins: Instruction;
   index: number;
@@ -35,6 +36,8 @@ export function TellItem({
   window: ObserverWindow;
   sessionId: string | null;
   pinned: boolean;
+  /** What of this instruction the rules and checklist already enforce. */
+  inPlace: { done: string[]; complete: boolean };
 }) {
   const router = useRouter();
   const [adopting, startAdopt] = useTransition();
@@ -42,7 +45,7 @@ export function TellItem({
   const [applied, setApplied] = useState<string[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const isPinned = pinned;
-  const said = consequence(ins.rulesPatch, ins.checklist);
+  const said = consequence(name, ins.rulesPatch, ins.checklist);
 
   const adopt = () =>
     startAdopt(async () => {
@@ -76,15 +79,34 @@ export function TellItem({
             </p>
           )}
 
-          <div className="mt-[clamp(1.6rem,4vh,2.4rem)] flex flex-wrap items-center gap-x-9 gap-y-4">
-            {(ins.rulesPatch || ins.checklist) && !applied && (
+          {said && !applied && !inPlace.complete && (
+            <p className="mt-[clamp(1.4rem,3.5vh,2rem)] max-w-[60ch] font-mono text-[10.5px] leading-[1.8] tracking-[0.03em] text-ink-4">{said}</p>
+          )}
+          {(applied ?? (inPlace.complete ? inPlace.done : null)) && (
+            <ul className="mt-[clamp(1.4rem,3.5vh,2rem)] space-y-1" aria-label={`What holds ${name} to it`}>
+              {(applied ?? inPlace.done).map((a) => (
+                <li key={a} className="font-mono text-[10.5px] leading-[1.8] tracking-[0.03em] text-ink-3">
+                  {a}
+                </li>
+              ))}
+            </ul>
+          )}
+
+          <div className="mt-[clamp(1.4rem,3.5vh,2rem)] flex flex-wrap items-center gap-x-9 gap-y-5">
+            {(ins.rulesPatch || ins.checklist) && !applied && !inPlace.complete && (
               <button type="button" onClick={adopt} disabled={adopting} className={cn(textBtn, "text-ink-2")}>
                 {adopting ? "Writing it in…" : <>Hold {name} to it →</>}
               </button>
             )}
+            {(applied || inPlace.complete) && (
+              <span className="inline-flex items-center gap-2.5 pb-1 font-mono text-[10px] tracking-[0.28em] text-pos uppercase">
+                <span aria-hidden className="text-[8px]">◆</span>
+                {name} is held to it
+              </span>
+            )}
             {isPinned ? (
               <span className="inline-flex items-center gap-6">
-                <a href="#order" className="font-mono text-[10px] tracking-[0.28em] text-gold uppercase">
+                <a href="#order" className="pb-1 font-mono text-[10px] tracking-[0.28em] text-gold uppercase">
                   ◆ Today&apos;s order
                 </a>
                 <button type="button" onClick={pin} disabled={pinning} className={textBtn}>
@@ -98,17 +120,6 @@ export function TellItem({
             )}
           </div>
 
-          {said && !applied && <p className="mt-4 max-w-[60ch] font-mono text-[10.5px] leading-[1.8] tracking-[0.03em] text-ink-4">{said}</p>}
-          {applied && (
-            <ul className="mt-5 space-y-1.5">
-              {applied.map((a) => (
-                <li key={a} className="font-mono text-[11.5px] leading-[1.8] tracking-[0.03em] text-pos">
-                  <span className="mr-2.5 text-[8px]">◆</span>
-                  {a}
-                </li>
-              ))}
-            </ul>
-          )}
           {error && <p className={cn(monoBody, "mt-4 text-ink-3")}>{error}</p>}
         </div>
       </div>

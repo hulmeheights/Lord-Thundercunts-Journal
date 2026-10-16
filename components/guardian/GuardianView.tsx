@@ -1,8 +1,9 @@
-import { Section, Stat, Stats, Empty, Quote } from "@/components/m";
+import { Section, Stats, Empty, Quote } from "@/components/m";
 import { FanChart } from "@/components/charts/FanChart";
 import type { MonteCarloResult, PropStatus } from "@/lib/analytics/prop";
 import type { PropSettings } from "@/lib/types";
 import { fmtMoney } from "@/lib/format";
+import { Figure, Money } from "./Figure";
 import { Meter } from "./Meter";
 import { countWord, pct, shortDay } from "./words";
 
@@ -58,85 +59,147 @@ function statusLead(st: PropStatus, survivable: number | null): React.ReactNode 
 }
 
 /** 01 — Status: where the account stands against every rule, as editorial figures. */
-export function StatusSection({ prop, st, brokerBalance, n }: { prop: PropSettings; st: PropStatus; brokerBalance: number | null; n: number }) {
+export function StatusSection({
+  prop,
+  st,
+  mc,
+  brokerBalance,
+  n,
+}: {
+  prop: PropSettings;
+  st: PropStatus;
+  mc: MonteCarloResult | null;
+  brokerBalance: number | null;
+  n: number;
+}) {
   const worstDay = Math.min(0, ...st.dailyPnls);
   const survivable = worstDay < 0 ? Math.max(0, Math.floor(st.cushion / -worstDay)) : null;
   const toGo = st.requiredProfit !== null ? Math.max(0, st.requiredProfit - st.profit) : null;
   const raised = st.requiredProfit !== null && prop.profitTarget !== null && st.requiredProfit > prop.profitTarget;
-  const dailyLeft = prop.dailyLossLimit ? Math.max(0, prop.dailyLossLimit + Math.min(0, st.todayPnl)) : null;
+  const funded = prop.profitTarget === null;
+  const noOdds = `after five trading days · ${st.tradingDays} so far`;
 
   return (
     <Section id="status" n={n} label="Status" aside={<span className="eyebrow">since {shortDay(prop.startDate)}</span>} lead={statusLead(st, survivable)}>
       <Stats>
-        <Stat value={fmtMoney(st.balance)} label="Balance" sub={`started at ${fmtMoney(prop.startBalance)}`} />
-        <Stat value={fmtMoney(st.profit, { sign: true })} tone={tone(st.profit)} label="Profit" sub={`best close ${fmtMoney(st.highWater)}`} d={80} />
-        <Stat
-          value={fmtMoney(st.cushion)}
-          label="Cushion to the line"
-          sub={
-            <>
-              floor {fmtMoney(st.floor)}
-              <Meter value={Math.min(1, st.cushionPct)} tone={st.cushionPct < 0.25 ? "gold" : "pos"} label="Cushion remaining" />
-            </>
-          }
-          d={160}
+        <Figure value={fmtMoney(st.balance)} label="Balance" sub={<>started at {fmtMoney(prop.startBalance)}</>} />
+        <Figure
+          value={fmtMoney(st.profit, { sign: true })}
+          tone={tone(st.profit)}
+          label="Profit"
+          sub={<>best close {fmtMoney(st.highWater)}</>}
+          d={80}
         />
+        <Figure
+          value={fmtMoney(st.cushion)}
+          tone={st.cushion < 0 ? "neg" : null}
+          label={st.breached ? "Past the line" : "Cushion to the line"}
+          sub={<>floor {fmtMoney(st.floor)}</>}
+          d={160}
+        >
+          <Meter value={Math.min(1, st.cushionPct)} tone={st.cushionPct < 0.25 ? "gold" : "pos"} label="Cushion remaining" />
+        </Figure>
         {toGo !== null ? (
-          <Stat
+          <Figure
             value={toGo === 0 ? "Met" : fmtMoney(toGo)}
             tone={toGo === 0 ? "pos" : null}
             label={toGo === 0 ? "Profit target" : "To the target"}
             sub={
-              <>
-                {raised
-                  ? `consistency raised it to ${fmtMoney(st.requiredProfit!)}`
-                  : st.daysToTarget === 0
-                    ? "target reached"
-                    : st.daysToTarget !== null
-                      ? `~${st.daysToTarget} trading days at your pace`
-                      : "your average day is negative"}
-                <Meter value={st.targetProgress ?? 0} label="Progress to target" />
-              </>
+              raised
+                ? `consistency raised it to ${fmtMoney(st.requiredProfit!)}`
+                : st.daysToTarget === 0
+                  ? "target reached"
+                  : st.daysToTarget !== null
+                    ? `~${st.daysToTarget} days at your pace`
+                    : "your average day is negative"
             }
             d={240}
-          />
+          >
+            <Meter value={st.targetProgress ?? 0} label="Progress to target" />
+          </Figure>
         ) : (
-          <Stat value={fmtMoney(st.highWater)} label="Best close" sub="funded — no profit target" d={240} />
+          <Figure value={fmtMoney(st.highWater)} label="Best close" sub="funded — no profit target" d={240} />
         )}
 
-        <Stat
-          value={dailyLeft !== null ? fmtMoney(dailyLeft) : "Off"}
-          label={dailyLeft !== null ? "Daily limit left" : "Daily loss limit"}
+        {mc ? (
+          <>
+            <Figure
+              value={pct(funded ? mc.openProb : mc.passProb)}
+              unit="%"
+              tone={(funded ? mc.openProb : mc.passProb) > 0 ? "pos" : null}
+              label={funded ? "Still standing · 30 days" : "Pass odds · 30 days"}
+              sub={funded ? "of four thousand futures" : mc.medianDaysToPass ? `median ${mc.medianDaysToPass} trading days` : "no future passes in time"}
+            />
+            <Figure
+              value={pct(mc.bustProb)}
+              unit="%"
+              label="Bust odds · 30 days"
+              sub={mc.bustProb > 0.25 ? "more than one in four — size down" : mc.bustProb > 0.1 ? "respect it" : "the line is far away"}
+              d={80}
+            />
+          </>
+        ) : (
+          <>
+            {/* No odds yet (or none to give on a closed account): the two days that matter instead. */}
+            <Figure
+              value={worstDay < 0 ? fmtMoney(worstDay) : "—"}
+              tone={worstDay < 0 ? "neg" : null}
+              label="Worst day"
+              sub={st.breached ? "the day not to repeat" : `odds ${noOdds}`}
+            />
+            <Figure
+              value={st.tradingDays ? fmtMoney(st.avgDay, { sign: true }) : "—"}
+              tone={tone(st.avgDay)}
+              label="Average day"
+              sub={st.tradingDays ? `across ${st.tradingDays} trading ${st.tradingDays === 1 ? "day" : "days"}` : "none yet"}
+              d={80}
+            />
+          </>
+        )}
+        <Figure
+          value={st.consistencyShare !== null ? pct(st.consistencyShare) : st.bestDay > 0 ? fmtMoney(st.bestDay, { sign: true }) : "—"}
+          unit={st.consistencyShare === null ? undefined : "%"}
+          tone={st.consistencyShare === null && st.bestDay > 0 ? "pos" : null}
+          label={prop.consistencyPct ? `Best day · rule ${prop.consistencyPct}%` : "Best day share"}
           sub={
-            dailyLeft !== null ? (
-              <>
-                today {fmtMoney(st.todayPnl, { sign: true })} of {fmtMoney(-prop.dailyLossLimit!)}
-                <Meter value={st.dailyLossUsed ?? 0} tone="neg" label="Daily loss used" />
-              </>
+            st.consistencyShare === null ? (
+              st.bestDay > 0 ? (
+                "share counts once you're in profit"
+              ) : (
+                "no winning day yet"
+              )
             ) : (
-              "no daily cap on this account"
+              <>
+                <Money>{fmtMoney(st.bestDay, { sign: true })}</Money>
+                {st.consistencyOk === false ? " · over the rule" : " · within the rule"}
+              </>
             )
           }
-        />
-        <Stat
-          value={st.consistencyShare === null ? "—" : pct(st.consistencyShare)}
-          unit={st.consistencyShare === null ? undefined : "%"}
-          label={prop.consistencyPct ? `Best day · limit ${prop.consistencyPct}%` : "Best day share"}
+          d={160}
+        >
+          {prop.consistencyPct ? (
+            <Meter
+              value={st.consistencyShare ?? 0}
+              mark={prop.consistencyPct / 100}
+              tone={st.consistencyOk === false ? "gold" : "pos"}
+              label="Best day share of profit"
+            />
+          ) : null}
+        </Figure>
+        <Figure
+          value={st.tradingDays}
+          label="Trading days"
           sub={
-            <>
-              best day {fmtMoney(st.bestDay, { sign: true })}
-              {prop.consistencyPct ? (
-                <Meter value={st.consistencyShare ?? 0} mark={prop.consistencyPct / 100} tone={st.consistencyOk === false ? "gold" : "pos"} label="Best day share of profit" />
-              ) : null}
-            </>
+            !mc ? (
+              `since ${shortDay(prop.startDate)}`
+            ) : st.tradingDays ? (
+              <>
+                average day <Money>{fmtMoney(st.avgDay, { sign: true })}</Money>
+              </>
+            ) : (
+              "none yet"
+            )
           }
-          d={80}
-        />
-        <Stat value={st.tradingDays} label="Trading days" sub={st.tradingDays ? `average day ${fmtMoney(st.avgDay, { sign: true })}` : "none yet"} d={160} />
-        <Stat
-          value={survivable === null ? "—" : survivable}
-          label="Worst days to absorb"
-          sub={survivable === null ? "no losing day yet" : `worst day ${fmtMoney(worstDay)}`}
           d={240}
         />
       </Stats>
@@ -144,6 +207,12 @@ export function StatusSection({ prop, st, brokerBalance, n }: { prop: PropSettin
       <p className={foot}>
         The max loss follows your best end-of-day balance and stops trailing once it reaches {fmtMoney(prop.startBalance)}. Intraday swings
         don&apos;t move it; a close above {fmtMoney(st.highWater)} does.
+        {survivable !== null && !st.breached && (
+          <>
+            {" "}
+            Your worst day was <Money>{fmtMoney(worstDay)}</Money>.
+          </>
+        )}
         {brokerBalance !== null && <> The broker reports {fmtMoney(brokerBalance)} for this account.</>}
         {prop.maxContracts ? <> Size cap: {prop.maxContracts} minis.</> : null}
       </p>
@@ -151,43 +220,68 @@ export function StatusSection({ prop, st, brokerBalance, n }: { prop: PropSettin
   );
 }
 
+function Read({ label, children }: { label: React.ReactNode; children: React.ReactNode }) {
+  return (
+    <div className="min-w-0">
+      <dt className="font-mono text-[9.5px] tracking-[0.24em] text-ink-4 uppercase">{label}</dt>
+      <dd className="num mt-2.5 text-[13.5px] tracking-[0.02em] whitespace-nowrap text-ink">{children}</dd>
+    </div>
+  );
+}
+
 /** 02 — The odds: the Monte Carlo fan and what it means. */
 export function OddsSection({ prop, st, mc, target, n }: { prop: PropSettings; st: PropStatus; mc: MonteCarloResult | null; target: number | null; n: number }) {
+  const end = mc?.bands[mc.bands.length - 1];
   return (
     <Section
       id="odds"
       n={n}
       label="The odds"
-      aside={mc ? <span className="eyebrow">{mc.sims.toLocaleString("en-US")} futures · {mc.horizon} days</span> : null}
+      aside={mc ? <span className="eyebrow max-sm:hidden">{mc.sims.toLocaleString("en-US")} futures · {mc.horizon} days</span> : null}
       lead={
-        <>
-          Four thousand futures, built from <em>your</em> days.
-        </>
+        mc ? (
+          <>
+            Four thousand futures, built from <em>your</em> days.
+          </>
+        ) : undefined
       }
     >
-      {mc ? (
+      {mc && end ? (
         <>
           <div className="reveal">
             <FanChart bands={mc.bands} target={target} floor={st.floor} />
           </div>
-          <Stats cols={3} className="mt-[clamp(3.5rem,8vh,5rem)]">
+          <dl className="reveal mt-[clamp(2.6rem,6vh,3.6rem)] grid grid-cols-2 gap-x-8 gap-y-8 border-t border-line pt-[clamp(1.8rem,4vh,2.4rem)] lg:grid-cols-4">
+            <Read label={`Median · day ${mc.horizon}`}>
+              <span className={end.p50 >= st.balance ? "text-pos" : undefined}>{fmtMoney(end.p50)}</span>
+            </Read>
+            <Read label="Middle 80%">
+              {fmtMoney(end.p10, { compact: true })} – {fmtMoney(end.p90, { compact: true })}
+            </Read>
             {prop.profitTarget !== null ? (
-              <Stat value={pct(mc.passProb)} unit="%" tone={mc.passProb > 0 ? "pos" : null} label="Pass within 30 days" />
+              <Read label="Median time to pass">{mc.medianDaysToPass ? `${mc.medianDaysToPass} trading days` : "beyond 30 days"}</Read>
             ) : (
-              <Stat value={pct(mc.openProb)} unit="%" tone="pos" label="Still standing in 30 days" />
+              <Read label="Still standing">{pct(mc.openProb)}%</Read>
             )}
-            <Stat value={pct(mc.bustProb)} unit="%" label="Blow the account" sub={mc.bustProb > 0.25 ? "more than one in four — size down" : undefined} d={80} />
-            {prop.profitTarget !== null ? (
-              <Stat value={mc.medianDaysToPass ?? "—"} unit={mc.medianDaysToPass ? "days" : undefined} label="Median time to pass" d={160} />
-            ) : (
-              <Stat value={fmtMoney(mc.bands[mc.bands.length - 1]!.p50)} label="Median balance, day 30" d={160} />
-            )}
-          </Stats>
+            <Read label="Built from">
+              your last {Math.min(60, st.dailyPnls.length)} days
+            </Read>
+          </dl>
           <p className={foot}>
-            Each future resamples your last {Math.min(60, st.dailyPnls.length)} trading days with the trailing max loss, the daily limit and the
-            consistency rule applied. The band holds the middle 80% of outcomes; the jade line is the median. Scrub the chart to read any day.
+            Each future resamples your own trading days with the trailing max loss, the daily limit and the consistency rule applied. The band holds
+            the middle 80% of outcomes; the jade line is the median. Scrub the chart to read any day.
           </p>
         </>
+      ) : st.breached ? (
+        <Empty
+          title={
+            <>
+              No odds on a closed account. The next one starts <em>clean</em>.
+            </>
+          }
+        >
+          Log the reset in the ledger below, then point the rules at the new account. Guardian will simulate it after five trading days.
+        </Empty>
       ) : (
         <Empty
           title={

@@ -20,6 +20,24 @@ export function Named({ text, name }: { text: string; name: string }) {
   );
 }
 
+/** Colours the signed amounts inside a sentence: +$ in jade, −$ in the loss tone. Everything else stays as written. */
+export function Figures({ text }: { text: string }) {
+  const parts = text.split(/([+−-]\$[\d,]+(?:\.\d+)?)/g);
+  return (
+    <>
+      {parts.map((p, i) =>
+        i % 2 ? (
+          <span key={i} className={cn("num whitespace-nowrap", p.startsWith("+") ? "text-pos" : "text-neg")}>
+            {p}
+          </span>
+        ) : (
+          p
+        ),
+      )}
+    </>
+  );
+}
+
 /** "When *Lord takes a loss*, hands off the mouse…" */
 export function IfThen({ when, then, className }: { when: string; then: string; className?: string }) {
   return (

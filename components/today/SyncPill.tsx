@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Dot } from "@/components/m";
-import { cn } from "@/lib/cn";
 import { timeAgo } from "@/lib/format";
 
 /** Meridian's HUD status line — "● LIVE · 2M AGO". Quietly auto-syncs on open; tap to sync now. */
@@ -12,6 +11,14 @@ export function SyncPill({ lastSyncAt, hasConnections, error }: { lastSyncAt: st
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const ran = useRef(false);
+  // Relative time depends on the clock, so it's only written once mounted (no SSR mismatch).
+  const [ago, setAgo] = useState("");
+  useEffect(() => {
+    const tick = () => setAgo(timeAgo(lastSyncAt));
+    tick();
+    const iv = setInterval(tick, 30_000);
+    return () => clearInterval(iv);
+  }, [lastSyncAt]);
 
   const sync = useCallback(
     async (auto: boolean) => {
@@ -65,8 +72,8 @@ export function SyncPill({ lastSyncAt, hasConnections, error }: { lastSyncAt: st
       ) : (
         <>
           <Dot />
-          <span className={cn("text-pos")}>Live</span>
-          <span>· {timeAgo(lastSyncAt)}</span>
+          <span className="text-pos">Live</span>
+          <span suppressHydrationWarning>· {ago}</span>
         </>
       )}
     </button>

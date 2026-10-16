@@ -7,11 +7,15 @@ import { evaluateRules, RULE_LABELS } from "@/lib/analytics/rules";
 import { detectTilt } from "@/lib/analytics/tilt";
 import { rMultiple, sortByEntry } from "@/lib/analytics/stats";
 import { fmtMoney, fmtNum, fmtPrice } from "@/lib/format";
-import { Cue, Label, Lead, Num, PageHead, Row, Rows, Stat, Stats } from "@/components/m";
+import { Cue, Label, Num, Rows, Stats } from "@/components/m";
+import { Lead, Row, Stat } from "@/components/trades/kit";
+import { RevealScope } from "@/components/trades/RevealScope";
 import { Odometer } from "@/components/motion/Odometer";
 import { TradeEditor } from "@/components/trades/TradeEditor";
 import { ChartFrame } from "@/components/trades/ChartFrame";
 import { PriceTrace } from "@/components/trades/PriceTrace";
+import { TradeHead } from "@/components/trades/TradeHead";
+import { d, RiseStyle } from "@/components/trades/Rise";
 import { chartImage, dayLabel, holdParts, pointsFor, sourceLabel, spell } from "@/components/trades/lib";
 
 export const metadata = { title: "Trade" };
@@ -64,46 +68,59 @@ export default async function TradePage({ params }: { params: Promise<{ id: stri
 
   return (
     <div>
-      <div className="reveal pt-2 sm:pt-4">
-        <Cue href="/trades">← The tape</Cue>
-      </div>
-
-      <PageHead
+      <RiseStyle />
+      <RevealScope />
+      <TradeHead
+        cue={<Cue href="/trades">← The tape</Cue>}
         eyebrow={
           <>
             <Link href={`/journal/${day}`} className="transition-colors duration-300 hover:text-ink">
               {dayLabel(day)}
             </Link>
-            {idx >= 0 && sameDay.length > 1 && <> · Trade {idx + 1} of {sameDay.length}</>}
+            {idx >= 0 && sameDay.length > 1 && (
+              <>
+                {" · "}
+                <span className="whitespace-nowrap">
+                  {idx + 1} of {sameDay.length}
+                </span>
+              </>
+            )}
             {" · "}
             {sourceLabel(trade.source)}
           </>
         }
         title={
           <>
-            {trade.root} · <em>{long ? "Long" : "Short"}</em> ×{trade.qty}
+            {trade.root} · <em>{long ? "Long" : "Short"}</em> <span className="whitespace-nowrap">×{trade.qty}</span>
           </>
         }
         sub={sub}
         meta={
-          <div>
-            <Odometer value={trade.netPnl} decimals={2} className="text-[clamp(2.4rem,5.4vw,4.4rem)] leading-none font-light" delay={250} />
-            <div className="mt-3 font-mono text-[9px] tracking-[0.3em] text-ink-4 uppercase">Net · after {fmtMoney(trade.fees, { cents: true })} fees</div>
-          </div>
+          <>
+            <Odometer value={trade.netPnl} decimals={2} className="text-[clamp(2.6rem,5.4vw,4.4rem)] leading-none font-light" delay={350} />
+            <div className="mt-3.5 font-mono text-[9px] tracking-[0.3em] text-ink-4 uppercase">
+              Net · after {fmtMoney(trade.fees, { cents: true })} fees
+            </div>
+          </>
         }
       />
 
       {/* 01 — the trade, framed */}
-      <section className="py-[clamp(2rem,6vh,4rem)]">
-        <div className="reveal mb-[clamp(2rem,5vh,3rem)]">
+      <section className="pb-[clamp(1rem,4vh,3rem)]">
+        <div className="t-rise mb-[clamp(2rem,5vh,3rem)]" style={d(340)}>
           <Label n={n.trade}>The trade</Label>
         </div>
         <ChartFrame
+          style={d(420)}
           image={chartImage(trade.chartUrl)}
           href={trade.chartUrl}
           caption={
             <>
-              Fig. 01 — {trade.symbol} · {dayLabel(day)} · {inT} → {outT}
+              Fig. 01 — {trade.symbol}
+              <span className="max-sm:hidden">
+                {" "}
+                · {dayLabel(day)} · {inT} → {outT}
+              </span>
             </>
           }
         >
@@ -113,7 +130,7 @@ export default async function TradePage({ params }: { params: Promise<{ id: stri
 
       {/* 02 — the numbers */}
       <section className="py-[clamp(4rem,10vh,8rem)]">
-        <div className="reveal mb-[clamp(2rem,5vh,3rem)]">
+        <div className="t-rv mb-[clamp(2rem,5vh,3rem)]">
           <Label n={n.numbers}>The numbers</Label>
         </div>
         <Stats cols={3} className="gap-y-14 [&_.num]:!text-[clamp(1.75rem,3.6vw,3.1rem)]">
@@ -142,7 +159,7 @@ export default async function TradePage({ params }: { params: Promise<{ id: stri
       {/* 03 — what the rules saw */}
       {flags > 0 && (
         <section className="py-[clamp(3rem,8vh,6rem)]">
-          <div className="reveal mb-[clamp(2rem,5vh,3rem)]">
+          <div className="t-rv mb-[clamp(2rem,5vh,3rem)]">
             <Label n={n.rules}>What the rules saw</Label>
           </div>
           <Rows>
@@ -166,7 +183,7 @@ export default async function TradePage({ params }: { params: Promise<{ id: stri
 
       {/* 04 — the journal */}
       <section className="py-[clamp(4rem,10vh,8rem)]">
-        <div className="reveal mb-[clamp(2rem,5vh,3rem)]">
+        <div className="t-rv mb-[clamp(2rem,5vh,3rem)]">
           <Label n={n.journal}>The journal</Label>
         </div>
         <Lead className="mb-[clamp(2.5rem,7vh,4.5rem)]">
@@ -177,7 +194,7 @@ export default async function TradePage({ params }: { params: Promise<{ id: stri
 
       {/* the session, either side */}
       {(prev || next) && (
-        <nav aria-label="Same session" className="reveal grid grid-cols-2 gap-6 border-t border-line pt-8 pb-6">
+        <nav aria-label="Same session" className="t-rv grid grid-cols-2 gap-6 border-t border-line pt-8 pb-6">
           {prev ? (
             <Link href={`/trades/${encodeURIComponent(prev.id)}`} className="group min-w-0">
               <div className="font-mono text-[9px] tracking-[0.3em] text-ink-4 uppercase transition-colors group-hover:text-ink-2">← Earlier</div>

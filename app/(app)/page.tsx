@@ -60,7 +60,8 @@ function tradeMoment(mark: number, crossed: number[], preview = false): Moment {
     id: `trades-${mark}`,
     also: crossed.map((c) => `trades-${c}`),
     line: `${cap(numberWord(mark))} trades. *Logged.*`,
-    figure: mark.toLocaleString("en-US"),
+    value: mark,
+    format: "number",
     caption: "Trades on the record",
     sub: TRADE_SUBS[mark] ?? "Every one of them written down.",
     preview,
@@ -200,7 +201,9 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
   const highMoment = (preview: boolean): Moment => ({
     id: `high-${today}`,
     line: "A new equity *high*.",
-    figure: fmtMoney(todayStat?.cum ?? curve.at(-1) ?? 0, { sign: true }),
+    // The peak of the ninety-day curve: today's close when the moment is earned.
+    value: Math.max(...curve),
+    format: "money",
     caption: "90-day high · closed today",
     sub: "The curve has not been here in ninety days. Bank the lesson, not just the money.",
     preview,
@@ -221,7 +224,8 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
   const sections = ["top", "thirty", "session", ...(observer ? ["outside"] : []), "week"];
 
   return (
-    <div>
+    // At xl the fixed section index sits in the right margin; keep the scroll clear of it.
+    <div className="xl:pr-16 min-[1760px]:pr-0">
       {playIntro && <OpeningSequence day={today} greeting={hello} dayNumber={dayNumber} values={curve} />}
       <Milestone moments={moments} curve={curve} delay={playIntro ? 3300 : 900} />
       <SectionIndex ids={sections} />
@@ -240,6 +244,7 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
         monthNet={monthNet}
         stubs={stubs}
         closedAt={closedAt}
+        intro={playIntro}
         sync={<SyncPill lastSyncAt={lastSync} hasConnections={conns.length > 0} error={connError} />}
       />
 
@@ -274,7 +279,7 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
         label="The last thirty days"
         lead={thirtyLead}
         aside={
-          <Link href="/insights" className="font-mono text-[10px] tracking-[0.3em] text-ink-4 uppercase transition-colors duration-300 hover:text-ink">
+          <Link href="/insights" className="font-mono text-[10px] tracking-[0.3em] text-ink-4 uppercase transition-colors duration-300 hover:text-ink max-sm:hidden">
             All insights →
           </Link>
         }
@@ -402,7 +407,7 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
 
         {capsule && (
           <div className="pt-[clamp(6rem,16vh,11rem)]">
-            <CapsuleCard capsule={capsule} />
+            <CapsuleCard capsule={capsule} today={today} />
           </div>
         )}
       </Chapter>

@@ -12,6 +12,7 @@ test("empty ledger is calm, not broken", () => {
   const s = summarizeLedger([]);
   assert.equal(s.count, 0);
   assert.equal(s.spent, 0);
+  assert.equal(s.cost, 0);
   assert.equal(s.received, 0);
   assert.equal(s.net, 0);
   assert.equal(s.roi, null);
@@ -30,7 +31,7 @@ test("payouts and refunds come in, everything else goes out", () => {
   assert.equal(signedAmount({ kind: "other", amount: 10 }), -10);
 });
 
-test("totals, net, ROI, evals bought, payouts and cost per payout", () => {
+test("totals, net, refund-aware cost, ROI, evals bought, payouts and cost per payout", () => {
   const s = summarizeLedger([
     e("2026-03-02", "Topstep", "evaluation", 165),
     e("2026-03-20", "Topstep", "reset", 99),
@@ -47,12 +48,15 @@ test("totals, net, ROI, evals bought, payouts and cost per payout", () => {
   assert.equal(s.paidOut, 2100);
   assert.equal(s.refunds, 40.5);
   assert.equal(s.net, 1557.01);
-  assert.ok(s.roi !== null && Math.abs(s.roi - 1557.01 / 583.49) < 1e-9);
+  // Refunds reduce what the evals cost, so paid out − cost reconciles with net.
+  assert.equal(s.cost, 542.99);
+  assert.equal(Math.round((s.paidOut - s.cost) * 100) / 100, s.net);
+  assert.ok(s.roi !== null && Math.abs(s.roi - 1557.01 / 542.99) < 1e-9);
   assert.equal(s.evals, 2);
   assert.equal(s.resets, 1);
   assert.equal(s.activations, 1);
   assert.equal(s.payouts, 2);
-  assert.equal(s.costPerPayout, 291.75); // 583.49 / 2, rounded to cents
+  assert.equal(s.costPerPayout, 271.5); // 542.99 / 2, rounded to cents
   assert.equal(s.toBreakEven, 0);
   assert.equal(s.firstDay, "2026-03-02");
   assert.equal(s.lastDay, "2026-06-02");
@@ -84,6 +88,27 @@ test("firms group case- and space-insensitively and sort by money moved", () => 
       ["Lucid", 80, 0, -80, 1, 0, 1],
     ],
   );
+});
+
+test("a firm's refunds lower its cost, not its payouts", () => {
+  const s = summarizeLedger([
+    e("2026-05-01", "Tradeify", "evaluation", 109),
+    e("2026-05-09", "Tradeify", "reset", 89),
+    e("2026-05-20", "Tradeify", "refund", 30),
+  ]);
+  const f = s.byFirm[0]!;
+  assert.deepEqual([f.spent, f.cost, f.refunds, f.paidOut, f.received, f.net, f.payouts], [198, 168, 30, 0, 30, -168, 0]);
+  assert.equal(s.cost, 168);
+  assert.equal(s.costPerPayout, null);
+  assert.equal(s.toBreakEven, 168);
+});
+
+test("refunds that exceed spend never produce a negative cost per payout or a fake ROI", () => {
+  const s = summarizeLedger([e("2026-05-01", "Apex", "refund", 50), e("2026-05-02", "Apex", "payout", 400)]);
+  assert.equal(s.cost, -50);
+  assert.equal(s.roi, null);
+  assert.equal(s.costPerPayout, 0);
+  assert.equal(s.net, 450);
 });
 
 test("months are continuous with a running cumulative net", () => {

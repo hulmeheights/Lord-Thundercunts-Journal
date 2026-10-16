@@ -16,7 +16,7 @@ import { dayLabel } from "./lib";
  * left to right whenever the range changes. Hover (or tap) reads a trade;
  * click opens it.
  */
-export function Tape({ trades, tz, className }: { trades: Trade[]; tz: string; className?: string }) {
+export function Tape({ trades, tz, className, style }: { trades: Trade[]; tz: string; className?: string; style?: React.CSSProperties }) {
   const router = useRouter();
   const box = useRef<HTMLDivElement>(null);
   const [hover, setHover] = useState<number | null>(null);
@@ -59,7 +59,7 @@ export function Tape({ trades, tz, className }: { trades: Trade[]; tz: string; c
   const spread = Math.min(900, n * 14);
 
   return (
-    <div className={className}>
+    <div className={className} style={style}>
       <div
         ref={box}
         className={cn("relative h-[96px] touch-pan-y select-none sm:h-[132px]", n > 0 && "cursor-pointer")}
@@ -83,7 +83,7 @@ export function Tape({ trades, tz, className }: { trades: Trade[]; tz: string; c
               <div key={t.id} className="relative min-w-0 flex-1">
                 <i
                   className={cn(
-                    "absolute left-1/2 block w-[2px] max-w-full transition-colors duration-200",
+                    "absolute left-1/2 block w-px max-w-full transition-colors duration-200 sm:w-[2px]",
                     up ? "bottom-1/2 origin-bottom" : "top-1/2 origin-top",
                     on ? "bg-gold" : up ? "bg-pos" : "bg-neg/60",
                     hover !== null && !on && "opacity-50",

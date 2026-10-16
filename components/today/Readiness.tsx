@@ -5,6 +5,7 @@ import { cn } from "@/lib/cn";
 import { saveJournal } from "@/lib/actions/journal";
 import type { Readiness as R } from "@/lib/types";
 import { Aside, Split } from "./Layout";
+import { Rise } from "./Rise";
 
 const METRICS: { key: keyof R; label: string; low: string; high: string }[] = [
   { key: "sleep", label: "Sleep", low: "Wrecked", high: "Rested" },
@@ -191,13 +192,13 @@ export function Readiness({
       <div className="space-y-[clamp(4.5rem,11vh,7rem)]">
         <Split
           aside={
-            <Aside label="Readiness" figure={saved ? score : "—"} unit={saved ? "/ 100" : undefined} tone={saved && score >= 70 ? "pos" : null}>
-              <div className="mt-6 max-w-[22ch]">{statement}</div>
+            <Aside label="Readiness" figure={saved ? score : <span className="text-ink-4">—</span>} unit={saved ? "/ 100" : undefined} tone={saved && score >= 70 ? "pos" : null}>
+              <div className="mt-6 max-w-[20rem]">{statement}</div>
               {insight && <p className="mt-5 max-w-[34ch] font-mono text-[11px] leading-[1.85] tracking-[0.02em] text-ink-3">{insight}</p>}
             </Aside>
           }
         >
-          <div className="reveal">{scales}</div>
+          <Rise>{scales}</Rise>
         </Split>
         <Split
           aside={
@@ -206,9 +207,9 @@ export function Readiness({
             </Aside>
           }
         >
-          <div className="reveal md:pt-8">
+          <Rise className="md:pt-8">
             <Intention day={day} initial={initialIntention} big />
-          </div>
+          </Rise>
         </Split>
       </div>
     );

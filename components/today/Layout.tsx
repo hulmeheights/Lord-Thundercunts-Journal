@@ -1,4 +1,5 @@
 import { cn } from "@/lib/cn";
+import { Rise } from "./Rise";
 
 const delay = (d?: number) => (d ? ({ "--d": `${d}ms` } as React.CSSProperties) : undefined);
 
@@ -45,9 +46,9 @@ export function Chapter({
 export function Split({ aside, children, className, d }: { aside: React.ReactNode; children: React.ReactNode; className?: string; d?: number }) {
   return (
     <div className={cn("grid grid-cols-1 gap-x-[clamp(1.2rem,5vw,5rem)] gap-y-9 md:grid-cols-[minmax(0,0.9fr)_minmax(0,1.6fr)]", className)}>
-      <div className="reveal md:sticky md:top-24 md:self-start" style={delay(d)}>
+      <Rise className="md:sticky md:top-24 md:self-start" d={d}>
         {aside}
-      </div>
+      </Rise>
       <div className="min-w-0">{children}</div>
     </div>
   );

@@ -9,7 +9,7 @@ type T = Pick<Trade, "direction" | "entryPrice" | "exitPrice" | "entryTime" | "e
 /**
  * Entry → exit, drawn as a schematic: hairline price levels, a jade entry
  * tick, a cream exit, the planned 1R risk as a dotted rule. The path draws
- * itself in once its `.reveal` ancestor is in view. Server-renderable.
+ * itself in once an ancestor gets `.t-drawn`. Server-renderable.
  */
 export function PriceTrace({ trade, tz, defaultRisk = null, compact = false, className }: { trade: T; tz: string; defaultRisk?: number | null; compact?: boolean; className?: string }) {
   const { entryPrice: inP, exitPrice: outP } = trade;
@@ -50,7 +50,7 @@ export function PriceTrace({ trade, tz, defaultRisk = null, compact = false, cla
         </svg>
 
         {/* the move: band + line, revealed left → right */}
-        <div className="absolute inset-0 [clip-path:inset(0_100%_0_0)] transition-[clip-path] delay-300 duration-[1600ms] ease-[cubic-bezier(0.16,1,0.3,1)] [.in_&]:[clip-path:inset(0_0_0_0)]">
+        <div className="absolute inset-0 [clip-path:inset(0_100%_0_0)] transition-[clip-path] delay-300 duration-[1600ms] ease-[cubic-bezier(0.16,1,0.3,1)] [.t-drawn_&]:[clip-path:inset(0_0_0_0)]">
           <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="absolute inset-0 h-full w-full overflow-visible" aria-hidden>
             <rect x={xIn} width={xOut - xIn} y={Math.min(yIn, yOut)} height={Math.max(Math.abs(yOut - yIn), 0.01)} fill={tone} opacity={win ? 0.07 : 0.04} />
             <line x1={xIn} y1={yIn} x2={xOut} y2={yOut} stroke={tone} strokeWidth="7" opacity="0.14" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
@@ -60,13 +60,16 @@ export function PriceTrace({ trade, tz, defaultRisk = null, compact = false, cla
 
         {/* drop lines to the time axis */}
         <i className="absolute bottom-0 block w-px bg-pos/35" style={{ left: `${xIn}%`, top: `${yIn}%` }} />
-        <i className="absolute bottom-0 block w-px bg-ink/25 opacity-0 transition-opacity delay-[1500ms] duration-700 [.in_&]:opacity-100" style={{ left: `${xOut}%`, top: `${yOut}%` }} />
+        <i className="absolute bottom-0 block w-px bg-ink/25 opacity-0 transition-opacity delay-[1500ms] duration-700 [.t-drawn_&]:opacity-100" style={{ left: `${xOut}%`, top: `${yOut}%` }} />
 
-        {/* entry: jade ring */}
-        <span className="absolute block h-[9px] w-[9px] -translate-x-1/2 -translate-y-1/2 rounded-full border border-pos bg-bg" style={{ left: `${xIn}%`, top: `${yIn}%` }} />
-        {/* exit: cream dot */}
-        <span
-          className="absolute block h-[9px] w-[9px] -translate-x-1/2 -translate-y-1/2 scale-0 rounded-full bg-ink transition-transform delay-[1650ms] duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] [.in_&]:scale-100"
+        {/* entry: a jade tick across the level */}
+        <i className={cn("absolute block h-[2px] -translate-x-1/2 -translate-y-1/2 bg-pos", compact ? "w-3" : "w-[22px]")} style={{ left: `${xIn}%`, top: `${yIn}%` }} />
+        {/* exit: a cream tick, struck once the line arrives */}
+        <i
+          className={cn(
+            "absolute block h-[2px] -translate-x-1/2 -translate-y-1/2 scale-x-0 bg-ink transition-transform delay-[1650ms] duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] [.t-drawn_&]:scale-x-100",
+            compact ? "w-3" : "w-[22px]",
+          )}
           style={{ left: `${xOut}%`, top: `${yOut}%` }}
         />
 
@@ -75,14 +78,14 @@ export function PriceTrace({ trade, tz, defaultRisk = null, compact = false, cla
           In <span className="num ml-1.5 text-[11px] tracking-normal">{fmtPrice(inP)}</span>
         </span>
         <span
-          className={cn(label, "text-ink opacity-0 transition-opacity delay-[1600ms] duration-700 [.in_&]:opacity-100")}
+          className={cn(label, "text-ink opacity-0 transition-opacity delay-[1600ms] duration-700 [.t-drawn_&]:opacity-100")}
           style={{ left: `${xOut}%`, top: `${yOut}%`, transform: `translate(${compact ? "-70%" : "-80%"}, ${rising ? "calc(-100% - 14px)" : "14px"})` }}
         >
           Out <span className="num ml-1.5 text-[11px] tracking-normal">{fmtPrice(outP)}</span>
         </span>
         {!compact && (
           <span
-            className={cn(label, "text-ink-3 opacity-0 transition-opacity delay-[1100ms] duration-700 [.in_&]:opacity-100")}
+            className={cn(label, "text-ink-3 opacity-0 transition-opacity delay-[1100ms] duration-700 [.t-drawn_&]:opacity-100")}
             style={{ left: "50%", top: `${(yIn + yOut) / 2}%`, transform: `translate(-50%, ${rising ? "18px" : "calc(-100% - 18px)"})` }}
           >
             <span className="num text-[11px] tracking-normal">

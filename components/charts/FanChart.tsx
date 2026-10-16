@@ -65,8 +65,16 @@ export function FanChart({
   const hb = hover !== null ? bands[hover] : null;
   const yTarget = target !== null ? geo.y(target) : null;
   const yFloor = geo.y(floor);
-  // Keep the two rule labels from colliding when the rules sit close together.
-  const floorLabelBelow = yTarget !== null && Math.abs(yTarget - yFloor) < 26;
+  // The target's label sits above its rule and the floor's below — the band
+  // lives between them, so neither label lands on a future.
+  const plotBottom = height - bottom;
+  const floorLabelY = yFloor + 16 < plotBottom ? yFloor + 16 : yFloor - 8;
+  // The median's closing figure sits above its dot unless a rule runs through
+  // that spot, in which case it steps below.
+  const yEnd = geo.y(last.p50);
+  const rules = [yFloor, yTarget].filter((y): y is number => y !== null);
+  const blocked = (lo: number, hi: number) => rules.some((y) => y >= lo && y <= hi);
+  const endLabelY = blocked(yEnd - 24, yEnd) && !blocked(yEnd, yEnd + 26) ? yEnd + 20 : yEnd - 12;
 
   return (
     <div ref={ref} className={cn("relative w-full select-none", className)} style={{ height }}>
@@ -140,7 +148,7 @@ export function FanChart({
             </g>
           )}
           <line x1={0} x2={w} y1={yFloor} y2={yFloor} stroke="var(--neg)" strokeDasharray="5 7" strokeOpacity={0.45} />
-          <text x={2} y={floorLabelBelow ? yFloor + 16 : yFloor - 8} className="fill-ink-3 font-mono text-[9px] tracking-[0.24em] uppercase">
+          <text x={2} y={floorLabelY} className="fill-ink-3 font-mono text-[9px] tracking-[0.24em] uppercase">
             Max loss · {fmtMoney(floor)}
           </text>
 
@@ -176,7 +184,7 @@ export function FanChart({
             transition={{ duration: 0.8, delay: 1.8 }}
           >
             <circle cx={geo.x(n - 1)} cy={geo.y(last.p50)} r={3} fill="var(--pos)" />
-            <text x={geo.x(n - 1) - 10} y={geo.y(last.p50) - 10} textAnchor="end" className="num fill-pos text-[11px]">
+            <text x={geo.x(n - 1) - 10} y={endLabelY} textAnchor="end" className="num fill-pos text-[11px]">
               {fmtMoney(last.p50)}
             </text>
           </motion.g>

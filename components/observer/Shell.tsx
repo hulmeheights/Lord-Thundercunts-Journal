@@ -1,7 +1,7 @@
 "use client";
 
-import { createContext, useCallback, useContext, useState } from "react";
-import type { Instruction } from "@/lib/analytics/observer";
+import { useCallback, useEffect, useState } from "react";
+import type { Instruction, ObstacleKey } from "@/lib/analytics/observer";
 import type { ObserverWindow } from "@/lib/data/observer";
 import type { Settings } from "@/lib/types";
 import { Btn } from "@/components/m";
@@ -9,31 +9,37 @@ import { cn } from "@/lib/cn";
 import { Ritual } from "./Ritual";
 import { textBtn } from "./ui";
 
-const RitualCtx = createContext<(() => void) | null>(null);
+/** Any "Step outside" button on the page opens the one ritual through this event. */
+const OPEN = "observer:step-outside";
 
 /**
- * Holds the "Step outside" ritual for the whole page, so any button on it can
- * open the same full-screen sequence. `?ritual=1` opens it on arrival.
+ * Hosts the "Step outside" ritual for the whole page as a sibling of the
+ * (server-rendered) case file, so the page itself stays a server component.
+ * `?ritual=1` opens it on arrival.
  */
-export function ObserverShell({
-  children,
+export function RitualHost({
   name,
   tell,
   window: win,
   aiReady,
   prefs,
+  pinned,
   initialOpen = false,
 }: {
-  children: React.ReactNode;
   name: string;
   tell: Instruction[];
   window: ObserverWindow;
   aiReady: boolean;
   prefs: Settings["observer"];
+  pinned: ObstacleKey | null;
   initialOpen?: boolean;
 }) {
   const [open, setOpen] = useState(initialOpen);
-  const show = useCallback(() => setOpen(true), []);
+  useEffect(() => {
+    const show = () => setOpen(true);
+    globalThis.addEventListener(OPEN, show);
+    return () => globalThis.removeEventListener(OPEN, show);
+  }, []);
   const close = useCallback(() => {
     setOpen(false);
     // Drop ?ritual=1 so a reload doesn't reopen it.
@@ -43,26 +49,21 @@ export function ObserverShell({
       history.replaceState(history.state, "", url.pathname + url.search + url.hash);
     }
   }, []);
-  return (
-    <RitualCtx.Provider value={show}>
-      {children}
-      <Ritual open={open} onClose={close} name={name} tell={tell} window={win} aiReady={aiReady} prefs={prefs} />
-    </RitualCtx.Provider>
-  );
+  return <Ritual open={open} onClose={close} name={name} tell={tell} window={win} aiReady={aiReady} prefs={prefs} pinned={pinned} />;
 }
 
 /** Opens the ritual. `text` renders a quiet underlined text button instead of the primary one. */
 export function StepOutside({ children, variant = "primary", className }: { children: React.ReactNode; variant?: "primary" | "secondary" | "text"; className?: string }) {
-  const open = useContext(RitualCtx);
+  const open = () => globalThis.dispatchEvent(new Event(OPEN));
   if (variant === "text") {
     return (
-      <button type="button" onClick={() => open?.()} className={cn(textBtn, className)}>
+      <button type="button" onClick={open} className={cn(textBtn, className)}>
         {children}
       </button>
     );
   }
   return (
-    <Btn variant={variant} size="lg" onClick={() => open?.()} className={className}>
+    <Btn variant={variant} size="lg" onClick={open} className={className}>
       {children}
     </Btn>
   );

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
 import type { Trade } from "@/lib/types";
 import { cn } from "@/lib/cn";
 import { fmtMoney, fmtNum, fmtPrice } from "@/lib/format";
@@ -27,6 +28,11 @@ export function TradeRow({ t, tz, open, onToggle, defaultRisk }: { t: Trade; tz:
       {fmtPrice(t.entryPrice)} <span className="text-ink-4">→</span> {fmtPrice(t.exitPrice)}
     </>
   );
+  const mistakes = t.mistakes.length ? `${t.mistakes.length} mistake${t.mistakes.length === 1 ? "" : "s"}` : null;
+  // The preview is only built the first time it opens (and kept after), so a
+  // long log stays light and the trace draws in when you open it.
+  const [seen, setSeen] = useState(open);
+  if (open && !seen) setSeen(true);
 
   return (
     <div data-flip-id={t.id} className="border-b border-line">
@@ -34,20 +40,19 @@ export function TradeRow({ t, tz, open, onToggle, defaultRisk }: { t: Trade; tz:
         <i
           aria-hidden
           className={cn(
-            "absolute top-1/2 left-0 block h-[2.4rem] w-[2px] -translate-y-1/2 transition-colors duration-500 md:h-[1.15rem]",
+            "absolute top-[1.2rem] left-0 block h-[2.55rem] w-[2px] transition-colors duration-500 md:top-1/2 md:h-[1.15rem] md:-translate-y-1/2",
             open ? "bg-gold" : win ? "bg-pos" : loss ? "bg-neg/70" : "bg-ink-4",
           )}
         />
         <button type="button" onClick={onToggle} aria-expanded={open} className="group m-row min-w-0 flex-1 py-[1.15rem] text-left md:py-[1.2rem]">
-          {/* phone: a two-line composition */}
+          {/* phone: a two- (or three-) line composition */}
           <div className="pl-5 md:hidden">
             <div className="flex items-baseline justify-between gap-4">
               <div className="flex min-w-0 items-baseline gap-3">
                 <span className="font-mono text-[15px] tracking-[0.08em] text-ink">{t.root}</span>
-                <span className="font-mono text-[9.5px] tracking-[0.22em] text-ink-3 uppercase">
+                <span className="font-mono text-[9.5px] tracking-[0.22em] whitespace-nowrap text-ink-3 uppercase">
                   {t.direction} ×{t.qty}
                 </span>
-                {t.mistakes.length > 0 && <span className="font-mono text-[9.5px] tracking-[0.18em] text-neg">× {t.mistakes.length}</span>}
               </div>
               <Num value={t.netPnl} className="text-[15px]" />
             </div>
@@ -57,6 +62,18 @@ export function TradeRow({ t, tz, open, onToggle, defaultRisk }: { t: Trade; tz:
               </span>
               <span className="shrink-0">{hold}</span>
             </div>
+            {(t.setup || mistakes || t.notes) && (
+              <div className="mt-2.5 flex min-w-0 items-baseline gap-2 font-mono text-[9px] tracking-[0.24em] text-ink-4 uppercase">
+                {t.setup && <span className="truncate">{t.setup}</span>}
+                {t.setup && mistakes && <span aria-hidden>·</span>}
+                {mistakes && <span className="shrink-0 text-neg">{mistakes}</span>}
+                {t.notes && (
+                  <span className="shrink-0 font-serif text-[13px] tracking-normal normal-case italic" title="Has notes">
+                    ¶
+                  </span>
+                )}
+              </div>
+            )}
           </div>
 
           {/* desktop: an editorial row */}
@@ -70,11 +87,19 @@ export function TradeRow({ t, tz, open, onToggle, defaultRisk }: { t: Trade; tz:
             </span>
             <span className="num truncate text-[12px] text-ink-2">{prices}</span>
             <span className="num text-[11.5px] text-ink-4">{hold}</span>
-            <span className="hidden min-w-0 items-center gap-2 overflow-hidden xl:flex">
-              {t.setup && <Tag>{t.setup}</Tag>}
-              {t.mistakes.length > 0 && <Tag tone="neg">× {t.mistakes.length === 1 ? t.mistakes[0] : `${t.mistakes.length} mistakes`}</Tag>}
+            <span className="hidden min-w-0 items-center gap-3 xl:flex">
+              {t.setup && (
+                <Tag className="max-w-full min-w-0">
+                  <span className="truncate">{t.setup}</span>
+                </Tag>
+              )}
+              {mistakes && (
+                <span className="shrink-0 font-mono text-[9.5px] tracking-[0.2em] whitespace-nowrap text-neg uppercase" title={t.mistakes.join(" · ")}>
+                  × {mistakes}
+                </span>
+              )}
               {t.notes && (
-                <span className="font-serif text-[15px] text-ink-4 italic" title="Has notes">
+                <span className="shrink-0 font-serif text-[15px] text-ink-4 italic" title="Has notes">
                   ¶
                 </span>
               )}
@@ -88,8 +113,8 @@ export function TradeRow({ t, tz, open, onToggle, defaultRisk }: { t: Trade; tz:
       </div>
 
       <div className={cn("grid transition-[grid-template-rows] duration-700 ease-[cubic-bezier(0.16,1,0.3,1)]", open ? "grid-rows-[1fr]" : "grid-rows-[0fr]")}>
-        <div className="min-h-0 overflow-hidden" inert={!open}>
-          <Preview t={t} tz={tz} href={href} defaultRisk={defaultRisk} />
+        <div className={cn("min-h-0 overflow-hidden", open && "t-drawn")} inert={!open}>
+          {seen && <Preview t={t} tz={tz} href={href} defaultRisk={defaultRisk} />}
         </div>
       </div>
     </div>
@@ -116,7 +141,6 @@ function Preview({ t, tz, href, defaultRisk }: { t: Trade; tz: string; href: str
   return (
     <div className="grid gap-x-12 gap-y-8 pt-3 pb-10 pl-5 md:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)] md:pr-12 md:pl-[5.75rem]">
       <div className="min-w-0">
-        {t.setup && <div className="mb-4 font-mono text-[9.5px] tracking-[0.3em] text-gold uppercase md:hidden">◆ {t.setup}</div>}
         {t.notes ? (
           <p className="line-clamp-6 max-w-[42ch] font-serif text-[1.12rem] leading-[1.6] font-light text-ink-2 italic">“{t.notes}”</p>
         ) : (
