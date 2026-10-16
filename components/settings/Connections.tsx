@@ -117,7 +117,7 @@ function TradovateLogin({ initialEnv = "demo" }: { initialEnv?: "demo" | "live" 
     <div>
       <ol className="mb-7 space-y-2.5">
         <li className={step}>
-          <span className="text-gold">01</span>Press the button. Tradovate&apos;s own sign-in opens in a new tab (web.ninjatrader.com). Sign in with the login your prop firm gave you and allow view-only.
+          <span className="text-gold">01</span>Press the button. Tradovate&apos;s own sign-in opens in a new tab (trader.tradovate.com, the same page Tradecopia uses; it will say &ldquo;to continue to NinjaTrader MCP&rdquo;). Sign in with the login your prop firm gave you and allow view-only.
         </li>
         <li className={step}>
           <span className="text-gold">02</span>That tab then lands on a page that won&apos;t load (it says localhost). That&apos;s expected: the address holds a one-time code.
@@ -157,8 +157,8 @@ function TradovateLogin({ initialEnv = "demo" }: { initialEnv?: "demo" | "live" 
         One time only. Tradovate&apos;s sign-in lasts about a day and every sync renews it, so the nightly sync keeps it alive on its own.
       </p>
       <p className="mt-3 max-w-[60ch] font-mono text-[10.5px] leading-[1.8] text-ink-4">
-        <span className="text-gold">◆</span> Tradovate&apos;s screen lists &ldquo;Orders, Alerts, Risks&rdquo; under full access. That&apos;s their fixed permission set for this sign-in and
-        can&apos;t be narrowed. The journal never uses it: any tool that could place, change or close a trade is refused in code before a request is sent, and the
+        <span className="text-gold">◆</span> Tradovate grants this sign-in its standard NinjaTrader MCP permissions, which include orders. That set is fixed and can&apos;t be
+        narrowed. The journal never uses it: any tool that could place, change or close a trade is refused in code before a request is sent, and the
         sign-in is stored sealed with AES-256-GCM. Disconnect erases it.
       </p>
     </div>

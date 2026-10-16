@@ -4,7 +4,7 @@ import { db } from "../db";
 import { encryptJson, randomToken } from "../crypto";
 import type { NormalizedFill } from "./roundtrip";
 import { BrokerError, type BrokerAccountInfo, type BrokerClient, type TokenCache } from "./types";
-import { ACCOUNT_TOOLS, FILL_TOOLS, isReadTool, NT_HOSTS, parseAccounts, parseFills, parseRpcBody, pickTool, toolPayload, ymd, type NtEnv } from "./ntmcp-parse";
+import { ACCOUNT_TOOLS, FILL_TOOLS, isReadTool, NT_HOSTS, TRADOVATE_SIGN_IN, parseAccounts, parseFills, parseRpcBody, pickTool, toolPayload, ymd, type NtEnv } from "./ntmcp-parse";
 
 /**
  * "Log in with Tradovate": the same sign-in screen Tradecopia sends you to,
@@ -17,8 +17,9 @@ import { ACCOUNT_TOOLS, FILL_TOOLS, isReadTool, NT_HOSTS, parseAccounts, parseFi
  * the token has no audience and the MCP server answers 401).
  */
 
-export type NtCreds = { env: NtEnv; clientId: string; refreshToken: string; refreshExpiresAt: string | null };
-export type NtTokens = { accessToken: string; expiresAt: Date; refreshToken: string; refreshExpiresAt: Date | null };
+/** `tokenHost` is the API host that issued the tokens; refreshes must go back to it. */
+export type NtCreds = { env: NtEnv; clientId: string; refreshToken: string; refreshExpiresAt: string | null; tokenHost?: string };
+export type NtTokens = { accessToken: string; expiresAt: Date; refreshToken: string; refreshExpiresAt: Date | null; tokenHost: string };
 
 const SCOPE = "mcp:connect";
 const TIMEOUT = 20_000;
@@ -56,7 +57,7 @@ export async function registerClient(env: NtEnv, redirectUri: string): Promise<s
 }
 
 export function authorizeUrl(a: { env: NtEnv; clientId: string; redirectUri: string; challenge: string; state: string }): string {
-  const u = new URL(NT_HOSTS[a.env].auth);
+  const u = new URL(TRADOVATE_SIGN_IN);
   u.searchParams.set("response_type", "code");
   u.searchParams.set("client_id", a.clientId);
   u.searchParams.set("redirect_uri", a.redirectUri);
@@ -68,8 +69,8 @@ export function authorizeUrl(a: { env: NtEnv; clientId: string; redirectUri: str
   return u.toString();
 }
 
-async function tokenRequest(env: NtEnv, params: Record<string, string>): Promise<NtTokens> {
-  const res = await http(`${NT_HOSTS[env].api}/auth/oauthtoken`, {
+async function tokenRequest(env: NtEnv, params: Record<string, string>, host = NT_HOSTS[env].api): Promise<NtTokens> {
+  const res = await http(`${host}/auth/oauthtoken`, {
     method: "POST",
     headers: { "content-type": "application/x-www-form-urlencoded", accept: "application/json" },
     body: new URLSearchParams({ ...params, resource: NT_HOSTS[env].mcp }).toString(),
@@ -92,11 +93,28 @@ async function tokenRequest(env: NtEnv, params: Record<string, string>): Promise
     expiresAt: new Date(now + Math.max(60, (j.expires_in ?? 3600) - 120) * 1000),
     refreshToken: j.refresh_token ?? params.refresh_token ?? "",
     refreshExpiresAt: j.refresh_token_expires_in ? new Date(now + j.refresh_token_expires_in * 1000) : null,
+    tokenHost: host,
   };
 }
 
-export const exchangeCode = (env: NtEnv, a: { clientId: string; code: string; verifier: string; redirectUri: string }) =>
-  tokenRequest(env, { grant_type: "authorization_code", client_id: a.clientId, code: a.code, code_verifier: a.verifier, redirect_uri: a.redirectUri });
+/**
+ * trader.tradovate.com issues codes from Tradovate's shared login, which may be
+ * redeemable on either API host. Try the account's own host first, then the other;
+ * an unknown code is simply refused, so the second try is harmless.
+ */
+export async function exchangeCode(env: NtEnv, a: { clientId: string; code: string; verifier: string; redirectUri: string }): Promise<NtTokens> {
+  const params = { grant_type: "authorization_code", client_id: a.clientId, code: a.code, code_verifier: a.verifier, redirect_uri: a.redirectUri };
+  const hosts = [NT_HOSTS[env].api, NT_HOSTS[env === "demo" ? "live" : "demo"].api];
+  let last: unknown;
+  for (const host of hosts) {
+    try {
+      return await tokenRequest(env, params, host);
+    } catch (err) {
+      last = err;
+    }
+  }
+  throw last;
+}
 
 /** Minimal Streamable-HTTP MCP client: initialize once, then JSON-RPC calls. */
 class Mcp {
@@ -163,8 +181,12 @@ export class NtMcpClient implements BrokerClient {
   private async accessToken(): Promise<string> {
     const cached = await this.cache.get();
     if (cached && cached.expiresAt.getTime() > Date.now() + 30_000) return cached.token;
-    const t = await tokenRequest(this.creds.env, { grant_type: "refresh_token", client_id: this.creds.clientId, refresh_token: this.creds.refreshToken });
-    this.creds = { ...this.creds, refreshToken: t.refreshToken, refreshExpiresAt: t.refreshExpiresAt?.toISOString() ?? this.creds.refreshExpiresAt };
+    const t = await tokenRequest(
+      this.creds.env,
+      { grant_type: "refresh_token", client_id: this.creds.clientId, refresh_token: this.creds.refreshToken },
+      this.creds.tokenHost ?? NT_HOSTS[this.creds.env].api,
+    );
+    this.creds = { ...this.creds, refreshToken: t.refreshToken, refreshExpiresAt: t.refreshExpiresAt?.toISOString() ?? this.creds.refreshExpiresAt, tokenHost: t.tokenHost };
     await this.onRotate(this.creds);
     await this.cache.set(t.accessToken, t.expiresAt);
     return t.accessToken;
@@ -197,7 +219,7 @@ export class NtMcpClient implements BrokerClient {
 /** Saves (or refreshes) the connection after a successful login. Accounts are listed right away. */
 export async function saveNtConnection(env: NtEnv, clientId: string, tokens: NtTokens): Promise<{ id: string; accounts: number }> {
   const id = `ntmcp-${env}`;
-  const creds: NtCreds = { env, clientId, refreshToken: tokens.refreshToken, refreshExpiresAt: tokens.refreshExpiresAt?.toISOString() ?? null };
+  const creds: NtCreds = { env, clientId, refreshToken: tokens.refreshToken, refreshExpiresAt: tokens.refreshExpiresAt?.toISOString() ?? null, tokenHost: tokens.tokenHost };
   let latest = creds;
   const holder: { v: { token: string; expiresAt: Date } | null } = { v: { token: tokens.accessToken, expiresAt: tokens.expiresAt } };
   const client = new NtMcpClient(

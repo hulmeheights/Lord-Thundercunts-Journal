@@ -10,6 +10,12 @@ import type { BrokerAccountInfo } from "./types";
 
 export type NtEnv = "demo" | "live";
 
+/**
+ * Tradovate's own sign-in page (trader.tradovate.com, the one Tradecopia uses) accepts
+ * the same self-registered client as NinjaTrader's, so that's where we send you.
+ */
+export const TRADOVATE_SIGN_IN = "https://trader.tradovate.com/oauth";
+
 export const NT_HOSTS: Record<NtEnv, { auth: string; api: string; mcp: string }> = {
   demo: { auth: "https://web.ninjatrader.com/oauth?env=demo", api: "https://demo.tradovateapi.com", mcp: "https://mcp-demo.tradovateapi.com/mcp" },
   live: { auth: "https://web.ninjatrader.com/oauth?env=live", api: "https://live.tradovateapi.com", mcp: "https://mcp-live.tradovateapi.com/mcp" },
