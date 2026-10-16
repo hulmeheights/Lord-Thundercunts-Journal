@@ -4,7 +4,6 @@ import { isConfigured } from "@/lib/env";
 import { requireSession } from "@/lib/auth/session";
 import { Sidebar } from "@/components/shell/Sidebar";
 import { TabBar } from "@/components/shell/TabBar";
-import { Hud } from "@/components/shell/Hud";
 import { MobileIndex } from "@/components/shell/MobileIndex";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
@@ -13,7 +12,6 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   return (
     <div className="relative min-h-dvh">
       <Sidebar />
-      <Hud />
       {/* Mobile top bar */}
       <div className="sticky top-0 z-30 flex items-start justify-between bg-bg/90 px-5 pt-[calc(14px+var(--safe-top))] pb-3 backdrop-blur-md lg:hidden">
         <Link href="/">

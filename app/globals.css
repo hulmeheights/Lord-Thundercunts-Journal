@@ -430,21 +430,6 @@ html.lenis body {
   }
 }
 
-/* Crosshair cursor (desktop) */
-body.cross-on,
-body.cross-on a,
-body.cross-on button {
-  cursor: none;
-}
-body.cross-on input,
-body.cross-on textarea {
-  cursor: text;
-}
-.xh {
-  background: rgba(236, 231, 221, 0.16);
-  will-change: transform;
-}
-
 /* ── Meridian kit ─────────────────────────────────────────────────────── */
 :root {
   --ease-m: cubic-bezier(0.16, 1, 0.3, 1);

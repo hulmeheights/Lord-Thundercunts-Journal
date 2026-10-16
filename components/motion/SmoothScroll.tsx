@@ -18,7 +18,8 @@ export function SmoothScroll() {
     void import("lenis").then(({ default: Lenis }) => {
       if (destroyed) return;
       const { gsap, ScrollTrigger } = motionKit();
-      const lenis = new Lenis({ duration: 1.15, easing: (t: number) => 1 - Math.pow(1 - t, 4), wheelMultiplier: 0.9 });
+      // Quick and light: the wheel moves the page about as far as it normally would, just eased.
+      const lenis = new Lenis({ lerp: 0.16, wheelMultiplier: 1.2 });
       window.__lenis = lenis;
       lenis.on("scroll", ScrollTrigger.update);
       const tick = (time: number) => lenis.raf(time * 1000);

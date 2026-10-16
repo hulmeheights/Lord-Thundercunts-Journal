@@ -30,7 +30,8 @@ stops moving. Every screen of this journal must feel like it belongs to that sit
 5. **Motion:** one easing `cubic-bezier(0.16,1,0.3,1)`.
    - Scroll reveal: add `className="reveal"` (opacity 0, y 26px → in). Stagger with `style={{"--d": "80ms"}}`.
    - Rows indent `1.2rem` on hover. Primary buttons are magnetic (`data-magnetic`). Numbers count up / roll.
-   - Something is always alive: the living line, the pulsing jade ● LIVE dot, the HUD clock.
+   - Something is always alive: the living line, the pulsing jade ● LIVE dot, the sidebar clock.
+   - Keep the normal mouse cursor (the owner asked for it; no custom crosshair). Scrolling is eased but quick (Lenis `lerp` 0.16).
    - Respect `prefers-reduced-motion`.
 
 ## Layout
