@@ -45,7 +45,7 @@ export async function aiBriefing(briefingId: string, context: Record<string, unk
     model: m,
     max_tokens: 16000,
     ...fallbackParams(m),
-    output_config: { effort: "high", format: { type: "json_schema", schema: JSON_SCHEMA as unknown as Record<string, unknown> } },
+    output_config: { effort: "medium", format: { type: "json_schema", schema: JSON_SCHEMA as unknown as Record<string, unknown> } },
     system: `${COACH_PERSONA}\n\nYou are writing the trader's ${String(context.period)} briefing — it appears as slides they swipe through, so every line must earn its place.`,
     messages: [
       {
@@ -99,7 +99,7 @@ export async function aiReflection(context: Record<string, unknown>): Promise<Re
     model: m,
     max_tokens: 16000,
     ...fallbackParams(m),
-    output_config: { effort: "high", format: { type: "json_schema", schema: REFLECTION_SCHEMA as unknown as Record<string, unknown> } },
+    output_config: { effort: "medium", format: { type: "json_schema", schema: REFLECTION_SCHEMA as unknown as Record<string, unknown> } },
     system: `${COACH_PERSONA}\n\nYou are reading tonight's journal entry alongside the day's trades. Reflect it back like a great coach would.`,
     messages: [{ role: "user", content: `<day>\n${JSON.stringify(context)}\n</day>\nReflect on my day.` }],
   });

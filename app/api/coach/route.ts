@@ -37,7 +37,10 @@ export async function POST(request: Request) {
     model: m,
     max_tokens: 32000,
     ...fallbackParams(m),
-    output_config: { effort: "high" },
+    // Medium holds quality for chat; the Observer (deep behavioural reading) stays on high.
+    output_config: { effort: "medium" },
+    // Also cache the conversation so far: each new message only pays full price for what's new.
+    cache_control: { type: "ephemeral" },
     system: [
       {
         type: "text",
