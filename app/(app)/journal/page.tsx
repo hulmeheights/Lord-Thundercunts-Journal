@@ -1,6 +1,7 @@
 import { getSettings } from "@/lib/data/settings";
 import { listTrades } from "@/lib/data/trades";
 import { journaledDays, listJournalDays, pendingCapsuleCount } from "@/lib/data/journal";
+import { photoCounts } from "@/lib/data/photos";
 import { addDays, addMonths, endOfMonth, longDate, monthLabel, startOfMonth, todayKey } from "@/lib/analytics/time";
 import { dailySeries, summarize } from "@/lib/analytics/stats";
 import { fmtMoney, fmtPct } from "@/lib/format";
@@ -23,11 +24,12 @@ export default async function JournalPage({ searchParams }: { searchParams: Prom
   const year = Number(m.slice(0, 4));
   const yStart = `${year}-01-01`;
   const yEnd = `${year}-12-31`;
-  const [trades, journaled, entries, pending] = await Promise.all([
+  const [trades, journaled, entries, pending, photos] = await Promise.all([
     listTrades({ since: new Date(`${addDays(yStart, -1)}T00:00:00Z`), until: new Date(`${addDays(yEnd, 2)}T00:00:00Z`) }),
     journaledDays(yStart, yEnd),
     listJournalDays(addDays(today, -90), today),
     pendingCapsuleCount(today),
+    photoCounts(addDays(today, -90), today),
   ]);
 
   const series = dailySeries(trades, tz);
@@ -43,7 +45,7 @@ export default async function JournalPage({ searchParams }: { searchParams: Prom
   const traded = monthDays.length;
   const best = monthDays.reduce<(typeof monthDays)[number] | null>((b, d) => (!b || d.net > b.net ? d : b), null);
 
-  const written = entries.filter(WRITTEN).reverse().slice(0, 8);
+  const written = entries.filter((e) => WRITTEN(e) || photos.has(e.day)).reverse().slice(0, 8);
   const netByDay = new Map(series.map((d) => [d.day, d.net]));
   const prev = addMonths(m, -1).slice(0, 7);
   const next = addMonths(m, 1).slice(0, 7);
@@ -136,7 +138,16 @@ export default async function JournalPage({ searchParams }: { searchParams: Prom
                       {rest.length ? <>, <em>{rest.join(", ")}</em></> : null}
                     </>
                   }
-                  desc={<span className="line-clamp-3">{e.review || e.lessons || e.wins || e.plan}</span>}
+                  desc={
+                    <>
+                      <span className="line-clamp-3">{e.review || e.lessons || e.wins || e.plan || "Photos only."}</span>
+                      {photos.get(e.day) ? (
+                        <span className="mt-2 block font-mono text-[9px] tracking-[0.3em] text-gold uppercase">
+                          ◆ {photos.get(e.day)} photo{photos.get(e.day) === 1 ? "" : "s"}
+                        </span>
+                      ) : null}
+                    </>
+                  }
                   right={net !== undefined ? <Num value={net} /> : <span className="text-ink-4">—</span>}
                   d={i * 50}
                 />

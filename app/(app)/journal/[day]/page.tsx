@@ -3,12 +3,14 @@ import { notFound } from "next/navigation";
 import { getSettings } from "@/lib/data/settings";
 import { listTrades } from "@/lib/data/trades";
 import { getJournalDay } from "@/lib/data/journal";
+import { listPhotos } from "@/lib/data/photos";
 import { addDays, dayKey, longDate, timeInTz, todayKey } from "@/lib/analytics/time";
 import { summarize } from "@/lib/analytics/stats";
 import { fmtMoney, fmtPct, fmtPrice } from "@/lib/format";
 import { cn } from "@/lib/cn";
 import { aiConfigured } from "@/lib/env";
 import { DayEditor } from "@/components/journal/DayEditor";
+import { Photos } from "@/components/journal/Photos";
 import { Readiness } from "@/components/today/Readiness";
 import { Ritual } from "@/components/today/Ritual";
 import { Cue, Meta, PageHead, Section } from "@/components/m";
@@ -21,9 +23,10 @@ export default async function JournalDayPage({ params }: { params: Promise<{ day
   const settings = await getSettings();
   const tz = settings.profile.timezone;
   const today = todayKey(tz);
-  const [journal, trades] = await Promise.all([
+  const [journal, trades, photos] = await Promise.all([
     getJournalDay(day),
     listTrades({ since: new Date(`${addDays(day, -1)}T00:00:00Z`), until: new Date(`${addDays(day, 2)}T00:00:00Z`) }),
+    listPhotos(day),
   ]);
   const dayTrades = trades.filter((t) => dayKey(t.exitTime, tz) === day).sort((a, b) => a.entryTime.localeCompare(b.entryTime));
   const s = summarize(dayTrades);
@@ -65,7 +68,8 @@ export default async function JournalDayPage({ params }: { params: Promise<{ day
           <DayEditor day={day} journal={journal} customRules={settings.rules.custom} aiEnabled={aiConfigured() && settings.ai.enabled} />
         </div>
 
-        <aside className="min-w-0 lg:pt-1">
+        <aside className="min-w-0 space-y-14 lg:pt-1">
+          <Photos day={day} initial={photos} />
           <div className="reveal">
             <div className="label mb-5">The tape</div>
             {dayTrades.length === 0 ? (

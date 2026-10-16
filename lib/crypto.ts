@@ -33,6 +33,22 @@ export function decryptJson<T>(payload: string, purpose: string): T {
   return JSON.parse(pt.toString("utf8")) as T;
 }
 
+/** Binary version for files (journal photos): iv(12) · tag(16) · ciphertext, bound to `purpose`. */
+export function encryptBytes(data: Buffer, purpose: string): Buffer {
+  const iv = randomBytes(12);
+  const cipher = createCipheriv("aes-256-gcm", deriveKey(), iv);
+  cipher.setAAD(Buffer.from(purpose));
+  const ct = Buffer.concat([cipher.update(data), cipher.final()]);
+  return Buffer.concat([iv, cipher.getAuthTag(), ct]);
+}
+
+export function decryptBytes(payload: Buffer, purpose: string): Buffer {
+  const decipher = createDecipheriv("aes-256-gcm", deriveKey(), payload.subarray(0, 12));
+  decipher.setAAD(Buffer.from(purpose));
+  decipher.setAuthTag(payload.subarray(12, 28));
+  return Buffer.concat([decipher.update(payload.subarray(28)), decipher.final()]);
+}
+
 export function sha256(input: string): string {
   return createHash("sha256").update(input).digest("hex");
 }

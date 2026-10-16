@@ -225,4 +225,23 @@ export const MIGRATIONS: { version: number; sql: string }[] = [
       create index if not exists prop_ledger_day_idx on prop_ledger (day desc);
     `,
   },
+  {
+    version: 6,
+    sql: /* sql */ `
+      -- Photos pinned to a journal day. The image bytes are AES-256-GCM encrypted
+      -- (bound to the photo id), so a database leak alone shows nothing.
+      create table if not exists journal_photos (
+        id text primary key,
+        day text not null check (day ~ '^\\d{4}-\\d{2}-\\d{2}$'),
+        caption text check (caption is null or char_length(caption) <= 280),
+        mime text not null check (mime in ('image/webp', 'image/jpeg', 'image/png')),
+        width int not null check (width between 1 and 8000),
+        height int not null check (height between 1 and 8000),
+        bytes int not null,
+        data_enc bytea not null,
+        created_at timestamptz not null default now()
+      );
+      create index if not exists journal_photos_day_idx on journal_photos (day, created_at);
+    `,
+  },
 ];
