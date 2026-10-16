@@ -5,7 +5,7 @@ import { aiErrorMessage, anthropic, COACH_PERSONA, fallbackParams, model } from 
 import { coachSnapshot } from "@/lib/ai/context";
 import { getSettings } from "@/lib/data/settings";
 
-export const maxDuration = 120;
+export const maxDuration = 300;
 
 const Body = z.object({
   messages: z
@@ -35,9 +35,9 @@ export async function POST(request: Request) {
   const m = model();
   const stream = anthropic().beta.messages.stream({
     model: m,
-    max_tokens: 8000,
+    max_tokens: 32000,
     ...fallbackParams(m),
-    output_config: { effort: "low" },
+    output_config: { effort: "high" },
     system: [
       {
         type: "text",

@@ -6,7 +6,7 @@ import { aiErrorMessage } from "@/lib/ai/client";
 import { loadBriefing } from "@/lib/data/briefing";
 import { PERIODS, type Period } from "@/lib/analytics/briefing";
 
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 export async function POST(request: Request) {
   try {

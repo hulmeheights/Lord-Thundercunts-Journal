@@ -8,7 +8,7 @@ import { getSettings } from "@/lib/data/settings";
 import { listTrades } from "@/lib/data/trades";
 import { addDays, dayKey, timeInTz } from "@/lib/analytics/time";
 
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 export async function POST(request: Request) {
   try {

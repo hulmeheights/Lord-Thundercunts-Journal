@@ -9,7 +9,7 @@ import { daysBetween } from "@/lib/analytics/time";
 import { getObserverSession, loadDossier, saveObserverAi } from "@/lib/data/observer";
 import { getSettings } from "@/lib/data/settings";
 
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 const Body = z.object({
   id: z.string().regex(/^[A-Za-z0-9_-]{8,40}$/),

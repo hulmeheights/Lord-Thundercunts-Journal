@@ -55,9 +55,9 @@ export async function aiCaseFile(args: {
   const p = args.pronoun === "he" ? "he/him/his" : args.pronoun === "she" ? "she/her/her" : "they/them/their";
   const response = await anthropic().beta.messages.create({
     model: m,
-    max_tokens: 6000,
+    max_tokens: 16000,
     ...fallbackParams(m),
-    output_config: { effort: "medium", format: { type: "json_schema", schema: JSON_SCHEMA as unknown as Record<string, unknown> } },
+    output_config: { effort: "high", format: { type: "json_schema", schema: JSON_SCHEMA as unknown as Record<string, unknown> } },
     system: `You are the Observer inside "Lord Thundercunts Journal", a private trading journal for a futures day trader on prop-firm accounts.
 
 The trader has stepped outside themselves to look at their trading from a third-person perspective — the way a wise, impartial mentor watching every trade would see it. Research on self-distancing ("Solomon's paradox") shows people reason far more wisely about someone else's problems than their own; your job is to give them that outside view.
