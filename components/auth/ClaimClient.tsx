@@ -1,12 +1,13 @@
 "use client";
 
 import { useActionState, useEffect, useState } from "react";
-import { motion } from "motion/react";
-import { ArrowRight, LoaderCircle } from "lucide-react";
-import { LogoMark } from "@/components/ui/Logo";
 import { Button } from "@/components/ui/Button";
 import { claimJournal, type UnlockState } from "@/lib/actions/auth";
 import { computeSetupCode, loadSetupEnv } from "@/lib/setup-client";
+
+const line =
+  "w-full border-0 border-b border-line-2 bg-transparent py-2 font-mono text-[13px] tracking-[0.06em] text-ink outline-none transition-colors placeholder:text-ink-4 focus:border-gold focus-visible:outline-none";
+const lbl = "mb-2 block font-mono text-[9.5px] tracking-[0.3em] text-ink-4 uppercase";
 
 /** First launch: prove you own the deployment, then choose your passphrase. */
 export function ClaimClient() {
@@ -30,61 +31,52 @@ export function ClaimClient() {
   }, [fromKey, keyInput]);
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 20, filter: "blur(10px)" }}
-      animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-      transition={{ duration: 0.9, ease: [0.16, 1, 0.3, 1] }}
-      className="w-full max-w-[400px]"
-    >
-      <div className="mb-7 text-center">
-        <div className="mx-auto mb-6 w-fit">
-          <LogoMark size={76} glow />
-        </div>
-        <h1 className="font-[family-name:var(--font-display)] text-[28px] leading-tight font-bold tracking-[-0.03em]">Claim your journal</h1>
-        <p className="mt-2 text-[14.5px] text-ink-3">One-time setup. Choose the passphrase only you will know.</p>
-      </div>
+    <div>
+      <div className="eyebrow mb-8 !tracking-[0.42em]">First launch · one time</div>
+      <h1 className="font-serif text-[clamp(2.4rem,8vw,4.2rem)] leading-[1] font-light tracking-[-0.01em]">
+        Make it <em>yours</em>.
+      </h1>
+      <p className="mt-6 max-w-[38ch] font-mono text-[12px] leading-[1.9] text-ink-2">Prove you own this deployment, then choose the passphrase only you will know.</p>
 
-      <form action={formAction} className="space-y-3">
+      <form action={formAction} className="mt-12 space-y-8">
         <input type="hidden" name="code" value={code} />
         <div>
-          <label className="mb-1.5 block text-[12.5px] text-ink-3">
+          <label className={lbl} htmlFor="claim-code">
             Setup code {autoFilled && <span className="text-pos">· filled in from this device</span>}
           </label>
-          <input
-            value={code}
-            onChange={(e) => setCode(e.target.value)}
-            placeholder="XXXX-XXXX-XXXX"
-            className="field num text-center tracking-[0.2em] uppercase"
-            autoComplete="off"
-            spellCheck={false}
-            required
-          />
-          <button type="button" onClick={() => setFromKey((f) => !f)} className="mt-1.5 text-[12px] font-semibold text-ink-3 hover:text-ink">
-            {fromKey ? "Hide" : "Different device? Use your ENCRYPTION_KEY instead"}
+          <input id="claim-code" value={code} onChange={(e) => setCode(e.target.value)} placeholder="XXXX-XXXX-XXXX" className={`${line} num tracking-[0.3em] uppercase`} autoComplete="off" spellCheck={false} required />
+          <button type="button" onClick={() => setFromKey((f) => !f)} className="mt-3 font-mono text-[9.5px] tracking-[0.24em] text-ink-4 uppercase hover:text-ink">
+            {fromKey ? "Hide ×" : "Different device? Use ENCRYPTION_KEY →"}
           </button>
           {fromKey && (
-            <input
-              value={keyInput}
-              onChange={(e) => setKeyInput(e.target.value)}
-              placeholder="Paste ENCRYPTION_KEY (stays on this device)"
-              className="field mt-2 text-[13px]"
-              autoComplete="off"
-              spellCheck={false}
-            />
+            <input value={keyInput} onChange={(e) => setKeyInput(e.target.value)} placeholder="Paste ENCRYPTION_KEY (stays on this device)" aria-label="Encryption key" className={`${line} mt-3 text-[12px]`} autoComplete="off" spellCheck={false} />
           )}
         </div>
-        <input name="passphrase" type="password" autoComplete="new-password" placeholder="Choose a passphrase (12+ characters)" className="field" required minLength={12} />
-        <input name="confirm" type="password" autoComplete="new-password" placeholder="Type it again" className="field" required minLength={12} />
-        <div className="min-h-5 text-[13px] text-neg" role="alert">
-          {state.error}
+        <div>
+          <label className={lbl} htmlFor="claim-pass">
+            Passphrase · 12+ characters
+          </label>
+          <input id="claim-pass" name="passphrase" type="password" autoComplete="new-password" className={line} required minLength={12} />
         </div>
-        <Button type="submit" variant="brand" size="lg" className="w-full" disabled={pending}>
-          {pending ? <LoaderCircle size={18} className="animate-spin" /> : <ArrowRight size={18} />} Claim it
+        <div>
+          <label className={lbl} htmlFor="claim-confirm">
+            Once more
+          </label>
+          <input id="claim-confirm" name="confirm" type="password" autoComplete="new-password" className={line} required minLength={12} />
+        </div>
+        <div className="min-h-5 font-mono text-[11px] text-ink" role="alert">
+          {state.error && (
+            <>
+              <span className="mr-2 text-gold">◆</span>
+              {state.error}
+            </>
+          )}
+        </div>
+        <Button type="submit" variant="primary" size="lg" className="w-full" disabled={pending}>
+          {pending ? "Sealing…" : "Claim it"}
         </Button>
       </form>
-      <p className="mt-6 text-center text-[11.5px] leading-relaxed text-ink-4">
-        Your passphrase is stored only as a salted scrypt hash. Next you can add Face ID so you never type it again.
-      </p>
-    </motion.div>
+      <p className="mt-6 font-mono text-[10.5px] leading-[1.85] text-ink-4">Stored only as a salted scrypt hash. Next you can add Face ID and never type it again.</p>
+    </div>
   );
 }

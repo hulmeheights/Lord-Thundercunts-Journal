@@ -1,10 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { AnimatePresence, motion } from "motion/react";
-import { ArrowUp, RotateCcw, Square } from "lucide-react";
-import { LogoMark } from "@/components/ui/Logo";
 import { cn } from "@/lib/cn";
+import { Dot } from "@/components/m";
 
 type Msg = { role: "user" | "assistant"; content: string };
 
@@ -25,7 +23,7 @@ function Rich({ text }: { text: string }) {
   const inline = (s: string, k: number) =>
     s.split(/(\*\*[^*]+\*\*)/g).map((part, i) =>
       part.startsWith("**") && part.endsWith("**") ? (
-        <strong key={`${k}-${i}`} className="font-semibold text-ink">
+        <strong key={`${k}-${i}`} className="font-normal text-ink">
           {part.slice(2, -2)}
         </strong>
       ) : (
@@ -40,15 +38,15 @@ function Rich({ text }: { text: string }) {
           return (
             <ul key={bi} className="space-y-1.5">
               {lines.map((l, li) => (
-                <li key={li} className="flex gap-2">
-                  <span className="mt-[9px] h-1 w-1 shrink-0 rounded-full bg-ink-3" />
+                <li key={li} className="grid grid-cols-[1.6rem_1fr]">
+                  <span className="text-gold">{String(li + 1).padStart(2, "0")}</span>
                   <span>{inline(l.replace(/^\s*([-*•]|\d+\.)\s+/, ""), li)}</span>
                 </li>
               ))}
             </ul>
           );
         }
-        if (/^#{1,4}\s/.test(b)) return <div key={bi} className="text-[15px] font-semibold text-ink">{b.replace(/^#{1,4}\s/, "")}</div>;
+        if (/^#{1,4}\s/.test(b)) return <div key={bi} className="font-serif text-[1.25rem] font-light text-ink">{b.replace(/^#{1,4}\s/, "")}</div>;
         return <p key={bi}>{lines.map((l, li) => <span key={li}>{inline(l, li)}{li < lines.length - 1 && <br />}</span>)}</p>;
       })}
     </div>
@@ -116,73 +114,61 @@ export function CoachChat() {
   }
 
   return (
-    <div className="flex min-h-[calc(100dvh-220px)] flex-col">
-      <div className="flex-1 space-y-5 pb-6">
+    <div className="flex min-h-[calc(100dvh-420px)] flex-col">
+      <div className="flex-1 pb-10">
         {messages.length === 0 ? (
-          <div className="flex flex-col items-center pt-8 text-center">
-            <LogoMark size={64} glow />
-            <h2 className="title-lg mt-5">Ask Thunder anything.</h2>
-            <p className="mt-2 max-w-md text-[14.5px] leading-relaxed text-ink-3">
-              Your coach has read every trade, rule break and journal entry from the last 90 days. Ask it the hard questions.
-            </p>
-            <div className="mt-7 grid w-full max-w-2xl gap-2 sm:grid-cols-2">
-              {SUGGESTIONS.map((s) => (
-                <button key={s} onClick={() => send(s)} className="glass rounded-[3px] px-4 py-3 text-left text-[13.5px] leading-snug text-ink-2 transition-colors hover:text-ink">
-                  {s}
+          <div>
+            <div className="label reveal mb-6">01 — Ask the hard questions</div>
+            <div className="border-t border-line">
+              {SUGGESTIONS.map((q, i) => (
+                <button
+                  key={q}
+                  onClick={() => send(q)}
+                  className="reveal m-row grid w-full grid-cols-[2.5rem_1fr_auto] items-baseline gap-4 border-b border-line py-[clamp(1.1rem,2.6vh,1.6rem)] text-left"
+                  style={{ "--d": `${i * 50}ms` } as React.CSSProperties}
+                >
+                  <span className="font-mono text-[11px] text-gold">{String(i + 1).padStart(2, "0")}</span>
+                  <span className="font-serif text-[clamp(1.2rem,2.4vw,1.7rem)] leading-[1.25] font-light">{q}</span>
+                  <span className="font-mono text-[12px] text-ink-4">→</span>
                 </button>
               ))}
             </div>
           </div>
         ) : (
-          <AnimatePresence initial={false}>
+          <div className="border-t border-line">
             {messages.map((m, i) => (
-              <motion.div
-                key={i}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className={cn("flex gap-3", m.role === "user" ? "justify-end" : "justify-start")}
-              >
-                {m.role === "assistant" && <LogoMark size={28} className="mt-1" />}
-                <div
-                  className={cn(
-                    "max-w-[85%] rounded-[3px] px-4 py-3 text-[14.5px] leading-relaxed",
-                    m.role === "user" ? "rounded-br-md bg-ink text-bg" : "glass rounded-bl-md text-ink-2",
-                  )}
-                >
-                  {m.role === "assistant" ? (
-                    m.content ? (
+              <div key={i} className="grid gap-x-8 gap-y-3 border-b border-line py-8 md:grid-cols-[8rem_1fr]">
+                <div className={cn("font-mono text-[9.5px] tracking-[0.3em] uppercase", m.role === "user" ? "text-ink-4" : "text-gold")}>
+                  {m.role === "user" ? "You" : "Thunder ◆"}
+                </div>
+                {m.role === "user" ? (
+                  <p className="max-w-[40ch] font-serif text-[clamp(1.2rem,2.3vw,1.6rem)] leading-[1.35] font-light italic">{m.content}</p>
+                ) : (
+                  <div className="max-w-[68ch] font-mono text-[12.5px] leading-[1.95] tracking-[0.02em] text-ink-2">
+                    {m.content ? (
                       <Rich text={m.content} />
                     ) : (
-                      <span className="inline-flex gap-1 py-1">
-                        {[0, 1, 2].map((d) => (
-                          <motion.span key={d} className="h-1.5 w-1.5 rounded-full bg-ink-3" animate={{ opacity: [0.3, 1, 0.3] }} transition={{ duration: 1, repeat: Infinity, delay: d * 0.15 }} />
-                        ))}
+                      <span className="inline-flex items-center gap-3 text-ink-4">
+                        <Dot tone="gold" /> Reading your trades…
                       </span>
-                    )
-                  ) : (
-                    m.content
-                  )}
-                </div>
-              </motion.div>
+                    )}
+                  </div>
+                )}
+              </div>
             ))}
-          </AnimatePresence>
+          </div>
         )}
         <div ref={bottom} />
       </div>
 
-      <div className="sticky bottom-[calc(96px+var(--safe-bottom))] lg:bottom-6">
+      <div className="sticky bottom-[calc(84px+var(--safe-bottom))] bg-bg pt-3 pb-4 lg:bottom-0 lg:pb-8">
         <form
           onSubmit={(e) => {
             e.preventDefault();
             void send(input);
           }}
-          className="glass-strong flex items-end gap-2 rounded-[3px] p-2 shadow-[0_20px_60px_-20px_rgba(0,0,0,0.9)]"
+          className="flex items-end gap-5 border-b border-line-2 pb-3 transition-colors focus-within:border-gold"
         >
-          {messages.length > 0 && !busy && (
-            <button type="button" onClick={() => setMessages([])} className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-ink-3 hover:text-ink" aria-label="New chat">
-              <RotateCcw size={17} />
-            </button>
-          )}
           <textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
@@ -194,18 +180,26 @@ export function CoachChat() {
             }}
             rows={1}
             maxLength={6000}
+            aria-label="Ask the coach"
             placeholder="Ask about your trading…"
-            className="max-h-40 min-h-10 flex-1 resize-none bg-transparent px-3 py-2.5 text-[15px] text-ink placeholder:text-ink-4 focus:outline-none"
+            className="field-sizing-content max-h-40 min-h-9 flex-1 resize-none bg-transparent py-1.5 font-serif text-[clamp(1.15rem,2vw,1.4rem)] font-light text-ink placeholder:text-ink-4 placeholder:italic focus:outline-none"
           />
-          {busy ? (
-            <button type="button" onClick={() => abort.current?.abort()} className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-fill-3 text-ink" aria-label="Stop">
-              <Square size={14} fill="currentColor" />
-            </button>
-          ) : (
-            <button type="submit" disabled={!input.trim()} className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-ink text-bg transition-opacity disabled:opacity-30" aria-label="Send">
-              <ArrowUp size={18} strokeWidth={2.5} />
-            </button>
-          )}
+          <div className="flex shrink-0 items-center gap-5 pb-1.5 font-mono text-[9.5px] tracking-[0.3em] uppercase">
+            {messages.length > 0 && !busy && (
+              <button type="button" onClick={() => setMessages([])} className="text-ink-4 hover:text-ink">
+                New
+              </button>
+            )}
+            {busy ? (
+              <button type="button" onClick={() => abort.current?.abort()} className="text-ink hover:text-ink-2">
+                ■ Stop
+              </button>
+            ) : (
+              <button type="submit" disabled={!input.trim()} className="text-ink transition-opacity disabled:opacity-30">
+                Send →
+              </button>
+            )}
+          </div>
         </form>
       </div>
     </div>

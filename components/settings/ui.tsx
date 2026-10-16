@@ -43,4 +43,4 @@ export function RemoveX({ onClick, label }: { onClick: () => void; label: string
 }
 
 export const lineInput =
-  "w-full border-0 border-b border-line-2 bg-transparent py-2 font-mono text-[12px] tracking-[0.03em] text-ink outline-none transition-colors duration-300 placeholder:text-ink-4 focus:border-gold";
+  "w-full border-0 border-b border-line-2 bg-transparent py-2 font-mono text-[12px] tracking-[0.03em] text-ink outline-none transition-colors duration-300 placeholder:text-ink-4 focus:border-gold focus-visible:outline-none";

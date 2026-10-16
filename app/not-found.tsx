@@ -2,12 +2,17 @@ import Link from "next/link";
 
 export default function NotFound() {
   return (
-    <div className="grid min-h-dvh place-items-center px-6 text-center">
-      <div>
-        <div className="text-brand font-[family-name:var(--font-display)] text-[72px] font-black tracking-[-0.05em]">404</div>
-        <p className="mt-1 text-[15px] text-ink-3">Nothing here, my Lord.</p>
-        <Link href="/" className="mt-5 inline-flex h-10 items-center rounded-full bg-ink px-5 text-[14px] font-semibold text-bg">
-          Back to Today
+    <div className="flex min-h-dvh flex-col justify-center px-[clamp(1.25rem,5vw,4rem)]">
+      <div className="label mb-8">404 — Off the tape</div>
+      <h1 className="max-w-[14ch] font-serif text-[clamp(2.6rem,8vw,5.6rem)] leading-[1] font-light tracking-[-0.01em]">
+        Nothing <em>here</em>, my Lord.
+      </h1>
+      <div className="mt-12 flex items-center gap-8">
+        <Link href="/" className="inline-flex h-[52px] items-center border border-ink bg-ink px-8 font-mono text-[11px] tracking-[0.26em] text-bg uppercase transition-colors duration-300 hover:bg-transparent hover:text-ink">
+          Back to today
+        </Link>
+        <Link href="/journal" className="font-mono text-[10px] tracking-[0.3em] text-ink-4 uppercase hover:text-ink">
+          ← the journal
         </Link>
       </div>
     </div>

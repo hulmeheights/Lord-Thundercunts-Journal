@@ -1,14 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Check, Copy, KeyRound, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { createSetupEnv, loadSetupEnv, type SetupEnv } from "@/lib/setup-client";
 
 /**
  * Generates the secrets block on this device (Web Crypto) and remembers it
  * locally so the claim screen can auto-fill the setup code. Nothing is sent
- * anywhere — you paste it into Vercel yourself.
+ * anywhere; you paste it into Vercel yourself.
  */
 export function KeyGenerator({ encryptionKeySet }: { encryptionKeySet: boolean }) {
   const [v, setV] = useState<SetupEnv | null>(null);
@@ -28,42 +27,34 @@ export function KeyGenerator({ encryptionKeySet }: { encryptionKeySet: boolean }
   };
 
   return (
-    <div className="space-y-4">
-      <div className="glass rounded-[3px] p-5">
-        <div className="mb-3 flex items-center justify-between gap-3">
-          <div>
-            <div className="text-[15px] font-semibold">Your secrets block</div>
-            <div className="text-[12.5px] text-ink-3">Generated on this device. Never sent to any server.</div>
-          </div>
+    <div className="space-y-6 pt-2">
+      <div className="border border-gold bg-[rgba(189,158,99,0.03)] p-[clamp(1.2rem,3vw,1.8rem)]">
+        <div className="mb-4 flex flex-wrap items-baseline justify-between gap-4">
+          <span className="font-mono text-[9.5px] tracking-[0.3em] text-gold uppercase">Your secrets · made on this device</span>
           <Button size="sm" variant="primary" onClick={() => copy("block", block)} disabled={!v}>
-            {copied === "block" ? <Check size={14} /> : <Copy size={14} />} {copied === "block" ? "Copied" : "Copy block"}
+            {copied === "block" ? "● Copied" : "Copy block"}
           </Button>
         </div>
-        <pre className="overflow-x-auto rounded-[3px] border border-line bg-fill-2 p-4 text-[12.5px] leading-relaxed text-ink">
-          {v ? block : "Generating…"}
-        </pre>
+        <pre className="overflow-x-auto font-mono text-[11.5px] leading-[1.9] text-ink">{v ? block : "Generating…"}</pre>
         {!encryptionKeySet && (
           <button
             onClick={() => {
               if (confirm("Generate a new block? Only do this if you haven't pasted the current one into Vercel yet.")) void createSetupEnv().then(setV);
             }}
-            className="mt-3 inline-flex items-center gap-1.5 text-[12px] font-semibold text-ink-3 hover:text-ink"
+            className="mt-4 font-mono text-[9.5px] tracking-[0.26em] text-ink-4 uppercase hover:text-ink"
           >
-            <RefreshCw size={12} /> Regenerate
+            ↻ Regenerate
           </button>
         )}
       </div>
       {v && (
-        <div className="flex items-center gap-3 rounded-[3px] border border-cyan/25 bg-cyan/[0.06] p-4">
-          <KeyRound size={18} className="shrink-0 text-cyan" />
-          <div className="min-w-0 flex-1 text-[13px] leading-relaxed text-ink-2">
-            Your one-time setup code is <span className="num font-semibold tracking-wider text-ink">{v.code}</span>. This device remembers it and fills it in
-            for you when you claim the journal.
-          </div>
-          <button onClick={() => copy("code", v.code)} className="text-ink-3 hover:text-ink" aria-label="Copy setup code">
-            {copied === "code" ? <Check size={15} className="text-pos" /> : <Copy size={15} />}
+        <p>
+          Your one-time setup code is <span className="num tracking-[0.2em] text-ink">{v.code}</span>{" "}
+          <button onClick={() => copy("code", v.code)} className="ml-1 font-mono text-[9.5px] tracking-[0.26em] text-ink-4 uppercase hover:text-ink">
+            {copied === "code" ? "● copied" : "copy"}
           </button>
-        </div>
+          . This device remembers it and fills it in when you claim the journal.
+        </p>
       )}
     </div>
   );

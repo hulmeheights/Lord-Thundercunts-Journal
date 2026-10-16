@@ -18,8 +18,9 @@ export function Hud() {
     tick();
     const iv = setInterval(tick, 1000);
     if (prefersReducedMotion() || !matchMedia("(hover:hover) and (pointer:fine)").matches) return () => clearInterval(iv);
-    document.body.classList.add("cross-on");
+    // Only show the crosshair once the pointer has actually moved, so it never sits parked at 0,0.
     const move = (e: PointerEvent) => {
+      if (!document.body.classList.contains("cross-on")) document.body.classList.add("cross-on");
       if (x.current) x.current.style.transform = `translateY(${e.clientY}px)`;
       if (y.current) y.current.style.transform = `translateX(${e.clientX}px)`;
       if (tl.current) {
@@ -44,7 +45,6 @@ export function Hud() {
       <div ref={tl} aria-hidden className="pointer-events-none fixed bottom-0 z-[60] hidden -translate-x-1/2 border border-line bg-bg px-1.5 py-0.5 font-mono text-[9px] tracking-[0.12em] text-ink-4 [.cross-on_&]:block">
         {clock}
       </div>
-
     </>
   );
 }

@@ -238,6 +238,12 @@ body::before {
   outline: 2px solid var(--gold);
   outline-offset: 3px;
 }
+/* Text fields show focus with their own line turning gold; a ring on top doubles it. */
+input:not([type="checkbox"], [type="radio"], [type="range"]):focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: none;
+}
 
 /* Hairline line icons everywhere. */
 svg.lucide {
