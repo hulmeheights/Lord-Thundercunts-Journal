@@ -79,7 +79,7 @@ export function FanChart({
   return (
     <div ref={ref} className={cn("relative w-full select-none", className)} style={{ height }}>
       {width > 0 && (
-        <svg
+        <svg data-private
           width={w}
           height={height}
           className="block touch-pan-y overflow-visible"

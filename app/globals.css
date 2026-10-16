@@ -467,3 +467,21 @@ html.lenis body {
   color: var(--ink);
   border-color: var(--ink-4);
 }
+
+/* ── Privacy (the eye) ─────────────────────────────────────────────────────
+ * Blurs every figure, chart and money mention so the journal can be shown to
+ * someone. `.pv` is added by PrivacyScan to elements whose text holds money,
+ * prices or percentages; `[data-private]` marks whole charts; `[data-public]`
+ * opts something back out (the clock). */
+html[data-privacy="on"] :is(.num, .num-display, .pv, [data-private], canvas, main img):not([data-public], [data-public] *) {
+  filter: blur(9px);
+  user-select: none;
+  transition: filter 0.5s var(--ease-m, ease);
+}
+html[data-privacy="on"] :is(.num, .pv, [data-private]) :is(.num, .pv, [data-private], canvas, svg) {
+  filter: none; /* don't stack blur on blur */
+}
+/* Until the first scan has run, veil the whole page so no figure flashes on load. */
+html[data-privacy="on"]:not([data-pv-ready]) main {
+  filter: blur(9px);
+}

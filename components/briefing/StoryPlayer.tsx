@@ -6,6 +6,7 @@ import { AnimatePresence, motion } from "motion/react";
 import type { BriefingWindow, Slide } from "@/lib/analytics/briefing";
 import { seenKey } from "@/components/today/StoryRings";
 import { cn } from "@/lib/cn";
+import { PrivacyToggle } from "@/components/shell/Privacy";
 import { SLIDE_NAMES, SlideView, type AiState } from "./slides";
 
 const DURATION: Record<Slide["kind"], number> = {
@@ -193,6 +194,7 @@ export function StoryPlayer({
             <div className="mt-1.5 truncate text-ink-4">{w.label}</div>
           </div>
           <div className="flex shrink-0 items-center gap-6">
+            <PrivacyToggle label={false} />
             <span className="num text-ink-3">
               {pad(index + 1)} / {pad(slides.length)}
             </span>

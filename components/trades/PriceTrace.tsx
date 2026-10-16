@@ -43,7 +43,7 @@ export function PriceTrace({ trade, tz, defaultRisk = null, compact = false, cla
     <div className={cn("relative w-full", compact ? "h-[132px]" : "h-[clamp(240px,34vw,400px)]", className)}>
       {/* plot */}
       <div className={cn("absolute inset-x-0 top-0", compact ? "bottom-7" : "bottom-11")}>
-        <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="absolute inset-0 h-full w-full overflow-visible" aria-hidden>
+        <svg data-private viewBox="0 0 100 100" preserveAspectRatio="none" className="absolute inset-0 h-full w-full overflow-visible" aria-hidden>
           <line x1="0" x2="100" y1={yIn} y2={yIn} stroke="var(--line-2)" strokeDasharray="3 5" vectorEffect="non-scaling-stroke" />
           <line x1="0" x2="100" y1={yOut} y2={yOut} stroke="var(--line-2)" strokeDasharray="3 5" vectorEffect="non-scaling-stroke" />
           {stop !== null && <line x1="0" x2="100" y1={y(stop)} y2={y(stop)} stroke="var(--ink-4)" strokeDasharray="1 6" vectorEffect="non-scaling-stroke" />}
@@ -51,7 +51,7 @@ export function PriceTrace({ trade, tz, defaultRisk = null, compact = false, cla
 
         {/* the move: band + line, revealed left → right */}
         <div className="absolute inset-0 [clip-path:inset(0_100%_0_0)] transition-[clip-path] delay-300 duration-[1600ms] ease-[cubic-bezier(0.16,1,0.3,1)] [.t-drawn_&]:[clip-path:inset(0_0_0_0)]">
-          <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="absolute inset-0 h-full w-full overflow-visible" aria-hidden>
+          <svg data-private viewBox="0 0 100 100" preserveAspectRatio="none" className="absolute inset-0 h-full w-full overflow-visible" aria-hidden>
             <rect x={xIn} width={xOut - xIn} y={Math.min(yIn, yOut)} height={Math.max(Math.abs(yOut - yIn), 0.01)} fill={tone} opacity={win ? 0.07 : 0.04} />
             <line x1={xIn} y1={yIn} x2={xOut} y2={yOut} stroke={tone} strokeWidth="7" opacity="0.14" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
             <line x1={xIn} y1={yIn} x2={xOut} y2={yOut} stroke={tone} strokeWidth="1.5" strokeLinecap="round" vectorEffect="non-scaling-stroke" />

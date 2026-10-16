@@ -9,7 +9,7 @@ import { cn } from "@/lib/cn";
 export function DayTicks({ trades, max, className }: { trades: Trade[]; max: number; className?: string }) {
   const list = [...trades].sort((a, b) => a.entryTime.localeCompare(b.entryTime));
   return (
-    <span aria-hidden className={cn("relative inline-flex h-[26px] items-stretch gap-[4px] px-1.5", className)}>
+    <span aria-hidden data-private className={cn("relative inline-flex h-[26px] items-stretch gap-[4px] px-1.5", className)}>
       <i className="absolute inset-x-0 top-1/2 block h-px bg-line-2" />
       {list.map((t) => {
         const m = Math.max(0.28, Math.sqrt(Math.abs(t.netPnl) / Math.max(1, max)));

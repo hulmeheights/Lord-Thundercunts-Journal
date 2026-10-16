@@ -5,6 +5,7 @@ import { requireSession } from "@/lib/auth/session";
 import { Sidebar } from "@/components/shell/Sidebar";
 import { TabBar } from "@/components/shell/TabBar";
 import { MobileIndex } from "@/components/shell/MobileIndex";
+import { PrivacyToggle } from "@/components/shell/Privacy";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   if (!isConfigured()) redirect("/setup");
@@ -20,7 +21,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           </div>
           <div className="eyebrow !text-[9px]">Private journal</div>
         </Link>
-        <MobileIndex />
+        <div className="flex items-center gap-5">
+          <PrivacyToggle label={false} className="h-6" />
+          <MobileIndex />
+        </div>
       </div>
       <main className="relative z-[5] px-6 pt-4 pb-32 sm:px-10 lg:ml-[232px] lg:px-[clamp(3rem,6vw,6rem)] lg:pt-10 lg:pb-24">
         <div className="mx-auto max-w-[1160px]">{children}</div>

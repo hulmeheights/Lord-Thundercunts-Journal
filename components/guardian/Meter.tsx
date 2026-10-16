@@ -20,6 +20,7 @@ export function Meter({
   const v = Math.max(0, Math.min(1, Number.isFinite(value) ? value : 0));
   return (
     <div
+      data-private
       className={cn("reveal relative mt-5 h-[2px] w-full max-w-[15rem]", className)}
       role="meter"
       aria-valuemin={0}

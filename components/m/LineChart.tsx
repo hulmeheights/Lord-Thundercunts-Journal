@@ -41,7 +41,7 @@ export function LineChart({
   const main = series[0];
 
   return (
-    <div className={cn("relative", className)} style={{ height }}>
+    <div className={cn("relative", className)} style={{ height }} data-private>
       <svg
         viewBox={`0 0 ${W} ${H}`}
         preserveAspectRatio="none"

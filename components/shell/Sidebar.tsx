@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { cn } from "@/lib/cn";
 import { lockNow } from "@/lib/actions/auth";
 import { isActive, NAV } from "./nav";
+import { PrivacyToggle } from "./Privacy";
 
 /** A terminal index: numbered, lettered, a gold rule marks where you are. */
 function Clock() {
@@ -20,7 +21,11 @@ function Clock() {
     const iv = setInterval(tick, 1000);
     return () => clearInterval(iv);
   }, []);
-  return <span className="num tracking-[0.12em]">{t || "--:--:--"}</span>;
+  return (
+    <span data-public className="num tracking-[0.12em]">
+      {t || "--:--:--"}
+    </span>
+  );
 }
 
 export function Sidebar() {
@@ -50,6 +55,7 @@ export function Sidebar() {
         })}
       </nav>
       <div className="flex flex-col gap-1 border-t border-line pt-5 font-mono text-[10px] tracking-[0.22em] uppercase">
+        <PrivacyToggle className="h-9 text-[10px] tracking-[0.22em]" />
         <Link href="/settings" className={cn("flex h-9 items-center transition-colors", isActive(pathname, "/settings") ? "text-ink" : "text-ink-4 hover:text-ink-2")}>
           Settings
         </Link>

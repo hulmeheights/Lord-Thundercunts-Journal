@@ -16,5 +16,8 @@ export function writeUiPrefs(patch: Partial<UiPrefs>): UiPrefs {
   const root = document.documentElement;
   root.dataset.theme = next.theme;
   root.dataset.loss = next.loss;
+  if (next.privacy) root.dataset.privacy = "on";
+  else delete root.dataset.privacy;
+  window.dispatchEvent(new Event("ltj:privacy"));
   return next;
 }

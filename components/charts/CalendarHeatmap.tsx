@@ -62,6 +62,7 @@ export function CalendarHeatmap({
               {d && (
                 <i
                   aria-hidden
+                  data-private
                   className={cn("absolute bottom-2.5 left-2.5 block w-[2px] origin-bottom sm:left-3", win ? "bg-pos shadow-[0_0_8px_rgba(116,184,156,0.45)]" : loss ? "bg-neg" : "bg-ink-4")}
                   style={{ height: `${Math.round(stem * (compact ? 22 : 46))}%` }}
                 />
@@ -105,7 +106,7 @@ export function YearStrip({ year, data, today, hrefFor }: { year: number; data: 
   const months = ["J", "F", "M", "A", "M", "J", "J", "A", "S", "O", "N", "D"];
   return (
     <div>
-      <div className="relative flex h-[120px] items-center gap-[1px] overflow-hidden" role="img" aria-label={`P&L by day, ${year}`}>
+      <div className="relative flex h-[120px] items-center gap-[1px] overflow-hidden" data-private role="img" aria-label={`P&L by day, ${year}`}>
         <i aria-hidden className="absolute inset-x-0 top-1/2 block h-px bg-line" />
         {days.map((d) => {
           const v = data[d];

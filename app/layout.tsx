@@ -4,6 +4,7 @@ import { cookies } from "next/headers";
 import { parseUiPrefs, UI_COOKIE } from "@/lib/ui-prefs";
 import { SmoothScroll } from "@/components/motion/SmoothScroll";
 import { MagneticLayer } from "@/components/motion/Magnetic";
+import { PrivacyScan } from "@/components/shell/Privacy";
 import { RevealObserver } from "@/components/m/RevealObserver";
 import "./globals.css";
 
@@ -49,11 +50,12 @@ export const viewport: Viewport = { themeColor: "#0a0a0b", width: "device-width"
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const prefs = parseUiPrefs((await cookies()).get(UI_COOKIE)?.value);
   return (
-    <html lang="en" data-theme={prefs.theme} data-loss={prefs.loss} className={`${inter.variable} ${serif.variable} ${mono.variable}`} suppressHydrationWarning>
+    <html lang="en" data-theme={prefs.theme} data-loss={prefs.loss} data-privacy={prefs.privacy ? "on" : undefined} className={`${inter.variable} ${serif.variable} ${mono.variable}`} suppressHydrationWarning>
       <body className="min-h-dvh bg-bg text-ink antialiased">
         <SmoothScroll />
         <MagneticLayer />
         <RevealObserver />
+        <PrivacyScan />
         {children}
         <div aria-hidden className="grain" />
       </body>

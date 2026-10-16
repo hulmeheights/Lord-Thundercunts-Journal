@@ -84,7 +84,7 @@ const Money = ({ v, sign = true, className }: { v: number; sign?: boolean; class
 /** A hairline bar that fills: jade when it's good news, cream otherwise. */
 function Fill({ pct, good = true, delay = 0.5 }: { pct: number; good?: boolean; delay?: number }) {
   return (
-    <div className="relative h-px w-full bg-line-2">
+    <div className="relative h-px w-full bg-line-2" data-private>
       <motion.i
         className={cn("absolute inset-y-0 left-0 block", good ? "bg-pos shadow-[0_0_10px_rgba(116,184,156,0.6)]" : "bg-ink")}
         initial={{ width: 0 }}
@@ -232,7 +232,7 @@ export function SlideView({ slide, ai, window: w, onReplay }: { slide: Slide; ai
                 const h = d.net === null ? 0 : Math.max(0.06, Math.abs(d.net) / max);
                 return (
                   <div key={d.day} className="flex flex-col items-start">
-                    <div className="flex h-[clamp(7rem,22vh,12rem)] w-full items-end">
+                    <div className="flex h-[clamp(7rem,22vh,12rem)] w-full items-end" data-private>
                       {d.net !== null && (
                         <motion.i
                           className={cn("block w-[2px]", d.net >= 0 ? "bg-pos shadow-[0_0_10px_rgba(116,184,156,0.6)]" : "bg-neg")}
@@ -266,6 +266,7 @@ export function SlideView({ slide, ai, window: w, onReplay }: { slide: Slide; ai
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   transition={{ delay: 0.2 + i * 0.02 }}
+                  data-private
                   className="relative aspect-square border-r border-b border-line p-1.5 font-mono text-[9px] text-ink-4"
                 >
                   {Number(d.day.slice(8))}

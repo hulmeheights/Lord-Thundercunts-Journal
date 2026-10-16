@@ -59,7 +59,7 @@ export function Tape({ trades, tz, className, style }: { trades: Trade[]; tz: st
   const spread = Math.min(900, n * 14);
 
   return (
-    <div className={className} style={style}>
+    <div className={className} style={style} data-private>
       <div
         ref={box}
         className={cn("relative h-[96px] touch-pan-y select-none sm:h-[132px]", n > 0 && "cursor-pointer")}
