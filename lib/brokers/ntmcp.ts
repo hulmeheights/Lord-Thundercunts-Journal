@@ -56,8 +56,8 @@ export async function registerClient(env: NtEnv, redirectUri: string): Promise<s
   return json.client_id;
 }
 
-export function authorizeUrl(a: { env: NtEnv; clientId: string; redirectUri: string; challenge: string; state: string }): string {
-  const u = new URL(TRADOVATE_SIGN_IN);
+export function authorizeUrl(a: { env: NtEnv; clientId: string; redirectUri: string; challenge: string; state: string; via?: "tv" | "nt" }): string {
+  const u = new URL(a.via === "nt" ? NT_HOSTS[a.env].auth : TRADOVATE_SIGN_IN);
   u.searchParams.set("response_type", "code");
   u.searchParams.set("client_id", a.clientId);
   u.searchParams.set("redirect_uri", a.redirectUri);

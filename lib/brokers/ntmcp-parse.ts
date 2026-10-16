@@ -207,7 +207,7 @@ export function ymd(d: Date): string {
  */
 export const LOOPBACK_REDIRECT = "http://localhost:8765/callback";
 
-export function readPastedCallback(input: string): { code: string; state: string | null; error: string | null } | null {
+export function readPastedCallback(input: string): { code: string; state: string | null; error: string | null; reason?: string | null } | null {
   const raw = input.trim();
   if (!raw || raw.length > 4000) return null;
   let params: URLSearchParams | null = null;
@@ -220,7 +220,7 @@ export function readPastedCallback(input: string): { code: string; state: string
   if (params) {
     const error = params.get("error");
     const code = params.get("code");
-    if (error && !code) return { code: "", state: params.get("state"), error };
+    if (error && !code) return { code: "", state: params.get("state"), error, reason: params.get("error_description") };
     return code ? { code, state: params.get("state"), error: null } : null;
   }
   // A bare code: no spaces, URL-safe characters only.

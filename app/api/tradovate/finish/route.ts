@@ -25,7 +25,14 @@ export async function POST(request: NextRequest) {
   const body = (await request.json().catch(() => ({}))) as { pasted?: unknown };
   const pasted = readPastedCallback(typeof body.pasted === "string" ? body.pasted : "");
   if (!pasted) return NextResponse.json({ error: "That doesn't look like the address from Tradovate. Copy the whole address bar of the page that didn't load." }, { status: 400 });
-  if (pasted.error) return NextResponse.json({ error: "Tradovate says the sign-in was cancelled or refused. Start again." }, { status: 400 });
+  if (pasted.error) {
+    const why = (pasted.reason ?? "").replace(/[^\w .,'()-]/g, "").slice(0, 200);
+    const msg =
+      pasted.error === "access_denied"
+        ? `Tradovate refused the sign-in${why ? ` ("${why}")` : ""}. If you pressed Allow, your firm may not let this app connect: try "Use NinjaTrader's sign-in page" below.`
+        : `Tradovate answered "${pasted.error}"${why ? `: ${why}` : ""}. Start again.`;
+    return NextResponse.json({ error: msg }, { status: 400 });
+  }
 
   const sealed = request.cookies.get(FLOW_COOKIE)?.value;
   const flow = openFlow(sealed, pasted.state);

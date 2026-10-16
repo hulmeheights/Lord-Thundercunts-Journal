@@ -131,6 +131,9 @@ function TradovateLogin({ initialEnv = "demo" }: { initialEnv?: "demo" | "live" 
           {opened ? "Open sign-in again ↗" : "Log in with Tradovate ↗"}
         </a>
         <Seg value={env} onChange={setEnv} options={[{ value: "demo", label: "Prop / eval" }, { value: "live", label: "Live" }]} />
+        <a href={`/api/tradovate/connect?env=${env}&via=nt`} target="_blank" rel="noopener" onClick={() => setOpened(true)} className="font-mono text-[9.5px] tracking-[0.26em] text-ink-4 uppercase hover:text-ink">
+          Or use NinjaTrader&apos;s sign-in page ↗
+        </a>
       </div>
       <div className={cn("mt-8 transition-opacity duration-500", opened ? "opacity-100" : "opacity-60")}>
         <label className="mb-2 block font-mono text-[9.5px] tracking-[0.3em] text-ink-4 uppercase" htmlFor="nt-paste">

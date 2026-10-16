@@ -54,3 +54,8 @@ test("anything that is not an exact read tool is refused", () => {
   for (const w of ["place_order", "cancel_order", "cancel_all_orders", "close_position", "liquidate_account", "liquidate_position", "flatten_all", "modify_order", "close_account", "delete_account", "reset_account", "set_risk", "update_alert", "fills", "account_settings", "List_Accounts", "fill_history ", ""]) assert.equal(isReadTool(w), false, JSON.stringify(w));
   for (const r of ["fill_history", "list_accounts", "my_portfolio", "accounts"]) assert.equal(isReadTool(r), true, r);
 });
+
+test("readPastedCallback keeps Tradovate's reason for a refusal", () => {
+  const r = readPastedCallback("http://localhost:8765/callback?error=access_denied&error_description=User%20denied&state=s&iss=https%3A%2F%2Fdemo.tradovateapi.com");
+  assert.deepEqual(r, { code: "", state: "s", error: "access_denied", reason: "User denied" });
+});

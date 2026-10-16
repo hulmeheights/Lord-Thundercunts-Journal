@@ -22,12 +22,14 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(new URL("/unlock", request.url));
   }
   const env = request.nextUrl.searchParams.get("env") === "live" ? "live" : "demo";
+  // Two front doors to the same sign-in: Tradovate's own page (default) or NinjaTrader's.
+  const via = request.nextUrl.searchParams.get("via") === "nt" ? "nt" : "tv";
   const redirectUri = LOOPBACK_REDIRECT;
   try {
     const clientId = await registerClient(env, redirectUri);
     const { verifier, challenge } = pkcePair();
     const state = randomToken(24);
-    const res = NextResponse.redirect(authorizeUrl({ env, clientId, redirectUri, challenge, state }));
+    const res = NextResponse.redirect(authorizeUrl({ env, clientId, redirectUri, challenge, state, via }));
     res.cookies.set(FLOW_COOKIE, sealFlow({ state, verifier, clientId, env, redirectUri, exp: Date.now() + FLOW_TTL_S * 1000 }), {
       httpOnly: true,
       secure: request.nextUrl.protocol === "https:",
