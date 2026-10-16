@@ -5,6 +5,7 @@ import { ProjectXClient, type ProjectXCreds } from "./projectx";
 import { buildRoundTrips, type BuiltTrade, type NormalizedFill } from "./roundtrip";
 import { TradovateClient, type TradovateCreds } from "./tradovate";
 import { TopstepShareClient, type ShareCreds } from "./topstepshare";
+import { NtMcpClient, type NtCreds } from "./ntmcp";
 import type { PlatformKind } from "./firms";
 import { BrokerError, type BrokerAccountInfo, type BrokerClient, type TokenCache } from "./types";
 
@@ -26,6 +27,7 @@ const OVERLAP_DAYS = 3;
 export function kindOf(provider: string): PlatformKind {
   if (provider === "tradovate") return "tradovate";
   if (provider === "share") return "share";
+  if (provider === "ntmcp") return "ntmcp";
   return "projectx";
 }
 
@@ -69,9 +71,15 @@ function tokenCache(connectionId: string): TokenCache {
 export function makeClient(
   connectionId: string,
   kind: PlatformKind,
-  creds: ProjectXCreds | TradovateCreds | ShareCreds,
+  creds: ProjectXCreds | TradovateCreds | ShareCreds | NtCreds,
   cache: TokenCache,
 ): BrokerClient {
+  if (kind === "ntmcp") {
+    return new NtMcpClient(creds as NtCreds, cache, connectionId, async (next) => {
+      const sql = await db();
+      await sql`update connections set credentials_enc = ${encryptJson(next, `creds:${connectionId}`)}, updated_at = now() where id = ${connectionId}`;
+    });
+  }
   if (kind === "share") return new TopstepShareClient(creds as ShareCreds, connectionId);
   return kind === "projectx"
     ? new ProjectXClient(creds as ProjectXCreds, cache, connectionId)
@@ -207,7 +215,7 @@ export async function syncConnection(connectionId: string, opts: { full?: boolea
 
   try {
     const kind = kindOf(conn.provider);
-    const creds = decryptCreds<ProjectXCreds | TradovateCreds | ShareCreds>(conn.credentials_enc, connectionId, conn.provider);
+    const creds = decryptCreds<ProjectXCreds | TradovateCreds | ShareCreds | NtCreds>(conn.credentials_enc, connectionId, conn.provider);
     const client = makeClient(connectionId, kind, creds, tokenCache(connectionId));
     const accounts = await client.listAccounts();
     for (const a of accounts) {

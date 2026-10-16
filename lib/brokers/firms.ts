@@ -1,6 +1,6 @@
 /** Prop firms and platforms the journal can read from. Client-safe. */
 
-export type PlatformKind = "projectx" | "tradovate" | "share";
+export type PlatformKind = "projectx" | "tradovate" | "share" | "ntmcp";
 
 export type Firm = {
   id: string;
@@ -65,7 +65,7 @@ export function sourceLabel(source: string, connectionLabels: Record<string, str
   if (source === "import") return "Imported";
   if (source === "topstepx") return "TopstepX";
   if (source === "topstepx-share") return "TopstepX";
-  if (source.startsWith("tradovate")) return "Tradovate";
+  if (source.startsWith("tradovate") || source.startsWith("ntmcp")) return "Tradovate";
   if (source.startsWith("projectx-")) {
     const firm = firmById(source.slice(9));
     return firm ? firm.name : "ProjectX";

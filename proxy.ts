@@ -3,7 +3,9 @@ import { NextResponse, type NextRequest } from "next/server";
 const SESSION_COOKIE = process.env.NODE_ENV === "production" ? "__Host-ltj_session" : "ltj_session";
 
 /** Paths reachable without a session. Everything else is locked. */
-const PUBLIC_PREFIXES = ["/unlock", "/setup", "/api/auth/", "/api/cron/"];
+// The Tradovate callback arrives cross-site, so the SameSite=Strict session cookie is withheld;
+// it proves itself with the encrypted, state-checked flow cookie set by the (locked) connect route.
+const PUBLIC_PREFIXES = ["/unlock", "/setup", "/api/auth/", "/api/cron/", "/api/tradovate/callback"];
 const PUBLIC_FILES = ["/manifest.webmanifest", "/robots.txt", "/icon.svg", "/apple-icon"];
 
 function isPublic(pathname: string) {
