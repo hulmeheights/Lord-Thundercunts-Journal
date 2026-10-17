@@ -11,9 +11,9 @@ import { aiCoachNote } from "@/lib/ai/coachNote";
 export const maxDuration = 300;
 
 const Body = z.object({
-  chatId: z.string().max(60).optional(),
+  chatId: z.string().max(60).nullish(), // null on a brand-new chat
   messages: z
-    .array(z.object({ role: z.enum(["user", "assistant"]), content: z.string().min(1).max(6000) }))
+    .array(z.object({ role: z.enum(["user", "assistant"]), content: z.string().min(1).max(20000) }))
     .min(1)
     .max(40),
 });

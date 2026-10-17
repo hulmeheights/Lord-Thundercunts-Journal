@@ -114,7 +114,12 @@ export function CoachChat() {
         body: JSON.stringify({ chatId, messages: history.filter((m) => m.content.trim()).slice(-40) }),
         signal: ctrl.signal,
       });
-      if (!res.ok || !res.body) throw new Error(await res.text());
+      if (!res.ok || !res.body) {
+        // Say why, instead of a generic "couldn't reach" (e.g. the key is missing or AI is switched off).
+        const why = (await res.text().catch(() => "")).trim().slice(0, 200);
+        setMessages([...history, { role: "assistant", content: `The coach couldn't answer${why ? `: ${why}` : ` (error ${res.status})`}.` }]);
+        return;
+      }
       const id = res.headers.get("x-chat-id");
       if (id) setChatId(id);
       const reader = res.body.getReader();
