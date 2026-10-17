@@ -40,7 +40,7 @@ export async function POST(request: Request) {
   const memory = notes.length
     ? notes.map((n) => `- ${n.at} · ${n.title}: ${n.note}${n.commitments.length ? ` Committed to: ${n.commitments.join("; ")}.` : ""}`).join("\n")
     : "(no earlier conversations)";
-  const m = model();
+  const m = model("deep");
   const stream = anthropic().beta.messages.stream({
     model: m,
     max_tokens: 32000,

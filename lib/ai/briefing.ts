@@ -32,7 +32,7 @@ const JSON_SCHEMA = {
 
 /** Generates (or returns the cached) AI narrative for a briefing. */
 export async function aiBriefing(briefingId: string, context: Record<string, unknown>): Promise<AiBriefing | { error: string }> {
-  const m = model();
+  const m = model("light");
   const inputHash = sha256(`${m}:${JSON.stringify(context)}`);
   const sql = await db();
   const cached = await sql<{ input_hash: string; content: unknown }[]>`select input_hash, content from briefings where id = ${briefingId}`;
@@ -94,7 +94,7 @@ const REFLECTION_SCHEMA = {
 } as const;
 
 export async function aiReflection(context: Record<string, unknown>): Promise<Reflection | { error: string }> {
-  const m = model();
+  const m = model("light");
   const response = await anthropic().beta.messages.create({
     model: m,
     max_tokens: 16000,

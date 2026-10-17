@@ -88,7 +88,7 @@ CSV import still covers every account.
 | | |
 | --- | --- |
 | Provider | Anthropic Claude (`@anthropic-ai/sdk`) |
-| Default model | `claude-opus-5-5` (best coaching quality). Set `AI_MODEL=claude-haiku-5-5` to cut costs by ~40×. |
+| Models | **Claude Sonnet 5.5** for the coach and the Observer (the judgement-heavy work), **Claude Haiku 5.5** for replays, journal reflections and coach notes (summarising). Override with `AI_MODEL_DEEP` / `AI_MODEL_LIGHT`, e.g. `AI_MODEL_DEEP=claude-opus-5-5` for the strongest coach. |
 | Typical cost | About $0.02–0.05 per briefing or reflection on Opus 5.5. Briefings are cached until your data changes. |
 | What's sent | Summarised stats plus your journal text. Never credentials or account numbers. |
 

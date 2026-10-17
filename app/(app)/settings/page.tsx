@@ -113,7 +113,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
       </Section>
 
       <Section id="ai" n={7} label="AI coach">
-        <AiToggle enabled={settings.ai.enabled} configured={aiConfigured()} model={env.aiModel} />
+        <AiToggle enabled={settings.ai.enabled} configured={aiConfigured()} model={`${env.aiModelDeep} · ${env.aiModelLight}`} />
       </Section>
 
       <Section id="profile" n={8} label="Profile">

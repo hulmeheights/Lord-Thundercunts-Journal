@@ -22,7 +22,7 @@ const NOTE_SCHEMA = {
  * any commitments. A summary, so low effort holds quality and keeps it cheap.
  */
 export async function aiCoachNote(messages: CoachMessage[]): Promise<CoachNoteDraft | null> {
-  const m = model();
+  const m = model("light");
   const transcript = messages.map((x) => `${x.role === "user" ? "Trader" : "Coach"}: ${x.content}`).join("\n\n").slice(-24000);
   const response = await anthropic().beta.messages.create({
     model: m,

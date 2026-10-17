@@ -51,7 +51,7 @@ export async function aiCaseFile(args: {
   dossier: Record<string, unknown>;
   written: { wants: string | null; doing: string | null; stopping: string | null; advice: string | null; believed: string[] };
 }): Promise<ObserverCaseFile | { error: string }> {
-  const m = model();
+  const m = model("deep");
   const p = args.pronoun === "he" ? "he/him/his" : args.pronoun === "she" ? "she/her/her" : "they/them/their";
   const response = await anthropic().beta.messages.create({
     model: m,

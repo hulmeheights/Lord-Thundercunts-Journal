@@ -7,8 +7,13 @@ export function anthropic(): Anthropic {
   return new Anthropic({ apiKey: env.anthropicKey, maxRetries: 2, timeout: 90_000 });
 }
 
-export function model(): string {
-  return env.aiModel;
+/**
+ * Two tiers, picked for quality per pound: Sonnet for the work that needs
+ * judgement (coach, Observer), Haiku for summarising (replays, reflections,
+ * coach notes). Override either in Vercel with AI_MODEL_DEEP / AI_MODEL_LIGHT.
+ */
+export function model(tier: "deep" | "light"): string {
+  return tier === "deep" ? env.aiModelDeep : env.aiModelLight;
 }
 
 /**

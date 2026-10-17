@@ -50,8 +50,13 @@ export const env = {
   get anthropicKey() {
     return process.env.ANTHROPIC_API_KEY || "";
   },
-  get aiModel() {
-    return process.env.AI_MODEL || "claude-opus-5-5";
+  /** Coach chat and the Observer: the reasoning-heavy work. */
+  get aiModelDeep() {
+    return process.env.AI_MODEL_DEEP || "claude-sonnet-5-5";
+  },
+  /** Replays, journal reflections and coach notes: summarising work. */
+  get aiModelLight() {
+    return process.env.AI_MODEL_LIGHT || "claude-haiku-5-5";
   },
   get cronSecret() {
     return process.env.CRON_SECRET || "";
