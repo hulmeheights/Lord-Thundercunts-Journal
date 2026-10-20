@@ -10,6 +10,7 @@ type LedgerRow = {
   account: string | null;
   kind: LedgerKind;
   amount: string | number; // numeric(12,2) arrives as a string
+  qty: number;
   note: string | null;
   created_at: Date | string | null;
 };
@@ -22,6 +23,7 @@ function rowToEntry(r: LedgerRow): LedgerEntry {
     account: r.account,
     kind: r.kind,
     amount: Number(r.amount),
+    qty: r.qty ?? 1,
     note: r.note,
     createdAt: r.created_at ? new Date(r.created_at).toISOString() : null,
   };
@@ -31,7 +33,7 @@ function rowToEntry(r: LedgerRow): LedgerEntry {
 export async function listLedger(): Promise<LedgerEntry[]> {
   const sql = await db();
   const rows = await sql<LedgerRow[]>`
-    select id, day, firm, account, kind, amount, note, created_at
+    select id, day, firm, account, kind, amount, qty, note, created_at
     from prop_ledger
     order by day desc, created_at desc
     limit 2000
@@ -45,9 +47,9 @@ export async function insertLedgerEntry(e: NewLedgerEntry): Promise<LedgerEntry>
   const sql = await db();
   const id = `led_${randomToken(12)}`;
   const rows = await sql<LedgerRow[]>`
-    insert into prop_ledger (id, day, firm, account, kind, amount, note)
-    values (${id}, ${e.day}, ${e.firm}, ${e.account}, ${e.kind}, ${e.amount.toFixed(2)}, ${e.note})
-    returning id, day, firm, account, kind, amount, note, created_at
+    insert into prop_ledger (id, day, firm, account, kind, amount, qty, note)
+    values (${id}, ${e.day}, ${e.firm}, ${e.account}, ${e.kind}, ${e.amount.toFixed(2)}, ${e.qty}, ${e.note})
+    returning id, day, firm, account, kind, amount, qty, note, created_at
   `;
   return rowToEntry(rows[0]!);
 }

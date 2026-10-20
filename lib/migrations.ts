@@ -279,4 +279,17 @@ export const MIGRATIONS: { version: number; sql: string }[] = [
         where key = 'vocab';
     `,
   },
+  {
+    version: 9,
+    sql: /* sql */ `
+      -- The ledger also keeps the scoreboard: evals passed, evals blown, funded
+      -- accounts blown. Those lines carry a count and no money. qty lets five
+      -- copied evals (or five payouts) be one line.
+      alter table prop_ledger add column if not exists qty int not null default 1 check (qty between 1 and 100);
+      alter table prop_ledger drop constraint if exists prop_ledger_kind_check;
+      alter table prop_ledger add constraint prop_ledger_kind_check check (kind in (
+        'evaluation', 'reset', 'activation', 'subscription', 'payout', 'refund', 'other', 'passed', 'blown', 'funded_blown'
+      ));
+    `,
+  },
 ];

@@ -5,7 +5,7 @@ import { groupByMonth, monthRange, signedAmount, sortEntries, summarizeLedger, t
 let seq = 0;
 function e(day: string, firm: string, kind: LedgerKind, amount: number, extra: Partial<LedgerEntry> = {}): LedgerEntry {
   seq++;
-  return { id: `l${seq}`, day, firm, account: null, kind, amount, note: null, createdAt: `2026-01-01T00:00:${String(seq % 60).padStart(2, "0")}Z`, ...extra };
+  return { id: `l${seq}`, day, firm, account: null, kind, amount, qty: 1, note: null, createdAt: `2026-01-01T00:00:${String(seq % 60).padStart(2, "0")}Z`, ...extra };
 }
 
 test("empty ledger is calm, not broken", () => {
@@ -153,4 +153,40 @@ test("entries sort newest first and group into months with a net each", () => {
       ["2026-04", -264, 2],
     ],
   );
+});
+
+test("scoreboard: copied evals, passes, blows and payouts count by qty; results carry no money", () => {
+  const s = summarizeLedger([
+    e("2026-09-01", "Topstep", "evaluation", 600, { qty: 5 }),
+    e("2026-09-01", "Lucid", "evaluation", 1150, { qty: 5 }),
+    e("2026-09-12", "Topstep", "passed", 0, { qty: 5 }),
+    e("2026-09-12", "Lucid", "blown", 999, { qty: 5 }), // a stray amount on a result is ignored
+    e("2026-09-30", "Topstep", "funded_blown", 0, { qty: 1 }),
+    e("2026-10-02", "Topstep", "payout", 4000, { qty: 4 }),
+  ]);
+  assert.equal(s.evals, 10);
+  assert.equal(s.passed, 5);
+  assert.equal(s.blown, 5);
+  assert.equal(s.passRate, 0.5);
+  assert.equal(s.inEval, 0);
+  assert.equal(s.fundedBlown, 1);
+  assert.equal(s.liveFunded, 4);
+  assert.equal(s.payouts, 4);
+  assert.equal(s.avgPayout, 1000);
+  assert.equal(s.cost, 1750);
+  assert.equal(s.net, 2250);
+  assert.equal(s.costPerFunded, 350);
+  assert.equal(s.paidPerFunded, 800);
+  const top = s.byFirm.find((f) => f.firm === "Topstep")!;
+  assert.deepEqual([top.evals, top.passed, top.blown, top.passRate, top.fundedBlown, top.payouts], [5, 5, 0, 1, 1, 4]);
+  assert.equal(signedAmount({ kind: "blown", amount: 999 }), 0);
+});
+
+test("scoreboard: evals not yet marked are still running; bad qty counts as one", () => {
+  const s = summarizeLedger([e("2026-09-01", "Tradeify", "evaluation", 360, { qty: 3 }), e("2026-09-02", "Tradeify", "reset", 80, { qty: Number.NaN }), e("2026-09-05", "Tradeify", "passed", 0)]);
+  assert.equal(s.evals, 3);
+  assert.equal(s.resets, 1);
+  assert.equal(s.inEval, 3);
+  assert.equal(s.passRate, 1);
+  assert.equal(s.costPerPayout, null);
 });

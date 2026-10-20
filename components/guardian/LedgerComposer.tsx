@@ -4,7 +4,7 @@ import { useId, useRef, useState, useTransition } from "react";
 import { Btn, Field, Panel } from "@/components/m";
 import { Seg } from "@/components/m/Seg";
 import { addLedgerEntry } from "@/lib/actions/ledger";
-import { FIRM_SUGGESTIONS, KIND_LABEL, LEDGER_KINDS, firmKey, signedAmount, type LedgerKind } from "@/lib/analytics/ledger";
+import { FIRM_SUGGESTIONS, KIND_LABEL, MONEY_KINDS, OUTCOME_KINDS, firmKey, isOutcome, signedAmount, type LedgerKind } from "@/lib/analytics/ledger";
 import { fmtMoney } from "@/lib/format";
 import { cn } from "@/lib/cn";
 
@@ -17,7 +17,19 @@ const PRESETS: { label: string; kind: LedgerKind; note: (firm: string) => string
   { label: "Payout", kind: "payout", note: () => "Payout" },
 ];
 
-type Form = { day: string; firm: string; account: string; kind: LedgerKind; amount: string; note: string };
+/** Account results: a count, no money. */
+const RESULT_HINT: Record<(typeof OUTCOME_KINDS)[number], string> = {
+  passed: "Evals that passed — they're funded now.",
+  blown: "Evals that hit the drawdown.",
+  funded_blown: "Funded accounts that were lost.",
+};
+
+type Form = { day: string; firm: string; account: string; kind: LedgerKind; amount: string; qty: string; note: string };
+
+function parseQty(s: string): number | null {
+  const n = Number(s);
+  return Number.isInteger(n) && n >= 1 && n <= 100 ? n : null;
+}
 
 function parseAmount(s: string): number | null {
   const n = Number(s.replace(/[\s,$]/g, ""));
@@ -35,7 +47,7 @@ export function LedgerComposer({ count, today, firms, accounts }: { count: numbe
   const amountRef = useRef<HTMLInputElement>(null);
   const firmRef = useRef<HTMLInputElement>(null);
   const [open, setOpen] = useState(count === 0);
-  const [f, setF] = useState<Form>({ day: today, firm: firms[0] ?? FIRM_SUGGESTIONS[0], account: "", kind: "evaluation", amount: "", note: "" });
+  const [f, setF] = useState<Form>({ day: today, firm: firms[0] ?? FIRM_SUGGESTIONS[0], account: "", kind: "evaluation", amount: "", qty: "1", note: "" });
   const [autoNote, setAutoNote] = useState(true);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [pending, start] = useTransition();
@@ -44,7 +56,11 @@ export function LedgerComposer({ count, today, firms, accounts }: { count: numbe
     setF((c) => ({ ...c, ...p }));
   };
 
-  const amount = parseAmount(f.amount);
+  const result = isOutcome(f.kind);
+  const qty = parseQty(f.qty);
+  const each = parseAmount(f.amount);
+  // With several accounts on one line you type the price of one; the ledger keeps the total.
+  const amount = each !== null && qty !== null ? Math.round(each * qty * 100) / 100 : null;
   const signed = amount !== null ? signedAmount({ kind: f.kind, amount }) : null;
   const firmChoices = [...new Map([...firms, ...FIRM_SUGGESTIONS].map((x) => [firmKey(x), x])).values()].slice(0, 6);
   const knownFirm = firmChoices.some((x) => firmKey(x) === firmKey(f.firm));
@@ -54,16 +70,20 @@ export function LedgerComposer({ count, today, firms, accounts }: { count: numbe
       firmRef.current?.focus();
       return setMsg({ ok: false, text: "Which firm?" });
     }
-    if (amount === null) {
+    if (qty === null) return setMsg({ ok: false, text: "How many — a whole number from 1 to 100." });
+    if (!result && amount === null) {
       amountRef.current?.focus();
       return setMsg({ ok: false, text: "Type the amount you paid or received." });
     }
     start(async () => {
       try {
-        const r = await addLedgerEntry({ day: f.day, firm: f.firm, account: f.account || null, kind: f.kind, amount, note: f.note || null });
+        const r = await addLedgerEntry({ day: f.day, firm: f.firm, account: f.account || null, kind: f.kind, amount: result ? 0 : amount!, qty, note: f.note || null });
         if (r.ok) {
-          setMsg({ ok: true, text: `Added · ${fmtMoney(signedAmount({ kind: f.kind, amount }), { sign: true, cents: true })} · ${f.firm.trim()}` });
-          setF((c) => ({ ...c, amount: "", note: "" }));
+          const what = result
+            ? `${qty} ${KIND_LABEL[f.kind].toLowerCase()}`
+            : fmtMoney(signedAmount({ kind: f.kind, amount: amount! }), { sign: true, cents: true });
+          setMsg({ ok: true, text: `Added · ${what} · ${f.firm.trim()}` });
+          setF((c) => ({ ...c, amount: "", qty: "1", note: "" }));
           setAutoNote(true);
         } else setMsg({ ok: false, text: r.error });
       } catch {
@@ -81,8 +101,8 @@ export function LedgerComposer({ count, today, firms, accounts }: { count: numbe
               Nothing on the books <em>yet</em>.
             </p>
             <p className="mt-5 max-w-[46ch] font-mono text-[12px] leading-[1.9] text-ink-3">
-              Log every evaluation, reset, activation and data fee — and every payout. Guardian keeps the running sum, so you always know whether
-              the evals are paying for themselves.
+              Log every evaluation, reset, activation and data fee, every payout — and mark each account passed or blown. Guardian keeps the
+              scoreboard and the running sum, so you always know your pass rate and whether the evals are paying for themselves.
             </p>
           </div>
           {!open && (
@@ -119,13 +139,36 @@ export function LedgerComposer({ count, today, firms, accounts }: { count: numbe
             <Panel>
               <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2">
                 <p className="font-serif text-[clamp(1.3rem,2.4vw,1.7rem)] leading-[1.2] font-light tracking-[-0.01em] [&_em]:italic">
-                  What did it <em>cost</em> — or pay?
+                  {result ? (
+                    <>
+                      How did the accounts <em>go</em>?
+                    </>
+                  ) : (
+                    <>
+                      What did it <em>cost</em> — or pay?
+                    </>
+                  )}
                 </p>
                 <span className="font-mono text-[10px] tracking-[0.08em] text-ink-4">amounts are always yours to type</span>
               </div>
 
               <div className="mt-8 border-t border-line pt-8">
-                <span className={eyebrow}>Quick fill</span>
+                <span className={eyebrow}>Account result · no money, just the count</span>
+                <div className="mb-8 flex flex-wrap gap-2.5">
+                  {OUTCOME_KINDS.map((k) => (
+                    <button
+                      key={k}
+                      type="button"
+                      aria-pressed={f.kind === k}
+                      title={RESULT_HINT[k]}
+                      onClick={() => set({ kind: k, note: autoNote || !f.note ? "" : f.note })}
+                      className={cn(preset, f.kind === k ? (k === "passed" ? "border-pos/70 text-pos" : "border-ink/45 text-neg") : "border-line text-ink-3 hover:border-line-2 hover:text-ink")}
+                    >
+                      {KIND_LABEL[k]}
+                    </button>
+                  ))}
+                </div>
+                <span className={eyebrow}>Money · quick fill</span>
                 <div className="flex flex-wrap gap-2.5">
                   {PRESETS.map((p) => {
                     const on = f.kind === p.kind && f.note === p.note(f.firm);
@@ -154,39 +197,55 @@ export function LedgerComposer({ count, today, firms, accounts }: { count: numbe
                 <Seg
                   value={f.kind}
                   onChange={(k) => set({ kind: k })}
-                  options={LEDGER_KINDS.map((k) => ({ value: k, label: KIND_LABEL[k] }))}
+                  options={MONEY_KINDS.map((k) => ({ value: k, label: KIND_LABEL[k] }))}
                   className="gap-x-5 gap-y-3 sm:gap-x-6"
                 />
               </div>
 
               <div className="mt-10 grid gap-x-7 gap-y-7 sm:grid-cols-2 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.35fr)_minmax(0,0.85fr)]">
-                <Field
-                  label="Amount"
-                  hint={
-                    signed !== null ? (
-                      <>
-                        goes in as{" "}
-                        <span className={cn("num whitespace-nowrap", signed > 0 ? "text-pos" : "text-neg")}>{fmtMoney(signed, { sign: true, cents: true })}</span>
-                      </>
-                    ) : (
-                      "typed by you — never guessed"
-                    )
-                  }
-                >
-                  <span className="relative block">
-                    <span className="pointer-events-none absolute top-1/2 left-3.5 -translate-y-1/2 font-mono text-[13px] text-ink-4">$</span>
+                <div className={cn("grid gap-x-4", result ? "grid-cols-1" : "grid-cols-[minmax(0,1fr)_5.5rem]")}>
+                  {!result && (
+                    <Field
+                      label={qty !== null && qty > 1 ? "Amount each" : "Amount"}
+                      hint={
+                        signed !== null ? (
+                          <>
+                            goes in as{" "}
+                            <span className={cn("num whitespace-nowrap", signed > 0 ? "text-pos" : "text-neg")}>{fmtMoney(signed, { sign: true, cents: true })}</span>
+                            {qty !== null && qty > 1 && <span className="whitespace-nowrap"> · {qty} × {fmtMoney(each!, { cents: true })}</span>}
+                          </>
+                        ) : (
+                          "typed by you — never guessed"
+                        )
+                      }
+                    >
+                      <span className="relative block">
+                        <span className="pointer-events-none absolute top-1/2 left-3.5 -translate-y-1/2 font-mono text-[13px] text-ink-4">$</span>
+                        <input
+                          ref={amountRef}
+                          className="field num !pl-7"
+                          inputMode="decimal"
+                          autoComplete="off"
+                          placeholder="0.00"
+                          value={f.amount}
+                          maxLength={12}
+                          onChange={(e) => set({ amount: e.target.value.replace(/[^\d.,]/g, "") })}
+                        />
+                      </span>
+                    </Field>
+                  )}
+                  <Field label={result ? "How many accounts" : f.kind === "payout" ? "Payouts" : "Accounts"} hint={result ? RESULT_HINT[f.kind as keyof typeof RESULT_HINT] : undefined}>
                     <input
-                      ref={amountRef}
-                      className="field num !pl-7"
-                      inputMode="decimal"
+                      className="field num"
+                      inputMode="numeric"
                       autoComplete="off"
-                      placeholder="0.00"
-                      value={f.amount}
-                      maxLength={12}
-                      onChange={(e) => set({ amount: e.target.value.replace(/[^\d.,]/g, "") })}
+                      value={f.qty}
+                      maxLength={3}
+                      aria-label="How many"
+                      onChange={(e) => set({ qty: e.target.value.replace(/[^\d]/g, "") })}
                     />
-                  </span>
-                </Field>
+                  </Field>
+                </div>
                 <div>
                   <Field label="Firm">
                     <input

@@ -1,7 +1,7 @@
 import { Bars } from "@/components/m/Bars";
 import { LineChart } from "@/components/m/LineChart";
 import { Num, Panel, Section, Stats, Tag } from "@/components/m";
-import { KIND_LABEL, groupByMonth, isInflow, signedAmount, type LedgerEntry, type LedgerSummary } from "@/lib/analytics/ledger";
+import { KIND_LABEL, groupByMonth, isInflow, isOutcome, qtyOf, signedAmount, type LedgerEntry, type LedgerSummary } from "@/lib/analytics/ledger";
 import { fmtMoney } from "@/lib/format";
 import { cn } from "@/lib/cn";
 import { Figure, Money } from "./Figure";
@@ -15,6 +15,8 @@ const tone = (n: number) => (n > 0.004 ? "pos" : n < -0.004 ? "neg" : null);
 const money = (n: number) => fmtMoney(n, { cents: Math.abs(n) < 1000 && Math.round(n) !== n });
 /** Show this many recent entries (whole months) before folding the rest. */
 const RECENT = 6;
+const pct = (r: number) => `${Math.round(r * 100)}`;
+const plural = (n: number, one: string, many = `${one}s`) => `${n.toLocaleString("en-US")} ${n === 1 ? one : many}`;
 
 /** The serif verdict for the gold panel: what the evals have cost and paid. */
 function verdict(s: LedgerSummary): React.ReactNode {
@@ -48,6 +50,8 @@ function verdict(s: LedgerSummary): React.ReactNode {
 
 function insights(s: LedgerSummary): React.ReactNode[] {
   const out: React.ReactNode[] = [];
+  if (s.passRate !== null) out.push(<>{plural(s.passed, "eval")} passed of {(s.passed + s.blown).toLocaleString("en-US")} decided — a {pct(s.passRate)}% pass rate.</>);
+  if (s.costPerFunded !== null && s.costPerFunded > 0) out.push(<>Each funded account has cost {money(s.costPerFunded)} in fees.</>);
   if (s.costPerPayout !== null && s.costPerPayout > 0) out.push(<>Each payout has cost {money(s.costPerPayout)} in fees to earn.</>);
   if (s.toBreakEven > 0) out.push(<>One payout of {money(s.toBreakEven)} squares the ledger.</>);
   else if (s.net > 0 && s.cost > 0) out.push(<>Every fee has been paid back, and {money(s.net)} more.</>);
@@ -56,7 +60,7 @@ function insights(s: LedgerSummary): React.ReactNode[] {
   const dry = [...s.byFirm].filter((f) => f.payouts === 0 && f.cost > 0).sort((a, b) => b.cost - a.cost)[0];
   if (dry) out.push(<>{dry.firm} has cost {money(dry.cost)} without a payout yet.</>);
   if (s.resets > 0) out.push(<>{s.resets === 1 ? "One reset" : `${s.resets} resets`} — {money(s.byKind.reset.total)} on second chances.</>);
-  return out.slice(0, 4);
+  return out.slice(0, 5);
 }
 
 /**
@@ -66,6 +70,8 @@ function insights(s: LedgerSummary): React.ReactNode[] {
  */
 function EntryRow({ e, d }: { e: LedgerEntry; d: number }) {
   const v = signedAmount(e);
+  const q = qtyOf(e);
+  const result = isOutcome(e.kind);
   return (
     <div
       className={cn(
@@ -82,13 +88,21 @@ function EntryRow({ e, d }: { e: LedgerEntry; d: number }) {
         {e.account && <div className="min-w-0 truncate font-mono text-[9.5px] tracking-[0.2em] text-ink-4 uppercase md:mt-1">{e.account}</div>}
       </div>
       <div className="flex min-w-0 flex-wrap items-baseline gap-x-3.5 gap-y-1.5 [grid-area:n] max-md:mt-1">
-        <Tag tone={isInflow(e.kind) ? "pos" : undefined} className="translate-y-[-1px]">
+        <Tag tone={isInflow(e.kind) || e.kind === "passed" ? "pos" : result ? "neg" : undefined} className="translate-y-[-1px]">
           {KIND_LABEL[e.kind]}
+          {q > 1 && !result && <span className="ml-1.5 text-ink-3">× {q}</span>}
         </Tag>
         {e.note && <span className="min-w-0 font-mono text-[12px] leading-[1.8] tracking-[0.02em] text-ink-2">{e.note}</span>}
       </div>
       <div className="text-right whitespace-nowrap [grid-area:a]">
-        <Num value={v} cents className="text-[clamp(14px,1.4vw,15.5px)] tracking-[-0.01em]" />
+        {result ? (
+          <span className={cn("num text-[clamp(14px,1.4vw,15.5px)] tracking-[-0.01em]", e.kind === "passed" ? "text-pos" : "text-neg")}>
+            {e.kind === "passed" ? "+" : "−"}
+            {q} {q === 1 ? "acct" : "accts"}
+          </span>
+        ) : (
+          <Num value={v} cents className="text-[clamp(14px,1.4vw,15.5px)] tracking-[-0.01em]" />
+        )}
       </div>
       <div className="relative -my-1 justify-self-end [grid-area:x]">
         <LedgerDelete id={e.id} label={`${KIND_LABEL[e.kind]} · ${e.firm} · ${shortDay(e.day)}`} />
@@ -109,6 +123,40 @@ function Month({ month, net, entries, first }: { month: string; net: number; ent
           <EntryRow key={e.id} e={e} d={Math.min(i, 6) * 50} />
         ))}
       </div>
+    </div>
+  );
+}
+
+/** Per firm: bought, passed, blown, pass rate, funded lost, payouts. */
+function FirmScores({ firms }: { firms: LedgerSummary["byFirm"] }) {
+  const rows = firms.filter((f) => f.evals + f.passed + f.blown + f.fundedBlown + f.payouts > 0);
+  const cols = "grid grid-cols-[minmax(0,1.4fr)_repeat(3,minmax(0,0.7fr))] sm:grid-cols-[minmax(0,1.6fr)_repeat(6,minmax(0,0.8fr))] items-baseline gap-x-4";
+  const head = "font-mono text-[9px] tracking-[0.24em] text-ink-4 uppercase";
+  return (
+    <div className="reveal mt-[clamp(3rem,7vh,4.5rem)]">
+      <div className={cn(cols, "border-b border-line pb-3")}>
+        <span className={head}>By firm</span>
+        <span className={cn(head, "text-right")}>Bought</span>
+        <span className={cn(head, "text-right")}>Passed</span>
+        <span className={cn(head, "text-right")}>Pass %</span>
+        <span className={cn(head, "text-right max-sm:hidden")}>Blown</span>
+        <span className={cn(head, "text-right max-sm:hidden")}>Funded lost</span>
+        <span className={cn(head, "text-right max-sm:hidden")}>Payouts</span>
+      </div>
+      {rows.map((f) => (
+        <div key={f.firm} className={cn(cols, "border-b border-line py-4")}>
+          <span className="truncate font-serif text-[clamp(1.1rem,1.8vw,1.35rem)] font-light">{f.firm}</span>
+          <span className="num text-right text-[13px] text-ink-2">{f.evals}</span>
+          <span className="num text-right text-[13px] text-pos">{f.passed}</span>
+          <span className="num text-right text-[13px] text-ink">{f.passRate === null ? "—" : `${pct(f.passRate)}%`}</span>
+          <span className="num text-right text-[13px] text-neg max-sm:hidden">{f.blown}</span>
+          <span className="num text-right text-[13px] text-neg max-sm:hidden">{f.fundedBlown}</span>
+          <span className="num text-right text-[13px] text-ink-2 max-sm:hidden">
+            {f.payouts}
+            {f.paidOut > 0 && <span className="ml-1.5 text-ink-4">{money(f.paidOut)}</span>}
+          </span>
+        </div>
+      ))}
     </div>
   );
 }
@@ -158,12 +206,55 @@ export function LedgerSection({
       aside={s.count ? <span className="eyebrow max-sm:hidden">since {monthLabel(s.firstDay!.slice(0, 7), true)}</span> : null}
       lead={
         <>
-          What the evals have <em>cost</em> — and what they&apos;ve paid back.
+          Passed, blown, <em>paid</em> — and what it all cost.
         </>
       }
     >
       {s.count > 0 && (
         <>
+          {(s.evals > 0 || s.passed + s.blown + s.fundedBlown > 0) && (
+            <div className="mb-[clamp(4rem,10vh,7rem)]">
+              <div className="reveal mb-6 flex items-baseline justify-between gap-4">
+                <span className="eyebrow">The scoreboard · accounts</span>
+                {s.inEval > 0 && <span className="eyebrow">{plural(s.inEval, "eval")} still running</span>}
+              </div>
+              <Stats cols={3}>
+                <Figure size="lg" value={s.evals.toLocaleString("en-US")} label="Evals bought" sub={s.resets ? plural(s.resets, "reset") : "no resets"} />
+                <Figure
+                  size="lg"
+                  value={s.passed.toLocaleString("en-US")}
+                  tone={s.passed > 0 ? "pos" : null}
+                  label="Passed"
+                  sub={s.passRate !== null ? `${pct(s.passRate)}% pass rate` : "mark one when it passes"}
+                  d={80}
+                />
+                <Figure size="lg" value={s.blown.toLocaleString("en-US")} label="Blown evals" sub={s.passRate !== null ? `${pct(1 - s.passRate)}% of decided evals` : "none marked"} d={160} />
+                <Figure
+                  size="lg"
+                  value={s.liveFunded.toLocaleString("en-US")}
+                  tone={s.liveFunded > 0 ? "pos" : null}
+                  label="Funded · still live"
+                  sub={`${plural(s.fundedBlown, "funded account")} blown`}
+                />
+                <Figure
+                  size="lg"
+                  value={s.payouts.toLocaleString("en-US")}
+                  label="Payouts"
+                  sub={s.avgPayout !== null ? `${money(s.avgPayout)} on average` : "none yet"}
+                  d={80}
+                />
+                <Figure
+                  size="lg"
+                  value={s.paidPerFunded !== null ? money(s.paidPerFunded) : "—"}
+                  tone={s.paidPerFunded ? "pos" : null}
+                  label="Paid per funded account"
+                  sub={s.payoutsPerFunded !== null ? `${s.payoutsPerFunded.toFixed(1)} payouts each` : "once an eval passes"}
+                  d={160}
+                />
+              </Stats>
+              {s.byFirm.some((f) => f.evals + f.passed + f.blown > 0) && <FirmScores firms={s.byFirm} />}
+            </div>
+          )}
           <Stats cols={3}>
             <Figure
               size="lg"
@@ -197,20 +288,20 @@ export function LedgerSection({
             />
             <Figure
               size="lg"
-              value={s.evals}
-              label="Evaluations bought"
+              value={s.costPerFunded !== null ? money(s.costPerFunded) : "—"}
+              label="Fees per funded account"
               sub={
                 [s.resets && `${s.resets} reset${s.resets === 1 ? "" : "s"}`, s.activations && `${s.activations} activation${s.activations === 1 ? "" : "s"}`]
                   .filter(Boolean)
-                  .join(" · ") || "no resets"
+                  .join(" · ") || "cost ÷ evals passed"
               }
               d={80}
             />
             <Figure
               size="lg"
-              value={s.payouts}
-              label="Payouts"
-              sub={s.costPerPayout !== null ? `${money(s.costPerPayout)} of fees per payout` : "none yet"}
+              value={s.costPerPayout !== null ? money(s.costPerPayout) : "—"}
+              label="Fees per payout"
+              sub={s.payouts ? `over ${plural(s.payouts, "payout")}` : "none yet"}
               d={160}
             />
           </Stats>

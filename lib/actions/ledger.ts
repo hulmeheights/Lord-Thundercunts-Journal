@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { assertSession } from "../auth/session";
-import { LEDGER_KINDS } from "../analytics/ledger";
+import { LEDGER_KINDS, isOutcome } from "../analytics/ledger";
 import { deleteLedgerEntry as removeEntry, insertLedgerEntry } from "../data/ledger";
 
 /** A real calendar day, not just the right shape (rejects 2026-02-31). */
@@ -18,7 +18,8 @@ const Day = z
 /** Collapse whitespace and strip control characters from free text. */
 const clean = (s: string) => s.replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim();
 
-const Entry = z.object({
+const Entry = z
+  .object({
   day: Day,
   firm: z.string().transform(clean).pipe(z.string().min(1, "Which firm?").max(60)),
   account: z
@@ -31,16 +32,20 @@ const Entry = z.object({
   amount: z
     .number()
     .finite()
-    .positive("Amount must be more than zero")
+    .min(0)
     .max(1_000_000)
     .transform((n) => Math.round(n * 100) / 100),
+  qty: z.number().int("A whole number of accounts").min(1).max(100).default(1),
   note: z
     .string()
     .nullish()
     .transform((s) => (s ? clean(s) : ""))
     .pipe(z.string().max(280))
     .transform((s) => s || null),
-});
+  })
+  // Account results carry a count, never money; everything else needs an amount.
+  .transform((v) => (isOutcome(v.kind) ? { ...v, amount: 0 } : v))
+  .refine((v) => isOutcome(v.kind) || v.amount > 0, { message: "Amount must be more than zero", path: ["amount"] });
 
 export type LedgerInput = z.input<typeof Entry>;
 export type LedgerResult = { ok: true; id: string } | { ok: false; error: string };
