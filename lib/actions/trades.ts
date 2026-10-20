@@ -12,7 +12,7 @@ import type { Trade } from "../types";
 
 const Patch = z
   .object({
-    setup: z.string().max(80).nullable(),
+    setups: z.array(z.string().max(80)).max(20),
     tags: z.array(z.string().max(40)).max(20),
     mistakes: z.array(z.string().max(40)).max(20),
     emotion: z.string().max(40).nullable(),
@@ -46,7 +46,7 @@ const Manual = z.object({
   exitPrice: z.number().positive(),
   fees: z.number().min(0).max(100_000),
   pointValue: z.number().positive().max(10_000_000).nullable(),
-  setup: z.string().max(80).nullable(),
+  setups: z.array(z.string().max(80)).max(20),
 });
 
 export async function addManualTrade(input: z.input<typeof Manual>): Promise<{ id?: string; error?: string }> {
@@ -70,7 +70,7 @@ export async function addManualTrade(input: z.input<typeof Manual>): Promise<{ i
     id: `manual:${randomUUID()}`, source: "manual", accountId: null, symbol, root, direction: v.direction, qty: v.qty,
     maxPosition: v.qty, entryTime: entry.toISOString(), exitTime: exit.toISOString(), entryPrice: v.entryPrice,
     exitPrice: v.exitPrice, grossPnl: gross, fees: v.fees, netPnl: Math.round((gross - v.fees) * 100) / 100,
-    pointValue: pv, fillCount: 2, setup: v.setup, tags: [], mistakes: [], emotion: null, rating: null, notes: null,
+    pointValue: pv, fillCount: 2, setups: v.setups, tags: [], mistakes: [], emotion: null, rating: null, notes: null,
     plannedRisk: null, followedPlan: null, chartUrl: null,
   };
   await insertTrades([t]);

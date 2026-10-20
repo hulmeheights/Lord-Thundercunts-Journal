@@ -87,10 +87,10 @@ export function TradeEditor({ trade, vocab, defaultRisk }: { trade: Trade; vocab
         </span>
       </div>
 
-      <Line label="Setup" hint="Which play was this?">
+      <Line label="Setup" hint="Which plays lined up? Pick as many as fit.">
         <div className="flex flex-wrap gap-2">
-          {vocab.setups.map((s) => (
-            <Choice key={s} active={t.setup === s} onClick={() => save({ setup: t.setup === s ? null : s })}>
+          {[...vocab.setups, ...t.setups.filter((s) => !vocab.setups.includes(s))].map((s) => (
+            <Choice key={s} active={t.setups.includes(s)} onClick={() => save({ setups: toggleIn(t.setups, s) })}>
               {s}
             </Choice>
           ))}

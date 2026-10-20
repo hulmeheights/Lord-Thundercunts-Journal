@@ -5,7 +5,7 @@ import type { Trade, TradeSource } from "../types";
 type TradeRow = {
   id: string; source: TradeSource; account_id: string | null; symbol: string; root: string; direction: "long" | "short";
   qty: number; max_position: number | null; entry_time: Date; exit_time: Date; entry_price: number; exit_price: number;
-  gross_pnl: number; fees: number; net_pnl: number; point_value: number; fill_count: number; setup: string | null;
+  gross_pnl: number; fees: number; net_pnl: number; point_value: number; fill_count: number; setups: string[];
   tags: string[]; mistakes: string[]; emotion: string | null; rating: number | null; notes: string | null;
   planned_risk: number | null; followed_plan: boolean | null; chart_url: string | null;
 };
@@ -29,7 +29,7 @@ export function rowToTrade(r: TradeRow): Trade {
     netPnl: r.net_pnl,
     pointValue: r.point_value,
     fillCount: r.fill_count,
-    setup: r.setup,
+    setups: r.setups ?? [],
     tags: r.tags ?? [],
     mistakes: r.mistakes ?? [],
     emotion: r.emotion,
@@ -65,7 +65,7 @@ export async function getTrade(id: string): Promise<Trade | null> {
 }
 
 export type TradeJournalPatch = Partial<
-  Pick<Trade, "setup" | "tags" | "mistakes" | "emotion" | "rating" | "notes" | "plannedRisk" | "followedPlan" | "chartUrl">
+  Pick<Trade, "setups" | "tags" | "mistakes" | "emotion" | "rating" | "notes" | "plannedRisk" | "followedPlan" | "chartUrl">
 >;
 
 export async function updateTradeJournal(id: string, p: TradeJournalPatch): Promise<void> {
@@ -75,7 +75,7 @@ export async function updateTradeJournal(id: string, p: TradeJournalPatch): Prom
   const next = { ...current, ...p };
   await sql`
     update trades set
-      setup = ${next.setup}, tags = ${next.tags}, mistakes = ${next.mistakes}, emotion = ${next.emotion},
+      setups = ${next.setups}, tags = ${next.tags}, mistakes = ${next.mistakes}, emotion = ${next.emotion},
       rating = ${next.rating}, notes = ${next.notes}, planned_risk = ${next.plannedRisk},
       followed_plan = ${next.followedPlan}, chart_url = ${next.chartUrl}, updated_at = now()
     where id = ${id}
@@ -90,7 +90,7 @@ export async function insertTrades(trades: Trade[]): Promise<void> {
       id: t.id, source: t.source, account_id: t.accountId, symbol: t.symbol, root: t.root, direction: t.direction,
       qty: t.qty, max_position: t.maxPosition, entry_time: t.entryTime, exit_time: t.exitTime, entry_price: t.entryPrice,
       exit_price: t.exitPrice, gross_pnl: t.grossPnl, fees: t.fees, net_pnl: t.netPnl, point_value: t.pointValue,
-      fill_count: t.fillCount, setup: t.setup, tags: t.tags, mistakes: t.mistakes, emotion: t.emotion, rating: t.rating,
+      fill_count: t.fillCount, setups: t.setups, tags: t.tags, mistakes: t.mistakes, emotion: t.emotion, rating: t.rating,
       notes: t.notes, planned_risk: t.plannedRisk, followed_plan: t.followedPlan, chart_url: t.chartUrl,
     }));
     await sql`insert into trades ${sql(rows)} on conflict (id) do nothing`;

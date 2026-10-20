@@ -19,11 +19,11 @@ function rng(seed: number) {
 }
 
 const SETUP_EDGE: Record<string, number> = {
-  "Opening Range Breakout": 0.6,
-  "VWAP Reclaim": 0.57,
-  "Trend Pullback": 0.52,
+  VWAP: 0.6,
+  POC: 0.57,
+  Continuation: 0.52,
   "Liquidity Sweep": 0.44,
-  "Range Fade": 0.36,
+  Barcode: 0.36,
 };
 
 const NOTES_WIN = [
@@ -127,7 +127,7 @@ export function generateSample(today: string, settings: Settings): { trades: Tra
         netPnl: net,
         pointValue: pv,
         fillCount: 2,
-        setup: r() < 0.9 ? setup : null,
+        setups: r() < 0.9 ? [setup] : [],
         tags: [],
         mistakes,
         emotion: r() < 0.8 ? emotion : null,

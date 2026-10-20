@@ -13,12 +13,12 @@ import { Choice } from "./Choice";
 
 type Draft = { symbol: string; qty: number; entry: number; exit: number; fees: number; pv: number | null };
 
-export function ManualTradeForm({ setups, tz, onDone }: { setups: string[]; tz: string; onDone: () => void }) {
+export function ManualTradeForm({ setups: options, tz, onDone }: { setups: string[]; tz: string; onDone: () => void }) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [direction, setDirection] = useState<"long" | "short">("long");
-  const [setup, setSetup] = useState<string | null>(null);
+  const [picked, setPicked] = useState<string[]>([]);
   const [draft, setDraft] = useState<Draft>({ symbol: "", qty: 1, entry: 0, exit: 0, fees: 0, pv: null });
 
   // A live read of what the trade made, before you save it.
@@ -52,7 +52,7 @@ export function ManualTradeForm({ setups, tz, onDone }: { setups: string[]; tz: 
             exitPrice: n("exitPrice"),
             fees: n("fees") || 0,
             pointValue: f.get("pointValue") ? n("pointValue") : null,
-            setup,
+            setups: picked,
           });
           if (res.error) setError(res.error);
           else {
@@ -111,10 +111,10 @@ export function ManualTradeForm({ setups, tz, onDone }: { setups: string[]; tz: 
       </div>
 
       <div>
-        <span className="mb-3 block font-mono text-[9.5px] tracking-[0.24em] text-ink-4 uppercase">Setup</span>
+        <span className="mb-3 block font-mono text-[9.5px] tracking-[0.24em] text-ink-4 uppercase">Setup · pick as many as fit</span>
         <div className="flex flex-wrap gap-2">
-          {setups.map((s) => (
-            <Choice key={s} active={setup === s} onClick={() => setSetup(setup === s ? null : s)}>
+          {options.map((s) => (
+            <Choice key={s} active={picked.includes(s)} onClick={() => setPicked(picked.includes(s) ? picked.filter((x) => x !== s) : [...picked, s])}>
               {s}
             </Choice>
           ))}

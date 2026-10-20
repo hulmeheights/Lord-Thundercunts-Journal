@@ -19,7 +19,7 @@ function trade(day: string, hhmm: string, net: number, extra: Partial<Trade> = {
   return {
     id: `x${seq}`, source: "sample", accountId: "acc", symbol: "MNQZ5", root: "MNQ", direction: "long",
     qty: 1, maxPosition: 1, entryTime: entry.toISOString(), exitTime: exit.toISOString(), entryPrice: 1, exitPrice: 1,
-    grossPnl: net, fees: 0, netPnl: net, pointValue: 2, fillCount: 2, setup: null, tags: [], mistakes: [],
+    grossPnl: net, fees: 0, netPnl: net, pointValue: 2, fillCount: 2, setups: [], tags: [], mistakes: [],
     emotion: null, rating: null, notes: null, plannedRisk: null, followedPlan: null, chartUrl: null, ...extra,
   };
 }

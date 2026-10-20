@@ -46,7 +46,7 @@ export type SlideTrade = {
   entryPrice: number;
   exitPrice: number;
   netPnl: number;
-  setup: string | null;
+  setups: string[];
   notes: string | null;
   mistakes: string[];
   hold: number;
@@ -187,7 +187,7 @@ function toSlideTrade(t: Trade, tz: string): SlideTrade {
     entryPrice: t.entryPrice,
     exitPrice: t.exitPrice,
     netPnl: t.netPnl,
-    setup: t.setup,
+    setups: t.setups,
     notes: t.notes,
     mistakes: t.mistakes,
     hold: holdMinutes(t.entryTime, t.exitTime),
@@ -384,7 +384,7 @@ export function buildBriefing(args: {
 
   const hash = hashString(
     JSON.stringify([
-      trades.map((t) => [t.id, Math.round(t.netPnl * 100), t.setup, t.mistakes.length]),
+      trades.map((t) => [t.id, Math.round(t.netPnl * 100), t.setups, t.mistakes.length]),
       journals.map((j) => [j.day, j.review?.length ?? 0, Object.keys(j.checklist).length, j.readiness ? 1 : 0]),
       settings.prop.enabled,
     ]),
@@ -420,7 +420,7 @@ export function buildBriefing(args: {
       qty: t.qty,
       net: round(t.netPnl),
       holdMin: round(holdMinutes(t.entryTime, t.exitTime), 1),
-      setup: t.setup,
+      setups: t.setups,
       mistakes: t.mistakes,
       emotion: t.emotion,
       note: t.notes?.slice(0, 160) ?? null,

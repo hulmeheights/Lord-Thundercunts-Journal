@@ -322,10 +322,10 @@ export function SlideView({ slide, ai, window: w, onReplay }: { slide: Slide; ai
               <Cap className="mb-2">Exit</Cap>
               <span className="num">{fmtPrice(t.exitPrice)}</span>
             </div>
-            {(t.setup || t.mistakes.length > 0) && (
+            {(t.setups.length > 0 || t.mistakes.length > 0) && (
               <div className="col-span-2 sm:col-span-1">
                 <Cap className="mb-2">Tagged</Cap>
-                {[t.setup, ...t.mistakes].filter(Boolean).join(" · ")}
+                {[...t.setups, ...t.mistakes].filter(Boolean).join(" · ")}
               </div>
             )}
           </Item>

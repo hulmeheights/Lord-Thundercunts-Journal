@@ -45,7 +45,7 @@ export const DEFAULT_SETTINGS: Settings = {
     { id: "read", label: "Read 10 pages", group: "life" },
   ],
   vocab: {
-    setups: ["Opening Range Breakout", "VWAP Reclaim", "Trend Pullback", "Liquidity Sweep", "Failed Breakout", "Range Fade"],
+    setups: ["VAL", "VAH", "POC", "BOS", "CHoCH", "FVG", "VWAP", "EMA", "Liquidity Sweep", "Reversal", "Continuation", "Barcode"],
     mistakes: ["FOMO entry", "Moved stop", "Oversized", "Revenge trade", "Cut winner early", "No setup", "Chased", "Ignored plan"],
     emotions: ["Calm", "Focused", "Confident", "Anxious", "Greedy", "Fearful", "Frustrated", "Bored"],
   },

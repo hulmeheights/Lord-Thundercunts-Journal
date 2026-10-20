@@ -180,11 +180,14 @@ export type Bucket = {
   sort: number;
 };
 
-export function bucketize(trades: Trade[], keyFn: (t: Trade) => { key: string; label: string; sort: number } | null): Bucket[] {
+type BucketKey = { key: string; label: string; sort: number };
+
+/** keyFn may return several keys (a trade tagged with two setups counts in both). */
+export function bucketize(trades: Trade[], keyFn: (t: Trade) => BucketKey | BucketKey[] | null): Bucket[] {
   const map = new Map<string, { b: Bucket; won: number; lost: number }>();
   for (const t of trades) {
-    const k = keyFn(t);
-    if (!k) continue;
+    const ks = keyFn(t);
+    for (const k of ks === null ? [] : Array.isArray(ks) ? ks : [ks]) {
     const entry = map.get(k.key) ?? {
       b: { key: k.key, label: k.label, trades: 0, wins: 0, net: 0, winRate: 0, expectancy: 0, profitFactor: 0, sort: k.sort },
       won: 0,
@@ -195,6 +198,7 @@ export function bucketize(trades: Trade[], keyFn: (t: Trade) => { key: string; l
     if (t.netPnl > 0) { entry.b.wins++; entry.won += t.netPnl; }
     else if (t.netPnl < 0) entry.lost += -t.netPnl;
     map.set(k.key, entry);
+    }
   }
   return [...map.values()]
     .map(({ b, won, lost }) => ({
@@ -222,7 +226,7 @@ export const bySymbol = (trades: Trade[]) =>
   bucketize(trades, (t) => ({ key: t.root, label: t.root, sort: 0 })).sort((a, b) => b.trades - a.trades);
 
 export const bySetup = (trades: Trade[]) =>
-  bucketize(trades, (t) => (t.setup ? { key: t.setup, label: t.setup, sort: 0 } : null)).sort((a, b) => b.trades - a.trades);
+  bucketize(trades, (t) => t.setups.map((s) => ({ key: s, label: s, sort: 0 }))).sort((a, b) => b.trades - a.trades);
 
 export const byEmotion = (trades: Trade[]) =>
   bucketize(trades, (t) => (t.emotion ? { key: t.emotion, label: t.emotion, sort: 0 } : null)).sort((a, b) => b.trades - a.trades);

@@ -41,7 +41,7 @@ export function runWhatIf(trades: Trade[], opts: WhatIfOptions, tz: string): Wha
     const day = dayKey(t.entryTime, tz);
     if (opts.excludeWeekdays?.includes(weekdayIndex(day))) return false;
     if (opts.excludeSymbols?.includes(t.root)) return false;
-    if (t.setup && opts.excludeSetups?.includes(t.setup)) return false;
+    if (t.setups.some((s) => opts.excludeSetups?.includes(s))) return false;
     if (opts.skipMistakeTagged && t.mistakes.length > 0) return false;
     if (tiltIds?.has(t.id)) return false;
     if (opts.direction && opts.direction !== "both" && t.direction !== opts.direction) return false;

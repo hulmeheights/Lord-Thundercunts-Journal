@@ -66,7 +66,7 @@ export function TradeList({
       .filter((t) =>
         !needle
           ? true
-          : [t.symbol, t.root, t.direction, t.setup ?? "", t.emotion ?? "", ...t.tags, ...t.mistakes, t.notes ?? ""].join(" ").toLowerCase().includes(needle),
+          : [t.symbol, t.root, t.direction, ...t.setups, t.emotion ?? "", ...t.tags, ...t.mistakes, t.notes ?? ""].join(" ").toLowerCase().includes(needle),
       )
       .sort((a, b) => b.exitTime.localeCompare(a.exitTime));
   }, [trades, tz, range, result, query]);

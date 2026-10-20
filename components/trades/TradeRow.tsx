@@ -28,6 +28,7 @@ export function TradeRow({ t, tz, open, onToggle, defaultRisk }: { t: Trade; tz:
       {fmtPrice(t.entryPrice)} <span className="text-ink-4">→</span> {fmtPrice(t.exitPrice)}
     </>
   );
+  const setups = t.setups.length ? t.setups.join(" + ") : null;
   const mistakes = t.mistakes.length ? `${t.mistakes.length} mistake${t.mistakes.length === 1 ? "" : "s"}` : null;
   // The preview is only built the first time it opens (and kept after), so a
   // long log stays light and the trace draws in when you open it.
@@ -62,10 +63,10 @@ export function TradeRow({ t, tz, open, onToggle, defaultRisk }: { t: Trade; tz:
               </span>
               <span className="shrink-0">{hold}</span>
             </div>
-            {(t.setup || mistakes || t.notes) && (
+            {(setups || mistakes || t.notes) && (
               <div className="mt-2.5 flex min-w-0 items-baseline gap-2 font-mono text-[9px] tracking-[0.24em] text-ink-4 uppercase">
-                {t.setup && <span className="truncate">{t.setup}</span>}
-                {t.setup && mistakes && <span aria-hidden>·</span>}
+                {setups && <span className="truncate">{setups}</span>}
+                {setups && mistakes && <span aria-hidden>·</span>}
                 {mistakes && <span className="shrink-0 text-neg">{mistakes}</span>}
                 {t.notes && (
                   <span className="shrink-0 font-serif text-[13px] tracking-normal normal-case italic" title="Has notes">
@@ -88,9 +89,9 @@ export function TradeRow({ t, tz, open, onToggle, defaultRisk }: { t: Trade; tz:
             <span className="num truncate text-[12px] text-ink-2">{prices}</span>
             <span className="num text-[11.5px] text-ink-4">{hold}</span>
             <span className="hidden min-w-0 items-center gap-3 xl:flex">
-              {t.setup && (
+              {setups && (
                 <Tag className="max-w-full min-w-0">
-                  <span className="truncate">{t.setup}</span>
+                  <span className="truncate" title={setups}>{setups}</span>
                 </Tag>
               )}
               {mistakes && (

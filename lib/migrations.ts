@@ -263,4 +263,20 @@ export const MIGRATIONS: { version: number; sql: string }[] = [
       create index if not exists coach_chats_updated_idx on coach_chats (updated_at desc);
     `,
   },
+  {
+    version: 8,
+    sql: /* sql */ `
+      -- A trade can carry more than one setup (e.g. FVG + VWAP). The old single
+      -- setup is carried over; the old column stays so nothing is ever lost.
+      alter table trades add column if not exists setups text[] not null default '{}';
+      update trades set setups = array[setup] where setup is not null and cardinality(setups) = 0;
+
+      -- Your setup list: VAL, VAH, POC, BOS, CHoCH, FVG, VWAP, EMA, Liquidity Sweep,
+      -- Reversal, Continuation, Barcode. Replaces the old starter list.
+      update app_settings
+        set value = jsonb_set(value, '{setups}', '["VAL", "VAH", "POC", "BOS", "CHoCH", "FVG", "VWAP", "EMA", "Liquidity Sweep", "Reversal", "Continuation", "Barcode"]'::jsonb),
+            updated_at = now()
+        where key = 'vocab';
+    `,
+  },
 ];

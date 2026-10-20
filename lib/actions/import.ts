@@ -106,7 +106,7 @@ export async function importChunk(input: z.input<typeof Payload>): Promise<Impor
         id, source: "import", accountId, symbol, root, direction: it.direction, qty: it.qty, maxPosition: it.qty,
         entryTime: new Date(entryTime).toISOString(), exitTime: new Date(exitTime).toISOString(),
         entryPrice: it.entryPrice, exitPrice: it.exitPrice, grossPnl: gross, fees: it.fees,
-        netPnl: Math.round((gross - it.fees) * 100) / 100, pointValue, fillCount: 2, setup: null, tags: [], mistakes: [],
+        netPnl: Math.round((gross - it.fees) * 100) / 100, pointValue, fillCount: 2, setups: [], tags: [], mistakes: [],
         emotion: null, rating: null, notes: null, plannedRisk: null, followedPlan: null, chartUrl: null,
       });
     } else {

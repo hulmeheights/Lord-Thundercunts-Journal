@@ -24,7 +24,7 @@ export type Trade = {
   netPnl: number;
   pointValue: number;
   fillCount: number;
-  setup: string | null;
+  setups: string[];
   tags: string[];
   mistakes: string[];
   emotion: string | null;

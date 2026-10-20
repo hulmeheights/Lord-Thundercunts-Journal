@@ -43,7 +43,7 @@ export async function POST(request: Request) {
       },
       trades: dayTrades.map((t) => ({
         time: timeInTz(t.entryTime, tz), symbol: t.root, dir: t.direction, qty: t.qty, net: Math.round(t.netPnl),
-        setup: t.setup, mistakes: t.mistakes, emotion: t.emotion, note: t.notes?.slice(0, 160) ?? null,
+        setups: t.setups, mistakes: t.mistakes, emotion: t.emotion, note: t.notes?.slice(0, 160) ?? null,
       })),
       net: Math.round(dayTrades.reduce((s, t) => s + t.netPnl, 0)),
     });
