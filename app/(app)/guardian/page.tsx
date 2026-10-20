@@ -16,6 +16,7 @@ import { Explainer } from "@/components/guardian/Explainer";
 import { LedgerSection } from "@/components/guardian/Ledger";
 import { RoadSection } from "@/components/guardian/Road";
 import { MindSection } from "@/components/guardian/Mind";
+import { PlanSection, type PlanFirm } from "@/components/guardian/Plan";
 import { PropForm } from "@/components/guardian/PropForm";
 
 export const metadata = { title: "Guardian" };
@@ -42,14 +43,20 @@ export default async function GuardianPage() {
   const tracked = prop.accountIds.length === 1 ? accounts.find((a) => a.id === prop.accountIds[0]) : null;
 
   const summary = summarizeLedger(ledger);
-  const road = roadToPaid(ledger, summary.cost);
+  const road = roadToPaid(ledger, summary.cost, today);
+  // The firms you trade lead the planner, then any other firm the ledger knows.
+  const planFirms: PlanFirm[] = [...new Map(["Topstep", "Tradeify", "Lucid", ...road.byFirm.map((f) => f.firm)].map((f) => [firmKey(f), f])).values()].map((firm) => {
+    const r = road.byFirm.find((f) => firmKey(f.firm) === firmKey(firm));
+    return { firm, counts: r?.counts ?? null, medians: { daysToPass: r?.daysToPass.median ?? null, daysToPayout: r?.daysPassToPayout.median ?? null } };
+  });
+  const pooled: PlanFirm = { firm: "All", counts: road.counts, medians: { daysToPass: road.daysToPass.median, daysToPayout: road.daysPassToPayout.median } };
   const mind = Object.fromEntries(GRAINS.map((g) => [g, mindTimeline(history, journals, tz, g)])) as Record<Grain, MindRow[]>;
   const mood = mindSummary(history, journals, tz);
   // The firm being tracked leads the form's suggestions, then firms already in the ledger.
   const firms = [...new Map([prop.firm, ...summary.byFirm.map((f) => f.firm), ...FIRM_SUGGESTIONS].filter(Boolean).map((f) => [firmKey(f), f])).values()];
 
   let n = 0;
-  const ids = st ? ["top", "status", "odds", "ledger", "road", "mind", "rules"] : ["top", "watch", "ledger", "road", "mind", "rules"];
+  const ids = st ? ["top", "status", "odds", "ledger", "road", "plan", "mind", "rules"] : ["top", "watch", "ledger", "road", "plan", "mind", "rules"];
 
   return (
     <>
@@ -68,6 +75,7 @@ export default async function GuardianPage() {
 
       <LedgerSection entries={ledger} summary={summary} n={++n} today={today} firms={firms} />
       <RoadSection road={road} n={++n} />
+      <PlanSection n={++n} initial={settings.plan} pooled={pooled} firms={planFirms} />
       <MindSection rows={mind} summary={mood} n={++n} today={today} />
 
       <Section

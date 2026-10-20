@@ -370,6 +370,8 @@ export type ObserverInput = {
   to: string;
   /** What the trader wrote they want (third person), if anything. */
   statedWant?: string | null;
+  /** Funded accounts still standing, per firm, from the Guardian ledger. */
+  funded?: { firm: string; live: number }[];
 };
 
 export function buildDossier(input: ObserverInput): ObserverDossier {
@@ -384,15 +386,30 @@ export function buildDossier(input: ObserverInput): ObserverDossier {
   // ── Wants ────────────────────────────────────────────────────────────────
   const wants: Want[] = [];
   if (input.statedWant?.trim()) wants.push({ text: input.statedWant.trim(), source: "stated" });
+  const funded = (input.funded ?? []).filter((f) => f.live > 0);
+  const liveTotal = funded.reduce((n, f) => n + f.live, 0);
+  const liveHere = settings.prop.enabled ? (funded.find((f) => f.firm.trim().toLowerCase() === settings.prop.firm.trim().toLowerCase())?.live ?? 0) : 0;
   if (settings.prop.enabled) {
     const st = propStatus(trades, settings.prop, tz);
-    const phase = settings.prop.phase === "combine" ? "evaluation" : "funded account";
+    const acct = `${settings.prop.firm} ${settings.prop.preset}`;
     const left = st.requiredProfit != null ? st.requiredProfit - st.profit : null;
+    // Only an eval still short of its target is something to want; a funded account (or a hit target) is already had.
     wants.push({
       text:
-        left != null && left > 0
-          ? `${name} wants to pass the ${settings.prop.firm} ${settings.prop.preset} ${phase} — ${fmtMoney(left)} still to make without breaching a ${fmtMoney(st.cushion)} cushion.`
-          : `${name} wants to keep the ${settings.prop.firm} ${settings.prop.preset} ${phase} alive and growing.`,
+        settings.prop.phase === "funded" || liveHere > 0
+          ? `${name} already has ${liveHere > 1 ? `${liveHere} ${settings.prop.firm} funded accounts` : `the ${acct} funded account`}. What's left is keeping ${liveHere > 1 ? "them" : "it"} — ${fmtMoney(st.cushion)} of room above the drawdown — and getting paid.`
+          : left != null && left > 0
+            ? `${name} wants to pass the ${acct} evaluation — ${fmtMoney(left)} still to make without breaching a ${fmtMoney(st.cushion)} cushion.`
+            : `${name} has already hit the ${acct} evaluation target. What's left is getting it signed off and funded without giving it back.`,
+      source: "prop",
+    });
+  }
+  // Funded accounts elsewhere are already had too, not wanted.
+  if (liveTotal > liveHere) {
+    const others = funded.filter((f) => !(settings.prop.enabled && f.firm.trim().toLowerCase() === settings.prop.firm.trim().toLowerCase()));
+    const n = liveTotal - liveHere;
+    wants.push({
+      text: `${name} already has ${n} funded ${n === 1 ? "account" : "accounts"} live${others.length ? ` at ${others.map((f) => f.firm).join(", ")}` : ""}. The job now is keeping ${n === 1 ? "it" : "them"} and getting paid, not passing.`,
       source: "prop",
     });
   }

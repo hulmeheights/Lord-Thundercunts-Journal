@@ -92,8 +92,18 @@ export type PropSettings = {
   accountIds: string[]; // empty = all
 };
 
+/** The income plan on Guardian: what you want a month, and anything you've set by hand. */
+export type PlanSettings = {
+  monthlyTarget: number;
+  /** Accounts copied together in one batch. */
+  batch: number;
+  /** Rates you've typed in, which win over the ledger. */
+  overrides: Partial<Record<"passRate" | "evalPrice" | "avgPayout" | "payoutsPerFundedMonth" | "lossPerFundedMonth" | "daysToPass" | "daysToPayout", number>>;
+};
+
 export type Settings = {
   profile: { name: string; timezone: string };
+  plan: PlanSettings;
   rules: TradingRules;
   prop: PropSettings;
   ritual: RitualItem[];

@@ -20,8 +20,22 @@ export type Spread = {
   high: number | null;
 };
 
+/** The raw counts a plan is built from. */
+export type RoadCounts = {
+  attempts: number; // evals and resets bought
+  attemptSpend: number; // what those cost
+  passed: number;
+  blown: number;
+  payouts: number;
+  paidOut: number;
+  fundedLost: number;
+  /** Funded account-days lived so far (passed → lost, or → today), in months of 30 days. */
+  fundedMonths: number;
+};
+
 export type FirmRoad = {
   firm: string;
+  counts: RoadCounts;
   attemptsPerPass: number | null;
   daysToPass: Spread;
   daysPassToPayout: Spread;
@@ -53,6 +67,7 @@ export type Road = {
   feesPerPaidAccount: number | null;
   byFirm: FirmRoad[];
   unmatched: Unmatched[];
+  counts: RoadCounts;
 };
 
 const DAY_MS = 86_400_000;
@@ -77,7 +92,7 @@ export function spread(values: number[]): Spread {
   return { n: v.length, median: r(quantile(v, 0.5)), low: r(wide ? quantile(v, 0.25) : v[0]!), high: r(wide ? quantile(v, 0.75) : v[v.length - 1]!) };
 }
 
-type Funded = { passDay: string; attemptDay: string | null; paid: boolean; alive: boolean };
+type Funded = { passDay: string; attemptDay: string | null; paid: boolean; alive: boolean; lostDay: string | null };
 type Track = {
   firm: string;
   attempts: string[]; // the day each open attempt was bought
@@ -91,9 +106,13 @@ type Track = {
   payoutDays: string[];
   fundedLife: number[];
   miss: Record<Unmatched["kind"], number>;
+  bought: number;
+  attemptSpend: number;
+  payouts: number;
+  paidOut: number;
 };
 
-export function roadToPaid(entries: readonly LedgerEntry[], cost: number): Road {
+export function roadToPaid(entries: readonly LedgerEntry[], cost: number, asOf?: string): Road {
   const sorted = [...entries].sort((a, b) => a.day.localeCompare(b.day) || ORDER[a.kind] - ORDER[b.kind] || (a.createdAt ?? "").localeCompare(b.createdAt ?? ""));
   const tracks = new Map<string, Track>();
 
@@ -101,18 +120,21 @@ export function roadToPaid(entries: readonly LedgerEntry[], cost: number): Road 
     const key = firmKey(e.firm) || "other";
     let t = tracks.get(key);
     if (!t) {
-      t = { firm: e.firm.trim().replace(/\s+/g, " ") || "Other", attempts: [], funded: [], passed: 0, blown: 0, toPass: [], toBlow: [], passToPayout: [], evalToPayout: [], payoutDays: [], fundedLife: [], miss: { passed: 0, blown: 0, funded_blown: 0, payout: 0 } };
+      t = { firm: e.firm.trim().replace(/\s+/g, " ") || "Other", attempts: [], funded: [], passed: 0, blown: 0, toPass: [], toBlow: [], passToPayout: [], evalToPayout: [], payoutDays: [], fundedLife: [], miss: { passed: 0, blown: 0, funded_blown: 0, payout: 0 }, bought: 0, attemptSpend: 0, payouts: 0, paidOut: 0 };
       tracks.set(key, t);
     }
     const q = qtyOf(e);
     for (let i = 0; i < q; i++) {
-      if (e.kind === "evaluation" || e.kind === "reset") t.attempts.push(e.day);
+      if (e.kind === "evaluation" || e.kind === "reset") {
+        t.attempts.push(e.day);
+        t.bought++;
+      }
       else if (e.kind === "passed") {
         const bought = t.attempts.shift() ?? null;
         t.passed++;
         if (bought) t.toPass.push(daysBetween(bought, e.day));
         else t.miss.passed++;
-        t.funded.push({ passDay: e.day, attemptDay: bought, paid: false, alive: true });
+        t.funded.push({ passDay: e.day, attemptDay: bought, paid: false, alive: true, lostDay: null });
       } else if (e.kind === "blown") {
         const bought = t.attempts.shift() ?? null;
         t.blown++;
@@ -122,6 +144,7 @@ export function roadToPaid(entries: readonly LedgerEntry[], cost: number): Road 
         const f = t.funded.find((x) => x.alive);
         if (f) {
           f.alive = false;
+          f.lostDay = e.day;
           t.fundedLife.push(daysBetween(f.passDay, e.day));
         } else t.miss.funded_blown++;
       } else if (e.kind === "payout") {
@@ -133,10 +156,29 @@ export function roadToPaid(entries: readonly LedgerEntry[], cost: number): Road 
         } else if (!t.funded.length) t.miss.payout++; // repeat payouts on an already-paid account are fine
       }
     }
-    if (e.kind === "payout") t.payoutDays.push(e.day);
+    if (e.kind === "payout") {
+      t.payoutDays.push(e.day);
+      t.payouts += q;
+      t.paidOut += Math.max(0, e.amount);
+    }
+    if (e.kind === "evaluation" || e.kind === "reset") t.attemptSpend += Math.max(0, e.amount);
   }
 
   const all = [...tracks.values()];
+  const end = asOf ?? sorted[sorted.length - 1]?.day ?? "2000-01-01";
+  const countsOf = (ts: Track[]): RoadCounts => {
+    const fundedDays = ts.flatMap((t) => t.funded).reduce((n, f) => n + Math.max(0, daysBetween(f.passDay, f.lostDay ?? (end > f.passDay ? end : f.passDay))), 0);
+    return {
+      attempts: ts.reduce((n, t) => n + t.bought, 0),
+      attemptSpend: Math.round(ts.reduce((n, t) => n + t.attemptSpend, 0) * 100) / 100,
+      passed: ts.reduce((n, t) => n + t.passed, 0),
+      blown: ts.reduce((n, t) => n + t.blown, 0),
+      payouts: ts.reduce((n, t) => n + t.payouts, 0),
+      paidOut: Math.round(ts.reduce((n, t) => n + t.paidOut, 0) * 100) / 100,
+      fundedLost: ts.reduce((n, t) => n + t.fundedLife.length, 0),
+      fundedMonths: Math.round((fundedDays / 30) * 100) / 100,
+    };
+  };
   const flat = (pick: (t: Track) => number[]) => all.flatMap(pick);
   const gaps = all.flatMap((t) => {
     const days = [...new Set(t.payoutDays)].sort();
@@ -160,15 +202,17 @@ export function roadToPaid(entries: readonly LedgerEntry[], cost: number): Road 
     fundedTotal,
     feesPerPaidAccount: fundedPaid > 0 ? Math.round((Math.max(0, cost) / fundedPaid) * 100) / 100 : null,
     byFirm: all
-      .filter((t) => t.passed + t.blown > 0)
+      .filter((t) => t.bought + t.passed + t.blown + t.payouts > 0)
       .map((t) => ({
         firm: t.firm,
+        counts: countsOf([t]),
         attemptsPerPass: t.passed > 0 ? (t.passed + t.blown) / t.passed : null,
         daysToPass: spread(t.toPass),
         daysPassToPayout: spread(t.passToPayout),
         daysEvalToPayout: spread(t.evalToPayout),
       }))
       .sort((a, b) => b.daysToPass.n - a.daysToPass.n || a.firm.localeCompare(b.firm)),
+    counts: countsOf(all),
     unmatched: all.flatMap((t) =>
       (Object.keys(t.miss) as Unmatched["kind"][]).filter((k) => t.miss[k] > 0).map((k) => ({ firm: t.firm, kind: k, count: t.miss[k] })),
     ),

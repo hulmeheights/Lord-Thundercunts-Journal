@@ -303,3 +303,27 @@ export async function setAccountIncluded(id: string, included: boolean) {
   revalidatePath("/", "layout");
   return { ok: true };
 }
+
+const Plan = z.object({
+  monthlyTarget: z.number().min(0).max(10_000_000),
+  batch: z.number().int().min(1).max(100),
+  overrides: z
+    .object({
+      passRate: z.number().min(0.01).max(1),
+      evalPrice: z.number().min(0).max(100_000),
+      avgPayout: z.number().min(1).max(10_000_000),
+      payoutsPerFundedMonth: z.number().min(0.01).max(100),
+      lossPerFundedMonth: z.number().min(0).max(1),
+      daysToPass: z.number().min(0).max(1000),
+      daysToPayout: z.number().min(0).max(1000),
+    })
+    .partial(),
+});
+
+/** The Guardian income plan: target, batch size and any rates set by hand. */
+export async function savePlan(input: z.input<typeof Plan>) {
+  await assertSession();
+  await saveSetting("plan", Plan.parse(input));
+  revalidatePath("/guardian");
+  return { ok: true };
+}

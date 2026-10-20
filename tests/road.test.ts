@@ -41,7 +41,7 @@ test("road: firms are kept apart and an empty ledger is calm", () => {
   assert.equal(empty.daysToPass.median, null);
   const r = roadToPaid([e("2026-09-01", "Lucid", "evaluation"), e("2026-09-02", "Tradeify", "evaluation"), e("2026-09-12", "Tradeify", "passed")], 0);
   assert.equal(r.daysToPass.median, 10);
-  assert.equal(r.byFirm.length, 1);
+  assert.deepEqual(r.byFirm.map((f) => [f.firm, f.counts.attempts, f.counts.passed]), [["Tradeify", 1, 1], ["Lucid", 1, 0]]);
   assert.deepEqual(spread([1, 2, 3, 4, 5, 6, 7, 8]), { n: 8, median: 4.5, low: 2.8, high: 6.3 });
 });
 
@@ -102,4 +102,35 @@ test("road: results with nothing to attach to are reported, not silently dropped
       ["Topstep", "payout", 1],
     ],
   );
+});
+
+import { DEFAULT_RATES, planFor, ratesFrom } from "../lib/analytics/plan";
+
+test("plan: $25k a month at the starting assumptions", () => {
+  const p = planFor(25_000, DEFAULT_RATES, 5)!;
+  assert.equal(p.payoutsPerMonth, 25);
+  assert.equal(p.liveFunded, 20); // 25 payouts ÷ 1.3 a month each → 19.2, rounded up
+  assert.equal(p.evalsToStart, 35); // 4 batches of 5 at 59% → 6.8 → 7 batches
+  assert.equal(p.startFees, 4200);
+  assert.ok(p.badStartEvals > p.evalsToStart);
+  assert.equal(p.passesPerMonth, 4);
+  assert.equal(p.monthlyFees, Math.round((4 / 0.59) * 120 * 100) / 100);
+  assert.equal(p.daysToFirstPayout, 30);
+  assert.equal(planFor(0, DEFAULT_RATES), null);
+});
+
+test("plan: your ledger beats the assumptions once there's enough; typed rates beat both", () => {
+  const c = { attempts: 10, attemptSpend: 1200, passed: 6, blown: 4, payouts: 6, paidOut: 9000, fundedLost: 1, fundedMonths: 4 };
+  const r = ratesFrom(c, { daysToPass: 9, daysToPayout: null }, DEFAULT_RATES, { avgPayout: 2000 });
+  assert.equal(Math.round(r.rates.passRate * 1000) / 1000, 0.595); // 6 of 10, leaning on 59% until there are 30
+  assert.equal(r.rates.evalPrice, 120);
+  assert.equal(r.rates.avgPayout, 2000);
+  assert.equal(r.source.avgPayout, "set");
+  assert.equal(r.rates.payoutsPerFundedMonth, 1.5);
+  assert.equal(r.rates.lossPerFundedMonth, 0.25);
+  assert.equal(r.rates.daysToPass, 9);
+  assert.equal(r.source.daysToPayout, "assumed");
+  const thin = ratesFrom({ ...c, passed: 1, blown: 0, fundedMonths: 0.2 }, { daysToPass: null, daysToPayout: null }, DEFAULT_RATES);
+  assert.equal(thin.source.passRate, "assumed");
+  assert.equal(thin.source.payoutsPerFundedMonth, "assumed");
 });

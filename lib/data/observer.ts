@@ -1,4 +1,6 @@
 import "server-only";
+import { listLedger } from "./ledger";
+import { summarizeLedger } from "../analytics/ledger";
 import { z } from "zod";
 import { db } from "../db";
 import {
@@ -33,10 +35,12 @@ export async function loadDossier(
   const tz = settings.profile.timezone;
   const today = todayKey(tz);
   const from = addDays(today, -(windowDays - 1));
-  const [trades, journals] = await Promise.all([
+  const [trades, journals, ledger] = await Promise.all([
     listTrades({ since: new Date(`${addDays(from, -1)}T00:00:00Z`), until: new Date(`${addDays(today, 2)}T00:00:00Z`) }),
     listJournalDays(from, today),
+    listLedger(),
   ]);
+  const funded = summarizeLedger(ledger).byFirm.map((f) => ({ firm: f.firm, live: Math.max(0, f.passed - f.fundedBlown) }));
   const inWindow = trades.filter((t) => {
     const d = dayKey(t.exitTime, tz);
     return d >= from && d <= today;
@@ -52,6 +56,7 @@ export async function loadDossier(
     from,
     to: today,
     statedWant,
+    funded,
   });
   return { settings, dossier, today };
 }

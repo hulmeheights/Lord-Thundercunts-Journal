@@ -18,6 +18,7 @@ export const DEFAULT_SETTINGS: Settings = {
       { id: "size", label: "Sized every trade by my risk plan" },
     ],
   },
+  plan: { monthlyTarget: 25000, batch: 5, overrides: {} },
   prop: {
     enabled: false,
     firm: "Topstep",

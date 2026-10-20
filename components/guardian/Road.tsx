@@ -130,7 +130,7 @@ export function RoadSection({ road: r, n }: { road: Road; n: number }) {
             />
           </Stats>
 
-          {r.byFirm.length > 0 && <FirmRoads road={r} />}
+          {r.byFirm.some((f) => f.counts.passed + f.counts.blown > 0) && <FirmRoads road={r} />}
         </div>
       )}
 
@@ -178,7 +178,7 @@ function FirmRoads({ road }: { road: Road }) {
         <span className={cn(head, "text-right")}>To payout</span>
         <span className={cn(head, "text-right max-sm:hidden")}>Eval → paid</span>
       </div>
-      {road.byFirm.map((f) => (
+      {road.byFirm.filter((f) => f.counts.passed + f.counts.blown > 0).map((f) => (
         <div key={f.firm} className={cn(cols, "border-b border-line py-4")}>
           <span className="truncate font-serif text-[clamp(1.1rem,1.8vw,1.35rem)] font-light">{f.firm}</span>
           <span className={cell}>{f.attemptsPerPass === null ? "—" : f.attemptsPerPass.toFixed(1)}</span>
