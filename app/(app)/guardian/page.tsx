@@ -2,6 +2,9 @@ import { getSettings } from "@/lib/data/settings";
 import { listTrades } from "@/lib/data/trades";
 import { listBrokerAccounts } from "@/lib/data/connections";
 import { listLedger } from "@/lib/data/ledger";
+import { listJournalDays } from "@/lib/data/journal";
+import { roadToPaid } from "@/lib/analytics/road";
+import { GRAINS, mindSummary, mindTimeline, type Grain, type MindRow } from "@/lib/analytics/mind";
 import { addDays, todayKey } from "@/lib/analytics/time";
 import { propStatus, simulateProp } from "@/lib/analytics/prop";
 import { FIRM_SUGGESTIONS, firmKey, summarizeLedger } from "@/lib/analytics/ledger";
@@ -11,6 +14,8 @@ import { GuardianHero } from "@/components/guardian/GuardianHero";
 import { GuardianQuote, OddsSection, StatusSection } from "@/components/guardian/GuardianView";
 import { Explainer } from "@/components/guardian/Explainer";
 import { LedgerSection } from "@/components/guardian/Ledger";
+import { RoadSection } from "@/components/guardian/Road";
+import { MindSection } from "@/components/guardian/Mind";
 import { PropForm } from "@/components/guardian/PropForm";
 
 export const metadata = { title: "Guardian" };
@@ -19,10 +24,15 @@ export default async function GuardianPage() {
   const settings = await getSettings();
   const prop = settings.prop;
   const tz = settings.profile.timezone;
-  const [trades, accounts, ledger] = await Promise.all([
+  const today = todayKey(tz);
+  // Three years is plenty for the year-by-year view.
+  const from = addDays(today, -1100);
+  const [trades, accounts, ledger, history, journals] = await Promise.all([
     prop.enabled ? listTrades({ since: new Date(`${addDays(prop.startDate, -1)}T00:00:00Z`) }) : Promise.resolve([]),
     listBrokerAccounts(),
     listLedger(),
+    listTrades({ since: new Date(`${from}T00:00:00Z`) }),
+    listJournalDays(from, today),
   ]);
 
   const st = prop.enabled ? propStatus(trades, prop, tz) : null;
@@ -32,11 +42,14 @@ export default async function GuardianPage() {
   const tracked = prop.accountIds.length === 1 ? accounts.find((a) => a.id === prop.accountIds[0]) : null;
 
   const summary = summarizeLedger(ledger);
+  const road = roadToPaid(ledger, summary.cost);
+  const mind = Object.fromEntries(GRAINS.map((g) => [g, mindTimeline(history, journals, tz, g)])) as Record<Grain, MindRow[]>;
+  const mood = mindSummary(history, journals, tz);
   // The firm being tracked leads the form's suggestions, then firms already in the ledger.
   const firms = [...new Map([prop.firm, ...summary.byFirm.map((f) => f.firm), ...FIRM_SUGGESTIONS].filter(Boolean).map((f) => [firmKey(f), f])).values()];
 
   let n = 0;
-  const ids = st ? ["top", "status", "odds", "ledger", "rules"] : ["top", "watch", "ledger", "rules"];
+  const ids = st ? ["top", "status", "odds", "ledger", "road", "mind", "rules"] : ["top", "watch", "ledger", "road", "mind", "rules"];
 
   return (
     <>
@@ -53,7 +66,9 @@ export default async function GuardianPage() {
         <Explainer n={++n} />
       )}
 
-      <LedgerSection entries={ledger} summary={summary} n={++n} today={todayKey(tz)} firms={firms} />
+      <LedgerSection entries={ledger} summary={summary} n={++n} today={today} firms={firms} />
+      <RoadSection road={road} n={++n} />
+      <MindSection rows={mind} summary={mood} n={++n} today={today} />
 
       <Section
         id="rules"

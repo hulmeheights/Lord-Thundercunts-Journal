@@ -168,6 +168,8 @@ export function generateSample(today: string, settings: Settings): { trades: Tra
       lessons: wroteReview && net < 0 ? "After two losses, the session is over. Non-negotiable." : null,
       moodAfter: net >= 0 ? 4 : 2,
       rulesKept: {},
+      lifeTags: [],
+      lifeNote: null,
       isSample: true,
     });
   }

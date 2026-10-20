@@ -56,6 +56,9 @@ export type JournalDay = {
   lessons: string | null;
   moodAfter: number | null;
   rulesKept: Record<string, boolean>;
+  /** What was going on outside the charts (family, health, poor sleep…). */
+  lifeTags: string[];
+  lifeNote: string | null;
   isSample: boolean;
 };
 

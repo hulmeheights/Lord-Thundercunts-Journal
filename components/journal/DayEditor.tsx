@@ -7,6 +7,8 @@ import { saveJournal } from "@/lib/actions/journal";
 import { Toggle } from "@/components/ui/Toggle";
 import { Button } from "@/components/ui/Button";
 import { Label } from "@/components/m";
+import { Choice } from "@/components/trades/Choice";
+import { LIFE_TAGS } from "@/lib/analytics/mind";
 
 type Field = "plan" | "review" | "wins" | "lessons";
 const MOODS = ["Rattled", "Off", "Level", "Good", "Clear"];
@@ -129,9 +131,47 @@ export function DayEditor({ day, journal, customRules, aiEnabled }: { day: strin
           </div>
         </section>
 
+        <section className="reveal">
+          <Label n={6} className="mb-3 block">
+            Outside the charts
+          </Label>
+          <p className="mb-5 max-w-[48ch] font-mono text-[11.5px] leading-[1.9] text-ink-3">
+            What&apos;s going on at home, in your body, in your head? Guardian lines it up against your P&amp;L.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {[...LIFE_TAGS, ...j.lifeTags.filter((t) => !(LIFE_TAGS as readonly string[]).includes(t))].map((t) => {
+              const on = j.lifeTags.includes(t);
+              return (
+                <Choice
+                  key={t}
+                  active={on}
+                  onClick={() => {
+                    const next = on ? j.lifeTags.filter((x) => x !== t) : [...j.lifeTags, t];
+                    setJ((c) => ({ ...c, lifeTags: next }));
+                    persist({ lifeTags: next }, "life", 0);
+                  }}
+                >
+                  {t}
+                </Choice>
+              );
+            })}
+          </div>
+          <textarea
+            value={j.lifeNote ?? ""}
+            onChange={(e) => {
+              const v = e.target.value.slice(0, 2000);
+              setJ((c) => ({ ...c, lifeNote: v }));
+              persist({ lifeNote: v || null }, "lifeNote", 800);
+            }}
+            placeholder="Anything worth remembering about today, away from the screen…"
+            rows={2}
+            className="mt-6 field-sizing-content block min-h-[3.2em] w-full resize-none border-0 border-b border-line bg-transparent pb-4 font-serif text-[clamp(1.1rem,1.9vw,1.3rem)] leading-[1.65] font-light text-ink outline-none transition-colors duration-500 placeholder:text-ink-4 placeholder:italic focus:border-[var(--tint)] [caret-color:var(--tint)]"
+          />
+        </section>
+
         {customRules.length > 0 && (
           <section className="reveal">
-            <Label n={6} className="mb-3 block">
+            <Label n={7} className="mb-3 block">
               Rules only you can judge
             </Label>
             <p className="mb-5 max-w-[44ch] font-mono text-[11.5px] leading-[1.9] text-ink-3">These feed your discipline grade.</p>

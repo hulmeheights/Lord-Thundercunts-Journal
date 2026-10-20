@@ -7,6 +7,7 @@ type JournalRow = {
   day: string; checklist: Record<string, boolean>; tasks: DayTask[]; readiness: Readiness | null;
   intention: string | null; plan: string | null; review: string | null; wins: string | null; lessons: string | null;
   mood_after: number | null; rules_kept: Record<string, boolean>; is_sample: boolean;
+  life_tags: string[] | null; life_note: string | null;
 };
 
 function rowToDay(r: JournalRow): JournalDay {
@@ -22,6 +23,8 @@ function rowToDay(r: JournalRow): JournalDay {
     lessons: r.lessons,
     moodAfter: r.mood_after,
     rulesKept: r.rules_kept ?? {},
+    lifeTags: r.life_tags ?? [],
+    lifeNote: r.life_note ?? null,
     isSample: r.is_sample,
   };
 }
@@ -29,7 +32,7 @@ function rowToDay(r: JournalRow): JournalDay {
 export function emptyDay(day: string): JournalDay {
   return {
     day, checklist: {}, tasks: [], readiness: null, intention: null, plan: null, review: null, wins: null,
-    lessons: null, moodAfter: null, rulesKept: {}, isSample: false,
+    lessons: null, moodAfter: null, rulesKept: {}, lifeTags: [], lifeNote: null, isSample: false,
   };
 }
 
@@ -52,16 +55,16 @@ export async function upsertJournalDay(day: string, patch: JournalPatch): Promis
   const cur = await getJournalDay(day);
   const n = { ...cur, ...patch };
   await sql`
-    insert into journal_days (day, checklist, tasks, readiness, intention, plan, review, wins, lessons, mood_after, rules_kept, is_sample)
+    insert into journal_days (day, checklist, tasks, readiness, intention, plan, review, wins, lessons, mood_after, rules_kept, life_tags, life_note, is_sample)
     values (
       ${day}, ${sql.json(n.checklist)}, ${sql.json(n.tasks as never)}, ${n.readiness ? sql.json(n.readiness) : null},
-      ${n.intention}, ${n.plan}, ${n.review}, ${n.wins}, ${n.lessons}, ${n.moodAfter}, ${sql.json(n.rulesKept)}, false
+      ${n.intention}, ${n.plan}, ${n.review}, ${n.wins}, ${n.lessons}, ${n.moodAfter}, ${sql.json(n.rulesKept)}, ${n.lifeTags}, ${n.lifeNote}, false
     )
     on conflict (day) do update set
       checklist = excluded.checklist, tasks = excluded.tasks, readiness = excluded.readiness,
       intention = excluded.intention, plan = excluded.plan, review = excluded.review, wins = excluded.wins,
       lessons = excluded.lessons, mood_after = excluded.mood_after, rules_kept = excluded.rules_kept,
-      is_sample = false, updated_at = now()
+      life_tags = excluded.life_tags, life_note = excluded.life_note, is_sample = false, updated_at = now()
   `;
   return { ...n, isSample: false };
 }

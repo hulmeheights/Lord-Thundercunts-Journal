@@ -21,6 +21,8 @@ const Patch = z
     lessons: Text,
     moodAfter: Score.nullable(),
     rulesKept: z.record(z.string().max(64), z.boolean()),
+    lifeTags: z.array(z.string().trim().min(1).max(40)).max(20),
+    lifeNote: z.string().max(2000).nullable(),
     tasks: z.array(z.object({ id: z.string().max(40), label: z.string().min(1).max(200), done: z.boolean() })).max(50),
   })
   .partial();

@@ -98,7 +98,7 @@ test("prepared days vs unprepared days", () => {
     trades.push(trade(day, "09:40", prep ? 150 : -120));
     journals.push({
       day, checklist: { plan: prep }, tasks: [], readiness: null, intention: null, plan: null, review: null, wins: null,
-      lessons: null, moodAfter: null, rulesKept: {}, isSample: false,
+      lessons: null, moodAfter: null, rulesKept: {}, lifeTags: [], lifeNote: null, isSample: false,
     });
   }
   const d = dossierFor(trades, journals, { ...RULES, maxTradesPerDay: 5 });
@@ -208,7 +208,7 @@ test("checkOrder: rule breaks, mistakes, fees, preparation, self-report", () => 
 
   const journal = (plan: boolean): JournalDay => ({
     day: DAY, checklist: { plan }, tasks: [], readiness: null, intention: null, plan: null, review: null, wins: null,
-    lessons: null, moodAfter: null, rulesKept: {}, isSample: false,
+    lessons: null, moodAfter: null, rulesKept: {}, lifeTags: [], lifeNote: null, isSample: false,
   });
   assert.equal(checkOrder("unprepared", {}, DAY, ctx(six, { journal: journal(true) })).verdict, "kept");
   assert.equal(checkOrder("unprepared", {}, DAY, ctx(six, { journal: journal(false) })).verdict, "broken");

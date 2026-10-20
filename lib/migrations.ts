@@ -292,4 +292,13 @@ export const MIGRATIONS: { version: number; sql: string }[] = [
       ));
     `,
   },
+  {
+    version: 10,
+    sql: /* sql */ `
+      -- Life outside the charts, per day: tags (family, health, poor sleep…) and a
+      -- short note, so a bumpy patch can be read next to what was going on at home.
+      alter table journal_days add column if not exists life_tags text[] not null default '{}';
+      alter table journal_days add column if not exists life_note text check (life_note is null or char_length(life_note) <= 2000);
+    `,
+  },
 ];
