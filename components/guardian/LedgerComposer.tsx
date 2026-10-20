@@ -4,7 +4,7 @@ import { useId, useRef, useState, useTransition } from "react";
 import { Btn, Field, Panel } from "@/components/m";
 import { Seg } from "@/components/m/Seg";
 import { addLedgerEntry } from "@/lib/actions/ledger";
-import { FIRM_SUGGESTIONS, KIND_LABEL, MONEY_KINDS, OUTCOME_KINDS, firmKey, isOutcome, signedAmount, type LedgerKind } from "@/lib/analytics/ledger";
+import { FIRM_SUGGESTIONS, KIND_LABEL, MONEY_KINDS, OUTCOME_KINDS, firmKey, isInflow, isOutcome, signedAmount, type LedgerKind } from "@/lib/analytics/ledger";
 import { fmtMoney } from "@/lib/format";
 import { cn } from "@/lib/cn";
 
@@ -33,7 +33,7 @@ function parseQty(s: string): number | null {
 
 function parseAmount(s: string): number | null {
   const n = Number(s.replace(/[\s,$]/g, ""));
-  return s.trim() && Number.isFinite(n) && n > 0 && n <= 1_000_000 ? Math.round(n * 100) / 100 : null;
+  return s.trim() && Number.isFinite(n) && n >= 0 && n <= 1_000_000 ? Math.round(n * 100) / 100 : null;
 }
 
 const eyebrow = "mb-3.5 block font-mono text-[9.5px] tracking-[0.24em] text-ink-4 uppercase";
@@ -73,7 +73,11 @@ export function LedgerComposer({ count, today, firms, accounts }: { count: numbe
     if (qty === null) return setMsg({ ok: false, text: "How many — a whole number from 1 to 100." });
     if (!result && amount === null) {
       amountRef.current?.focus();
-      return setMsg({ ok: false, text: "Type the amount you paid or received." });
+      return setMsg({ ok: false, text: isInflow(f.kind) ? "Type the amount you received." : "Type the amount you paid — 0 if it was free." });
+    }
+    if (!result && amount === 0 && isInflow(f.kind)) {
+      amountRef.current?.focus();
+      return setMsg({ ok: false, text: "A payout or refund needs an amount." });
     }
     start(async () => {
       try {
@@ -215,7 +219,7 @@ export function LedgerComposer({ count, today, firms, accounts }: { count: numbe
                             {qty !== null && qty > 1 && <span className="whitespace-nowrap"> · {qty} × {fmtMoney(each!, { cents: true })}</span>}
                           </>
                         ) : (
-                          "typed by you — never guessed"
+                          isInflow(f.kind) ? "typed by you — never guessed" : "free? type 0"
                         )
                       }
                     >

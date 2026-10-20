@@ -82,3 +82,24 @@ test("mind: feelings, life tags and P&L line up by week; bumpy vs clear days", (
   assert.deepEqual(s.tags.map((t) => [t.tag, t.days, t.avgNet, t.otherAvg]), [["Poor sleep", 2, -600, 400]]);
   assert.equal(mindTimeline(trades, journals, "UTC", "year")[0]!.label, "2026");
 });
+
+test("road: results with nothing to attach to are reported, not silently dropped", () => {
+  const r = roadToPaid(
+    [
+      e("2026-10-14", "Lucid", "evaluation", 5, 1150),
+      e("2026-10-20", "Lucid", "passed", 5),
+      e("2026-10-21", "Lucid", "blown", 1), // every Lucid eval was already passed
+      e("2026-10-21", "Topstep", "payout", 1, 1000), // wrong firm: no passed account at Topstep
+      e("2026-10-21", "Lucid", "payout", 1, 1000),
+    ],
+    1150,
+  );
+  assert.deepEqual(r.daysPassToPayout.median, 1);
+  assert.deepEqual(
+    r.unmatched.map((u) => [u.firm, u.kind, u.count]),
+    [
+      ["Lucid", "blown", 1],
+      ["Topstep", "payout", 1],
+    ],
+  );
+});

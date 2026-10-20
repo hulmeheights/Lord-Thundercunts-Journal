@@ -8,7 +8,7 @@ const days = (n: number | null) => (n === null ? "—" : `${Math.round(n)}`);
 const dayWord = (n: number) => (Math.round(n) === 1 ? "day" : "days");
 /** "usually 9–17 days · 6 measured" */
 function usual(s: Spread, what: string): string {
-  if (!s.n) return `log a few ${what} to see it`;
+  if (!s.n) return what;
   const range = s.low !== null && s.high !== null && Math.round(s.low) !== Math.round(s.high) ? `usually ${Math.round(s.low)}–${Math.round(s.high)} days · ` : "";
   return `${range}${s.n} measured`;
 }
@@ -61,6 +61,8 @@ export function RoadSection({ road: r, n }: { road: Road; n: number }) {
         <p className="mt-6 max-w-[34ch] font-serif text-[clamp(1.45rem,2.8vw,2.2rem)] leading-[1.3] font-light tracking-[-0.01em] [&_em]:italic">{verdict(r)}</p>
       </Panel>
 
+      {r.unmatched.length > 0 && <Unmatched list={r.unmatched} />}
+
       {any && (
         <div className="mt-[clamp(3.5rem,8vh,5.5rem)]">
           <Stats cols={3}>
@@ -71,13 +73,13 @@ export function RoadSection({ road: r, n }: { road: Road; n: number }) {
               label="Evals per funded account"
               sub={r.attemptsPerPass === null ? "once one passes" : "passed + blown ÷ passed"}
             />
-            <Figure size="lg" value={days(r.daysToPass.median)} unit={r.daysToPass.median === null ? undefined : "days"} label="To pass an eval" sub={usual(r.daysToPass, "passes")} d={80} />
+            <Figure size="lg" value={days(r.daysToPass.median)} unit={r.daysToPass.median === null ? undefined : "days"} label="To pass an eval" sub={usual(r.daysToPass, "needs an eval, then Passed, at the same firm")} d={80} />
             <Figure
               size="lg"
               value={days(r.daysToBlow.median)}
               unit={r.daysToBlow.median === null ? undefined : "days"}
               label="An eval lasts, when it's blown"
-              sub={usual(r.daysToBlow, "blown evals")}
+              sub={usual(r.daysToBlow, "needs an open eval, then Blown eval")}
               d={160}
             />
             <Figure
@@ -86,14 +88,14 @@ export function RoadSection({ road: r, n }: { road: Road; n: number }) {
               unit={r.daysPassToPayout.median === null ? undefined : "days"}
               tone={r.daysPassToPayout.median !== null ? "pos" : null}
               label="Passed → first payout"
-              sub={usual(r.daysPassToPayout, "payouts")}
+              sub={usual(r.daysPassToPayout, "needs Passed, then a Payout, at the same firm")}
             />
             <Figure
               size="lg"
               value={days(r.daysEvalToPayout.median)}
               unit={r.daysEvalToPayout.median === null ? undefined : "days"}
               label="Eval bought → first payout"
-              sub={usual(r.daysEvalToPayout, "payouts")}
+              sub={usual(r.daysEvalToPayout, "needs eval → Passed → Payout at one firm")}
               d={80}
             />
             <Figure
@@ -101,7 +103,7 @@ export function RoadSection({ road: r, n }: { road: Road; n: number }) {
               value={days(r.daysBetweenPayouts.median)}
               unit={r.daysBetweenPayouts.median === null ? undefined : "days"}
               label="Between payouts"
-              sub={usual(r.daysBetweenPayouts, "repeat payouts")}
+              sub={usual(r.daysBetweenPayouts, "needs two payouts on different days")}
               d={160}
             />
             <Figure
@@ -123,7 +125,7 @@ export function RoadSection({ road: r, n }: { road: Road; n: number }) {
               value={days(r.fundedLifeDays.median)}
               unit={r.fundedLifeDays.median === null ? undefined : "days"}
               label="A lost funded account lasted"
-              sub={usual(r.fundedLifeDays, "lost funded accounts")}
+              sub={usual(r.fundedLifeDays, "needs Passed, then Blown funded")}
               d={160}
             />
           </Stats>
@@ -137,6 +139,29 @@ export function RoadSection({ road: r, n }: { road: Road; n: number }) {
         to your oldest funded account there that hasn&apos;t been paid yet. Log results on the day they happen and the numbers are exact.
       </p>
     </Section>
+  );
+}
+
+const MISS: Record<Road["unmatched"][number]["kind"], (n: number, firm: string) => string> = {
+  passed: (n, firm) => `${n} passed at ${firm} with no eval logged before it there, so there's no start date to time it from.`,
+  blown: (n, firm) => `${n} blown ${n === 1 ? "eval" : "evals"} at ${firm} with no open eval left there — every eval bought was already marked passed or blown.`,
+  funded_blown: (n, firm) => `${n} blown funded at ${firm} with no funded account standing there — mark it Passed first.`,
+  payout: (n, firm) => `${n} ${n === 1 ? "payout" : "payouts"} at ${firm} with no passed account there to go to. Is the firm name the same as on the Passed line, and is the Passed line dated on or before the payout?`,
+};
+
+/** What the road couldn't place, in plain words, so the ledger can be put right. */
+function Unmatched({ list }: { list: Road["unmatched"] }) {
+  return (
+    <div className="reveal mt-8 border-l border-gold pl-6">
+      <div className="font-mono text-[9.5px] tracking-[0.3em] text-gold uppercase">Couldn&apos;t place</div>
+      <ul className="mt-3 space-y-2">
+        {list.map((u) => (
+          <li key={`${u.firm}-${u.kind}`} className="max-w-[78ch] font-mono text-[11.5px] leading-[1.8] text-ink-2">
+            {MISS[u.kind](u.count, u.firm)}
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 

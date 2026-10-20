@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { assertSession } from "../auth/session";
-import { LEDGER_KINDS, isOutcome } from "../analytics/ledger";
+import { LEDGER_KINDS, isInflow, isOutcome } from "../analytics/ledger";
 import { deleteLedgerEntry as removeEntry, insertLedgerEntry } from "../data/ledger";
 
 /** A real calendar day, not just the right shape (rejects 2026-02-31). */
@@ -45,7 +45,8 @@ const Entry = z
   })
   // Account results carry a count, never money; everything else needs an amount.
   .transform((v) => (isOutcome(v.kind) ? { ...v, amount: 0 } : v))
-  .refine((v) => isOutcome(v.kind) || v.amount > 0, { message: "Amount must be more than zero", path: ["amount"] });
+  // Costs can be free ($0 activation, a promo eval); money coming in can't be nothing.
+  .refine((v) => isOutcome(v.kind) || !isInflow(v.kind) || v.amount > 0, { message: "Amount must be more than zero", path: ["amount"] });
 
 export type LedgerInput = z.input<typeof Entry>;
 export type LedgerResult = { ok: true; id: string } | { ok: false; error: string };

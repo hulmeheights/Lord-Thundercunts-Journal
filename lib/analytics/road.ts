@@ -28,6 +28,9 @@ export type FirmRoad = {
   daysEvalToPayout: Spread;
 };
 
+/** Result lines that had nothing to attach to, so you can fix the ledger. */
+export type Unmatched = { firm: string; kind: "passed" | "blown" | "funded_blown" | "payout"; count: number };
+
 export type Road = {
   /** Evals decided (passed + blown) per pass: how many goes one funded account takes. */
   attemptsPerPass: number | null;
@@ -49,6 +52,7 @@ export type Road = {
   /** Fees spent per funded account that has been paid at least once. */
   feesPerPaidAccount: number | null;
   byFirm: FirmRoad[];
+  unmatched: Unmatched[];
 };
 
 const DAY_MS = 86_400_000;
@@ -86,6 +90,7 @@ type Track = {
   evalToPayout: number[];
   payoutDays: string[];
   fundedLife: number[];
+  miss: Record<Unmatched["kind"], number>;
 };
 
 export function roadToPaid(entries: readonly LedgerEntry[], cost: number): Road {
@@ -96,7 +101,7 @@ export function roadToPaid(entries: readonly LedgerEntry[], cost: number): Road 
     const key = firmKey(e.firm) || "other";
     let t = tracks.get(key);
     if (!t) {
-      t = { firm: e.firm.trim().replace(/\s+/g, " ") || "Other", attempts: [], funded: [], passed: 0, blown: 0, toPass: [], toBlow: [], passToPayout: [], evalToPayout: [], payoutDays: [], fundedLife: [] };
+      t = { firm: e.firm.trim().replace(/\s+/g, " ") || "Other", attempts: [], funded: [], passed: 0, blown: 0, toPass: [], toBlow: [], passToPayout: [], evalToPayout: [], payoutDays: [], fundedLife: [], miss: { passed: 0, blown: 0, funded_blown: 0, payout: 0 } };
       tracks.set(key, t);
     }
     const q = qtyOf(e);
@@ -106,24 +111,26 @@ export function roadToPaid(entries: readonly LedgerEntry[], cost: number): Road 
         const bought = t.attempts.shift() ?? null;
         t.passed++;
         if (bought) t.toPass.push(daysBetween(bought, e.day));
+        else t.miss.passed++;
         t.funded.push({ passDay: e.day, attemptDay: bought, paid: false, alive: true });
       } else if (e.kind === "blown") {
         const bought = t.attempts.shift() ?? null;
         t.blown++;
         if (bought) t.toBlow.push(daysBetween(bought, e.day));
+        else t.miss.blown++;
       } else if (e.kind === "funded_blown") {
         const f = t.funded.find((x) => x.alive);
         if (f) {
           f.alive = false;
           t.fundedLife.push(daysBetween(f.passDay, e.day));
-        }
+        } else t.miss.funded_blown++;
       } else if (e.kind === "payout") {
         const f = t.funded.find((x) => !x.paid && x.alive) ?? t.funded.find((x) => !x.paid);
         if (f) {
           f.paid = true;
           t.passToPayout.push(daysBetween(f.passDay, e.day));
           if (f.attemptDay) t.evalToPayout.push(daysBetween(f.attemptDay, e.day));
-        }
+        } else if (!t.funded.length) t.miss.payout++; // repeat payouts on an already-paid account are fine
       }
     }
     if (e.kind === "payout") t.payoutDays.push(e.day);
@@ -162,5 +169,8 @@ export function roadToPaid(entries: readonly LedgerEntry[], cost: number): Road 
         daysEvalToPayout: spread(t.evalToPayout),
       }))
       .sort((a, b) => b.daysToPass.n - a.daysToPass.n || a.firm.localeCompare(b.firm)),
+    unmatched: all.flatMap((t) =>
+      (Object.keys(t.miss) as Unmatched["kind"][]).filter((k) => t.miss[k] > 0).map((k) => ({ firm: t.firm, kind: k, count: t.miss[k] })),
+    ),
   };
 }
