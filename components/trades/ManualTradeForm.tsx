@@ -2,8 +2,9 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { addManualTrade } from "@/lib/actions/trades";
-import { todayKey } from "@/lib/analytics/time";
+import { addManualTrade, editTrade } from "@/lib/actions/trades";
+import { dayKey, todayKey } from "@/lib/analytics/time";
+import type { Trade } from "@/lib/types";
 import { pointValueFor, rootFromSymbol } from "@/lib/brokers/contracts";
 import { fmtMoney, fmtNum } from "@/lib/format";
 import { cn } from "@/lib/cn";
@@ -13,13 +14,24 @@ import { Choice } from "./Choice";
 
 type Draft = { symbol: string; qty: number; entry: number; exit: number; fees: number; pv: number | null };
 
-export function ManualTradeForm({ setups: options, tz, onDone }: { setups: string[]; tz: string; onDone: () => void }) {
+/** A trade to correct: the form opens filled in with it and saves over it. */
+export type EditableTrade = Pick<Trade, "id" | "symbol" | "direction" | "qty" | "entryTime" | "exitTime" | "entryPrice" | "exitPrice" | "fees" | "pointValue">;
+
+/** "14:05" in the given timezone. */
+const hhmm = (iso: string, tz: string) =>
+  new Intl.DateTimeFormat("en-GB", { timeZone: tz, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date(iso));
+
+export function ManualTradeForm({ setups: options, tz, onDone, edit }: { setups: string[]; tz: string; onDone: () => void; edit?: EditableTrade }) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
-  const [direction, setDirection] = useState<"long" | "short">("long");
+  const [direction, setDirection] = useState<"long" | "short">(edit?.direction ?? "long");
   const [picked, setPicked] = useState<string[]>([]);
-  const [draft, setDraft] = useState<Draft>({ symbol: "", qty: 1, entry: 0, exit: 0, fees: 0, pv: null });
+  const [draft, setDraft] = useState<Draft>(
+    edit
+      ? { symbol: edit.symbol, qty: edit.qty, entry: edit.entryPrice, exit: edit.exitPrice, fees: edit.fees, pv: edit.pointValue }
+      : { symbol: "", qty: 1, entry: 0, exit: 0, fees: 0, pv: null },
+  );
 
   // A live read of what the trade made, before you save it.
   const root = draft.symbol ? rootFromSymbol(draft.symbol) : "";
@@ -41,7 +53,7 @@ export function ManualTradeForm({ setups: options, tz, onDone }: { setups: strin
         const n = (k: string) => Number(f.get(k));
         setError(null);
         start(async () => {
-          const res = await addManualTrade({
+          const fields = {
             symbol: String(f.get("symbol")),
             direction,
             qty: n("qty"),
@@ -53,7 +65,15 @@ export function ManualTradeForm({ setups: options, tz, onDone }: { setups: strin
             fees: n("fees") || 0,
             pointValue: f.get("pointValue") ? n("pointValue") : null,
             setups: picked,
-          });
+          };
+          if (edit) {
+            const res = await editTrade(edit.id, fields);
+            if (res.error) return setError(res.error);
+            onDone();
+            router.refresh();
+            return;
+          }
+          const res = await addManualTrade(fields);
           if (res.error) setError(res.error);
           else {
             onDone();
@@ -64,10 +84,10 @@ export function ManualTradeForm({ setups: options, tz, onDone }: { setups: strin
     >
       <div className="grid grid-cols-[1fr_7rem] gap-x-5 gap-y-7">
         <Field label="Symbol">
-          <input name="symbol" required placeholder="MNQZ6" autoCapitalize="characters" autoComplete="off" className="field uppercase placeholder:normal-case" />
+          <input name="symbol" required defaultValue={edit?.symbol} placeholder="MNQZ6" autoCapitalize="characters" autoComplete="off" className="field uppercase placeholder:normal-case" />
         </Field>
         <Field label="Contracts">
-          <input name="qty" type="number" min="1" step="1" defaultValue={1} required inputMode="numeric" className="field num" />
+          <input name="qty" type="number" min="1" step="1" defaultValue={edit?.qty ?? 1} required inputMode="numeric" className="field num" />
         </Field>
       </div>
 
@@ -85,31 +105,32 @@ export function ManualTradeForm({ setups: options, tz, onDone }: { setups: strin
 
       <div className="grid grid-cols-2 gap-x-5 gap-y-7 sm:grid-cols-[1.3fr_1fr_1fr]">
         <Field label="Date" className="col-span-2 sm:col-span-1">
-          <input name="day" type="date" required defaultValue={todayKey(tz)} className="field num" />
+          <input name="day" type="date" required defaultValue={edit ? dayKey(edit.entryTime, tz) : todayKey(tz)} className="field num" />
         </Field>
         <Field label="Entry time">
-          <input name="entryTime" type="time" required defaultValue="09:45" className="field num" />
+          <input name="entryTime" type="time" required defaultValue={edit ? hhmm(edit.entryTime, tz) : "09:45"} className="field num" />
         </Field>
         <Field label="Exit time">
-          <input name="exitTime" type="time" required defaultValue="09:52" className="field num" />
+          <input name="exitTime" type="time" required defaultValue={edit ? hhmm(edit.exitTime, tz) : "09:52"} className="field num" />
         </Field>
       </div>
 
       <div className="grid grid-cols-2 gap-x-5 gap-y-7">
         <Field label="Entry price">
-          <input name="entryPrice" type="number" step="any" required inputMode="decimal" className="field num" />
+          <input name="entryPrice" type="number" step="any" required defaultValue={edit?.entryPrice} inputMode="decimal" className="field num" />
         </Field>
         <Field label="Exit price">
-          <input name="exitPrice" type="number" step="any" required inputMode="decimal" className="field num" />
+          <input name="exitPrice" type="number" step="any" required defaultValue={edit?.exitPrice} inputMode="decimal" className="field num" />
         </Field>
         <Field label="Fees ($)">
-          <input name="fees" type="number" step="any" min="0" defaultValue={0} inputMode="decimal" className="field num" />
+          <input name="fees" type="number" step="any" min="0" defaultValue={edit?.fees ?? 0} inputMode="decimal" className="field num" />
         </Field>
         <Field label="$ per point" hint={root && pointValueFor(root) ? `${root} is $${pointValueFor(root)} a point.` : "Filled in for known contracts."}>
-          <input name="pointValue" type="number" step="any" min="0" placeholder="auto" inputMode="decimal" className="field num" />
+          <input name="pointValue" type="number" step="any" min="0" defaultValue={edit?.pointValue} placeholder="auto" inputMode="decimal" className="field num" />
         </Field>
       </div>
 
+      {!edit && (
       <div>
         <span className="mb-3 block font-mono text-[9.5px] tracking-[0.24em] text-ink-4 uppercase">Setup · pick as many as fit</span>
         <div className="flex flex-wrap gap-2">
@@ -120,6 +141,7 @@ export function ManualTradeForm({ setups: options, tz, onDone }: { setups: strin
           ))}
         </div>
       </div>
+      )}
 
       <div className="flex items-baseline justify-between gap-4 border-t border-line pt-5 font-mono">
         <span className="text-[9.5px] tracking-[0.26em] text-ink-4 uppercase">
@@ -146,7 +168,7 @@ export function ManualTradeForm({ setups: options, tz, onDone }: { setups: strin
       )}
 
       <Btn type="submit" variant="primary" size="lg" className="w-full" disabled={pending}>
-        {pending ? "Saving…" : "Save trade"}
+        {pending ? "Saving…" : edit ? "Save changes" : "Save trade"}
       </Btn>
     </form>
   );

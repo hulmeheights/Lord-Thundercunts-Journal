@@ -9,6 +9,7 @@ import { fmtNum } from "@/lib/format";
 import { Btn, Dot } from "@/components/m";
 import { Seg } from "@/components/m/Seg";
 import { Choice } from "./Choice";
+import { ManualTradeForm } from "./ManualTradeForm";
 import { RATING_WORDS } from "./lib";
 
 type Patch = Parameters<typeof saveTradeJournal>[1];
@@ -26,7 +27,19 @@ function Line({ label, hint, children, className }: { label: React.ReactNode; hi
   );
 }
 
-export function TradeEditor({ trade, vocab, defaultRisk }: { trade: Trade; vocab: { setups: string[]; mistakes: string[]; emotions: string[] }; defaultRisk: number | null }) {
+export function TradeEditor({
+  trade,
+  vocab,
+  defaultRisk,
+  tz,
+}: {
+  trade: Trade;
+  vocab: { setups: string[]; mistakes: string[]; emotions: string[] };
+  defaultRisk: number | null;
+  tz: string;
+}) {
+  const editable = trade.source === "manual" || trade.source === "sample" || trade.source === "import";
+  const [editing, setEditing] = useState(false);
   const router = useRouter();
   const [t, setT] = useState(trade);
   const [saved, setSaved] = useState<"idle" | "saving" | "saved">("idle");
@@ -220,9 +233,31 @@ export function TradeEditor({ trade, vocab, defaultRisk }: { trade: Trade; vocab
         />
       </div>
 
-      {(trade.source === "manual" || trade.source === "sample") && (
+      {editable && editing && (
+        <div className="mt-[clamp(3.5rem,9vh,5.5rem)] border-t border-line-2 pt-8">
+          <div className="mb-6 flex items-baseline justify-between gap-4">
+            <span className="font-mono text-[10px] tracking-[0.3em] text-ink-2 uppercase">Correct the trade</span>
+            <button type="button" onClick={() => setEditing(false)} className="font-mono text-[9.5px] tracking-[0.28em] text-ink-4 uppercase hover:text-ink">
+              Cancel
+            </button>
+          </div>
+          <ManualTradeForm setups={vocab.setups} tz={tz} edit={trade} onDone={() => setEditing(false)} />
+          <p className="mt-4 font-mono text-[10.5px] leading-[1.8] text-ink-4">P&amp;L is worked out again from the new numbers. Your notes, setups and tags stay as they are.</p>
+        </div>
+      )}
+
+      {editable && (
         <div className="mt-[clamp(3.5rem,9vh,5.5rem)] flex min-h-10 flex-wrap items-center gap-x-8 gap-y-4">
-          {!confirmDelete ? (
+          {!editing && !confirmDelete && (
+            <button
+              type="button"
+              onClick={() => setEditing(true)}
+              className="m-link pb-1 font-mono text-[9.5px] tracking-[0.28em] text-ink-2 uppercase transition-colors duration-300 hover:text-ink"
+            >
+              Edit trade details
+            </button>
+          )}
+          {trade.source === "import" ? null : !confirmDelete ? (
             <button
               type="button"
               onClick={() => setConfirmDelete(true)}

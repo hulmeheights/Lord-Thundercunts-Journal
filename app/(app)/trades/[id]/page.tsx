@@ -189,7 +189,7 @@ export default async function TradePage({ params }: { params: Promise<{ id: stri
         <Lead className="mb-[clamp(2.5rem,7vh,4.5rem)]">
           What were you <em>thinking</em>?
         </Lead>
-        <TradeEditor trade={trade} vocab={settings.vocab} defaultRisk={settings.rules.defaultRisk} />
+        <TradeEditor trade={trade} vocab={settings.vocab} defaultRisk={settings.rules.defaultRisk} tz={settings.profile.timezone} />
       </section>
 
       {/* the session, either side */}

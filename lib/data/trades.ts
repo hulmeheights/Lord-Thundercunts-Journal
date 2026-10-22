@@ -97,6 +97,27 @@ export async function insertTrades(trades: Trade[]): Promise<void> {
   }
 }
 
+/** Trades you typed in or imported can be corrected; broker-synced ones are rebuilt from fills instead. */
+export const EDITABLE_SOURCES = ["manual", "sample", "import"];
+
+export type TradeCore = Pick<
+  Trade,
+  "symbol" | "root" | "direction" | "qty" | "maxPosition" | "entryTime" | "exitTime" | "entryPrice" | "exitPrice" | "grossPnl" | "fees" | "netPnl" | "pointValue"
+>;
+
+export async function updateTradeCore(id: string, c: TradeCore): Promise<boolean> {
+  const sql = await db();
+  const rows = await sql`
+    update trades set
+      symbol = ${c.symbol}, root = ${c.root}, direction = ${c.direction}, qty = ${c.qty}, max_position = ${c.maxPosition},
+      entry_time = ${c.entryTime}, exit_time = ${c.exitTime}, entry_price = ${c.entryPrice}, exit_price = ${c.exitPrice},
+      gross_pnl = ${c.grossPnl}, fees = ${c.fees}, net_pnl = ${c.netPnl}, point_value = ${c.pointValue}, updated_at = now()
+    where id = ${id} and source = any(${sql.array(EDITABLE_SOURCES)}::text[])
+    returning id
+  `;
+  return rows.length > 0;
+}
+
 export async function deleteTrade(id: string): Promise<void> {
   const sql = await db();
   await sql`delete from trades where id = ${id} and source in ('manual', 'sample')`;
