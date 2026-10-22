@@ -124,7 +124,7 @@ export function suggestRules(trades: Trade[], tz: string): RuleSuggestion[] {
   // Cut-off times: only trade before X.
   const mins = trades.map((t) => minuteOfDay(t.entryTime, tz)).sort((a, b) => a - b);
   const first = mins[0] ?? 0;
-  for (const cutoff of [600, 630, 660, 690, 720]) {
+  for (const cutoff of [600, 630, 660, 690, 720, 780, 840, 900, 960, 1020, 1080, 1140, 1200, 1260, 1305]) {
     if (cutoff > first + 30) {
       const h = Math.floor(cutoff / 60), m = cutoff % 60;
       candidates.push({

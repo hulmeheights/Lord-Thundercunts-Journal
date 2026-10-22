@@ -32,7 +32,8 @@ function Stepper({ label, value, onChange, step = 1, min = 0, max = 50, format }
   );
 }
 
-const CUTOFFS = [null, 600, 630, 660, 690, 720, 780, 840] as const;
+/** Minute of day: half-hourly through the morning, hourly to 21:00, then 21:45 (when the props close you out). */
+const CUTOFFS = [null, 600, 630, 660, 690, 720, ...Array.from({ length: 9 }, (_, i) => (13 + i) * 60), 21 * 60 + 45] as const;
 const hhmm = (c: number) => `${String(Math.floor(c / 60)).padStart(2, "0")}:${String(c % 60).padStart(2, "0")}`;
 
 /**
@@ -125,7 +126,11 @@ export function RuleLab({ trades, tz }: { trades: Trade[]; tz: string }) {
         <Stepper label="Daily loss limit" value={o.maxDailyLoss ?? null} onChange={(v) => set({ maxDailyLoss: v })} step={100} min={0} max={10000} format={(n) => fmtMoney(n)} />
         <Stepper label="Walk away when up" value={o.dailyProfitStop ?? null} onChange={(v) => set({ dailyProfitStop: v })} step={100} min={0} max={20000} format={(n) => fmtMoney(n)} />
         <div className={rowCls}>
-          <span className={nameCls}>Stop trading at</span>
+          <span className={nameCls}>
+            Stop trading at
+            {/* Times are in your profile timezone (Settings → Profile), so 21:45 means 21:45 there. */}
+            <span className="ml-2 text-ink-4 normal-case">{tz.split("/").pop()?.replace(/_/g, " ")} time</span>
+          </span>
           <select
             className="field h-8 w-24 py-0 font-mono text-[11.5px]"
             value={cutoffIdx < 0 ? 0 : cutoffIdx}
