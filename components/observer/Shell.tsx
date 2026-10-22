@@ -24,6 +24,7 @@ export function RitualHost({
   aiReady,
   prefs,
   pinned,
+  lastWant = null,
   initialOpen = false,
 }: {
   name: string;
@@ -32,6 +33,7 @@ export function RitualHost({
   aiReady: boolean;
   prefs: Settings["observer"];
   pinned: ObstacleKey | null;
+  lastWant?: string | null;
   initialOpen?: boolean;
 }) {
   const [open, setOpen] = useState(initialOpen);
@@ -49,7 +51,7 @@ export function RitualHost({
       history.replaceState(history.state, "", url.pathname + url.search + url.hash);
     }
   }, []);
-  return <Ritual open={open} onClose={close} name={name} tell={tell} window={win} aiReady={aiReady} prefs={prefs} pinned={pinned} />;
+  return <Ritual open={open} onClose={close} name={name} tell={tell} window={win} aiReady={aiReady} prefs={prefs} pinned={pinned} lastWant={lastWant} />;
 }
 
 /** Opens the ritual. `text` renders a quiet underlined text button instead of the primary one. */

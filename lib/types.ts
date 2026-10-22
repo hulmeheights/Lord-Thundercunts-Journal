@@ -149,12 +149,27 @@ export type OrderParams = {
   label?: string;
 };
 
+export type GoalKind = "net" | "winRate" | "greenDays" | "maxTradesPerDay" | "noRevenge" | "evalsPassed" | "payouts" | "paidOut" | "custom";
+
+/** A target sealed inside a time capsule, checked against your data when it opens. */
+export type CapsuleGoal = {
+  id: string;
+  kind: GoalKind;
+  /** Dollars, percent or a count, depending on the kind; null for "no revenge" and your own goals. */
+  target: number | null;
+  /** Your own words, for a custom goal. */
+  text?: string;
+  /** A custom goal you've ticked off yourself. */
+  done?: boolean;
+};
+
 export type Capsule = {
   id: string;
   message: string;
   createdAt: string;
   deliverOn: string;
   openedAt: string | null;
+  goals: CapsuleGoal[];
 };
 
 export type ConnectionInfo = {

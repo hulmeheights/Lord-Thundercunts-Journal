@@ -1,6 +1,9 @@
 import { getSettings } from "@/lib/data/settings";
 import { listTrades } from "@/lib/data/trades";
-import { journaledDays, listJournalDays, pendingCapsuleCount } from "@/lib/data/journal";
+import { journaledDays, listCapsules, listJournalDays, pendingCapsuleCount } from "@/lib/data/journal";
+import { listLedger } from "@/lib/data/ledger";
+import { capsuleStatus, evaluateCapsule } from "@/lib/analytics/capsule";
+import { CapsuleList, type CapsuleView } from "@/components/journal/CapsuleList";
 import { photoCounts } from "@/lib/data/photos";
 import { addDays, addMonths, endOfMonth, longDate, monthLabel, startOfMonth, todayKey } from "@/lib/analytics/time";
 import { dailySeries, summarize } from "@/lib/analytics/stats";
@@ -24,13 +27,24 @@ export default async function JournalPage({ searchParams }: { searchParams: Prom
   const year = Number(m.slice(0, 4));
   const yStart = `${year}-01-01`;
   const yEnd = `${year}-12-31`;
-  const [trades, journaled, entries, pending, photos] = await Promise.all([
+  const [trades, journaled, entries, pending, photos, capsules, ledger] = await Promise.all([
     listTrades({ since: new Date(`${addDays(yStart, -1)}T00:00:00Z`), until: new Date(`${addDays(yEnd, 2)}T00:00:00Z`) }),
     journaledDays(yStart, yEnd),
     listJournalDays(addDays(today, -90), today),
     pendingCapsuleCount(today),
     photoCounts(addDays(today, -90), today),
+    listCapsules(),
+    listLedger(),
   ]);
+  // Goals are measured from the oldest capsule's seal date, which can reach back before this year.
+  const capFrom = capsules.reduce((m, c) => (c.createdAt < m ? c.createdAt : m), `${yStart}T00:00:00Z`);
+  const capTrades = capFrom < `${yStart}T00:00:00Z` ? await listTrades({ since: new Date(addDays(capFrom.slice(0, 10), -1)) }) : trades;
+  const capsuleViews: CapsuleView[] = capsules.map((c) => ({
+    capsule: c,
+    status: capsuleStatus(c, today),
+    results: evaluateCapsule(c, capTrades, ledger, tz, today),
+    daysLeft: Math.max(0, Math.round((Date.parse(`${c.deliverOn}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / 86_400_000)),
+  }));
 
   const series = dailySeries(trades, tz);
   const data: Record<string, CalendarDatum> = {};
@@ -164,7 +178,8 @@ export default async function JournalPage({ searchParams }: { searchParams: Prom
               Dear future <em>me</em>.
             </p>
             <p className="mt-5 max-w-[38ch] font-mono text-[12px] leading-[1.9] tracking-[0.04em] text-ink-2">
-              Write to the trader you&apos;ll be. It stays sealed, then opens inside your replay on the day it&apos;s due.
+              Write to the trader you&apos;ll be, and seal goals with it if you like. It stays sealed, then opens on Today (and in your replay)
+              on the day it&apos;s due — and the goals are checked against your trades and ledger.
               {pending > 0 && (
                 <>
                   {" "}
@@ -175,6 +190,7 @@ export default async function JournalPage({ searchParams }: { searchParams: Prom
           </div>
           <CapsuleWriter pending={pending} />
         </Panel>
+        <CapsuleList items={capsuleViews} />
       </Section>
     </>
   );

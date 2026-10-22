@@ -1,7 +1,7 @@
 import "server-only";
 import { db } from "../db";
 import { randomToken } from "../crypto";
-import type { Capsule, DayTask, JournalDay, Readiness } from "../types";
+import type { Capsule, CapsuleGoal, DayTask, JournalDay, Readiness } from "../types";
 
 type JournalRow = {
   day: string; checklist: Record<string, boolean>; tasks: DayTask[]; readiness: Readiness | null;
@@ -96,7 +96,7 @@ export async function journaledDays(from: string, to: string): Promise<string[]>
 
 // ── Time capsules ────────────────────────────────────────────────────────────
 
-type CapsuleRow = { id: string; message: string; created_at: Date; deliver_on: string; opened_at: Date | null };
+type CapsuleRow = { id: string; message: string; created_at: Date; deliver_on: string; opened_at: Date | null; goals: CapsuleGoal[] | null };
 
 const toCapsule = (r: CapsuleRow): Capsule => ({
   id: r.id,
@@ -104,11 +104,29 @@ const toCapsule = (r: CapsuleRow): Capsule => ({
   createdAt: r.created_at.toISOString(),
   deliverOn: r.deliver_on,
   openedAt: r.opened_at?.toISOString() ?? null,
+  goals: Array.isArray(r.goals) ? r.goals : [],
 });
 
-export async function createCapsule(message: string, deliverOn: string): Promise<void> {
+export async function createCapsule(message: string, deliverOn: string, goals: CapsuleGoal[] = []): Promise<void> {
   const sql = await db();
-  await sql`insert into capsules (id, message, deliver_on) values (${randomToken(12)}, ${message}, ${deliverOn})`;
+  await sql`insert into capsules (id, message, deliver_on, goals) values (${randomToken(12)}, ${message}, ${deliverOn}, ${sql.json(goals as never)})`;
+}
+
+/** Every capsule, the next to open first, then the ones already opened. */
+export async function listCapsules(): Promise<Capsule[]> {
+  const sql = await db();
+  const rows = await sql<CapsuleRow[]>`select * from capsules order by (opened_at is not null), deliver_on asc, created_at desc limit 200`;
+  return rows.map(toCapsule);
+}
+
+/** Tick (or untick) one of your own goals on a capsule. */
+export async function setCapsuleGoalDone(id: string, goalId: string, done: boolean): Promise<boolean> {
+  const sql = await db();
+  const [r] = await sql<CapsuleRow[]>`select * from capsules where id = ${id}`;
+  if (!r) return false;
+  const goals = (Array.isArray(r.goals) ? r.goals : []).map((g) => (g.id === goalId && g.kind === "custom" ? { ...g, done } : g));
+  await sql`update capsules set goals = ${sql.json(goals as never)} where id = ${id}`;
+  return true;
 }
 
 export async function dueCapsules(today: string): Promise<Capsule[]> {

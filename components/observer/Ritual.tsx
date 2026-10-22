@@ -155,6 +155,7 @@ export function Ritual({
   aiReady,
   prefs,
   pinned,
+  lastWant = null,
 }: {
   open: boolean;
   onClose: () => void;
@@ -165,6 +166,8 @@ export function Ritual({
   prefs: Settings["observer"];
   /** The order already pinned, if any. */
   pinned: ObstacleKey | null;
+  /** What Lord wanted last time: the objective carries over until you change it. */
+  lastWant?: string | null;
 }) {
   const router = useRouter();
   const mounted = useSyncExternalStore(noop, () => true, () => false);
@@ -173,7 +176,10 @@ export function Ritual({
   const who = name.trim() || dossierName;
   const obj = OBJ[pronoun];
   const [step, setStep] = useState(0);
-  const [draft, setDraft] = useState<Draft>({ ...starters(dossierName), believed: [] });
+  // Wants carries over from the last session (the objective stays clear); doing and stopping start fresh.
+  const keptWant = useRef(lastWant?.trim() || null);
+  const seed = (w: string): Draft => ({ ...starters(w), ...(keptWant.current ? { wants: keptWant.current } : {}), believed: [] });
+  const [draft, setDraft] = useState<Draft>(() => seed(dossierName));
   const [saved, setSaved] = useState<Saved | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
@@ -189,7 +195,7 @@ export function Ritual({
         setStep(0);
         setSaved(null);
         setError(null);
-        setDraft({ ...starters(who), believed: [] });
+        setDraft(seed(who));
       }, 500);
     }
   };
@@ -242,9 +248,11 @@ export function Ritual({
   const submit = () =>
     start(async () => {
       setError(null);
+      const wants = clean("wants");
+      if (wants) keptWant.current = wants;
       const r = await saveObserverSession({
         window,
-        wants: clean("wants"),
+        wants,
         doing: clean("doing"),
         stopping: clean("stopping"),
         advice: clean("advice"),
@@ -320,7 +328,9 @@ export function Ritual({
           <h2 className="mt-[clamp(1.4rem,4vh,2.4rem)] max-w-[17ch] font-serif text-[clamp(2.1rem,6vw,4.4rem)] leading-[1.06] font-light tracking-[-0.01em] [&_em]:italic">
             {q.q(who, obj)}
           </h2>
-          <p className={cn(monoBody, "mt-[clamp(1.2rem,3vh,1.8rem)] max-w-[46ch] text-ink-3")}>{q.hint}</p>
+          <p className={cn(monoBody, "mt-[clamp(1.2rem,3vh,1.8rem)] max-w-[46ch] text-ink-3")}>
+            {q.key === "wants" && keptWant.current && draft.wants.trim() === keptWant.current ? "This is what you wrote last time. Keep it, or change it if the goal has moved." : q.hint}
+          </p>
           {q.key === "stopping" && (
             <div className="mt-[clamp(2rem,5vh,3rem)] flex flex-wrap gap-2.5" role="group" aria-label="What you think is in the way">
               {OBSTACLE_KEYS.map((k) => {

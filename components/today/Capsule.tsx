@@ -5,11 +5,13 @@ import { cn } from "@/lib/cn";
 import { markCapsuleOpened } from "@/lib/actions/journal";
 import type { Capsule } from "@/lib/types";
 import { Rise } from "./Rise";
+import type { GoalResult } from "@/lib/analytics/capsule";
+import { CapsuleGoals } from "@/components/journal/CapsuleGoals";
 
 const EASE = "cubic-bezier(0.16,1,0.3,1)";
 
 /** A letter from the past, as Meridian's quote: sealed until you open it. */
-export function CapsuleCard({ capsule, today }: { capsule: Capsule; today?: string }) {
+export function CapsuleCard({ capsule, today, goals = [] }: { capsule: Capsule; today?: string; goals?: GoalResult[] }) {
   const [open, setOpen] = useState(Boolean(capsule.openedAt));
   // Counted to the server's "today" (not the client clock) so the server and client render the same words.
   const now = today ? new Date(`${today}T12:00:00Z`).getTime() : new Date(capsule.deliverOn).getTime();
@@ -44,9 +46,19 @@ export function CapsuleCard({ capsule, today }: { capsule: Capsule; today?: stri
       </div>
       <figcaption className="mt-[clamp(2rem,5vh,3rem)]">
         {open ? (
-          <span className="font-mono text-[10px] tracking-[0.28em] text-ink-4 uppercase">
-            — You, {daysAgo} {daysAgo === 1 ? "day" : "days"} ago
-          </span>
+          <>
+            <span className="font-mono text-[10px] tracking-[0.28em] text-ink-4 uppercase">
+              — You, {daysAgo} {daysAgo === 1 ? "day" : "days"} ago
+            </span>
+            {goals.length > 0 && (
+              <div className="mx-auto mt-[clamp(2rem,5vh,3rem)] max-w-[34rem] border-t border-line pt-6 text-left">
+                <div className="mb-4 font-mono text-[9.5px] tracking-[0.3em] text-gold uppercase">
+                  What you set out to do · {goals.filter((g) => g.met === true).length} of {goals.length} met
+                </div>
+                <CapsuleGoals capsuleId={capsule.id} results={goals} />
+              </div>
+            )}
+          </>
         ) : (
           <button
             type="button"

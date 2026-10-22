@@ -331,4 +331,11 @@ export const MIGRATIONS: { version: number; sql: string }[] = [
       );
     `,
   },
+  {
+    version: 13,
+    sql: /* sql */ `
+      -- Goals sealed with a time capsule, checked against your trades and ledger when it opens.
+      alter table capsules add column if not exists goals jsonb not null default '[]';
+    `,
+  },
 ];

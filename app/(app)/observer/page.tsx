@@ -251,6 +251,7 @@ export default async function ObserverPage({ searchParams }: { searchParams: Pro
         aiReady={aiReady}
         prefs={settings.observer}
         pinned={order?.key ?? null}
+        lastWant={statedWant}
         initialOpen={sp.ritual === "1"}
       />
     </>

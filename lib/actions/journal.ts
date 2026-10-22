@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { assertSession } from "../auth/session";
-import { createCapsule, getJournalDay, openCapsule, upsertJournalDay } from "../data/journal";
+import { createCapsule, getJournalDay, openCapsule, setCapsuleGoalDone, upsertJournalDay } from "../data/journal";
 import { getSettings } from "../data/settings";
 import { addDays, todayKey } from "../analytics/time";
 
@@ -46,12 +46,27 @@ export async function toggleChecklistItem(day: string, itemId: string, done: boo
   return { ok: true };
 }
 
-export async function scheduleCapsule(message: string, inDays: number) {
+const Goal = z.object({
+  id: z.string().regex(/^[A-Za-z0-9_-]{1,24}$/),
+  kind: z.enum(["net", "winRate", "greenDays", "maxTradesPerDay", "noRevenge", "evalsPassed", "payouts", "paidOut", "custom"]),
+  target: z.number().finite().min(-10_000_000).max(10_000_000).nullable(),
+  text: z.string().trim().max(160).optional(),
+});
+
+export async function scheduleCapsule(message: string, inDays: number, goals: z.input<typeof Goal>[] = []) {
   await assertSession();
   const msg = z.string().trim().min(1).max(4000).parse(message);
   const days = z.number().int().min(1).max(365).parse(inDays);
+  const gs = z.array(Goal).max(12).parse(goals);
   const settings = await getSettings();
-  await createCapsule(msg, addDays(todayKey(settings.profile.timezone), days));
+  await createCapsule(msg, addDays(todayKey(settings.profile.timezone), days), gs);
+  revalidatePath("/", "layout");
+  return { ok: true };
+}
+
+export async function tickCapsuleGoal(id: string, goalId: string, done: boolean) {
+  await assertSession();
+  await setCapsuleGoalDone(z.string().max(40).parse(id), z.string().max(24).parse(goalId), z.boolean().parse(done));
   revalidatePath("/", "layout");
   return { ok: true };
 }

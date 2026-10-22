@@ -28,6 +28,8 @@ import { Ritual } from "@/components/today/Ritual";
 import { Readiness } from "@/components/today/Readiness";
 import { Process } from "@/components/today/Process";
 import { CapsuleCard } from "@/components/today/Capsule";
+import { evaluateCapsule } from "@/lib/analytics/capsule";
+import { listLedger } from "@/lib/data/ledger";
 import { SyncPill } from "@/components/today/SyncPill";
 import { Onboarding } from "@/components/today/Onboarding";
 import { Welcome } from "@/components/today/Welcome";
@@ -166,6 +168,16 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
   const lastSync = conns.map((c) => c.lastSyncAt).filter(Boolean).sort().at(-1) ?? null;
   const connError = conns.find((c) => c.lastError)?.lastError ?? null;
   const capsule = capsules.find((c) => !c.openedAt && c.deliverOn >= addDays(today, -21)) ?? null;
+  // Its goals, measured over the whole time it was sealed (which can reach back past the 90 days loaded above).
+  const capsuleGoals = capsule?.goals.length
+    ? evaluateCapsule(
+        capsule,
+        capsule.createdAt.slice(0, 10) < from ? await listTrades({ since: new Date(addDays(capsule.createdAt.slice(0, 10), -1)) }) : trades,
+        await listLedger(),
+        tz,
+        today,
+      )
+    : [];
   const prop = settings.prop.enabled ? propStatus(trades, settings.prop, tz) : null;
 
   // The Observer's one-line read on the last 30 days.
@@ -407,7 +419,7 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
 
         {capsule && (
           <div className="pt-[clamp(6rem,16vh,11rem)]">
-            <CapsuleCard capsule={capsule} today={today} />
+            <CapsuleCard capsule={capsule} today={today} goals={capsuleGoals} />
           </div>
         )}
       </Chapter>
