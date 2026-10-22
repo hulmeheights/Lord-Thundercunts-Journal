@@ -301,4 +301,20 @@ export const MIGRATIONS: { version: number; sql: string }[] = [
       alter table journal_days add column if not exists life_note text check (life_note is null or char_length(life_note) <= 2000);
     `,
   },
+  {
+    version: 11,
+    sql: /* sql */ `
+      -- Every "Read it back to me" reflection, kept per day. The text is AES-256-GCM
+      -- encrypted (bound to its id). basis_hash fingerprints the entry and trades it
+      -- read, so a reflection can say when the page has changed since.
+      create table if not exists journal_reflections (
+        id text primary key,
+        day text not null check (day ~ '^\\d{4}-\\d{2}-\\d{2}$'),
+        body_enc text not null,
+        basis_hash text not null,
+        created_at timestamptz not null default now()
+      );
+      create index if not exists journal_reflections_day_idx on journal_reflections (day, created_at desc);
+    `,
+  },
 ];

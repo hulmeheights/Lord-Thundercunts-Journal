@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/Button";
 import { Label } from "@/components/m";
 import { Choice } from "@/components/trades/Choice";
 import { LIFE_TAGS } from "@/lib/analytics/mind";
+import type { SavedReflection } from "@/lib/data/reflections";
 
 type Field = "plan" | "review" | "wins" | "lessons";
 const MOODS = ["Rattled", "Off", "Level", "Good", "Clear"];
@@ -26,12 +27,25 @@ const FIELDS: { field: Field; label: string; placeholder: string; rows: number }
  * Writing mode. No boxes: serif on a hairline, autosaving as you type. The
  * mood you pick after the session tints the page.
  */
-export function DayEditor({ day, journal, customRules, aiEnabled }: { day: string; journal: JournalDay; customRules: TradingRules["custom"]; aiEnabled: boolean }) {
+export function DayEditor({
+  day,
+  journal,
+  customRules,
+  aiEnabled,
+  reflections: saved = [],
+}: {
+  day: string;
+  journal: JournalDay;
+  customRules: TradingRules["custom"];
+  aiEnabled: boolean;
+  reflections?: SavedReflection[];
+}) {
   const [j, setJ] = useState(journal);
   const [status, setStatus] = useState<"idle" | "saving" | "saved">("idle");
   const [, start] = useTransition();
   const timers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
-  const [reflection, setReflection] = useState<{ observations: string[]; question: string; encouragement: string } | null>(null);
+  const [reflections, setReflections] = useState<SavedReflection[]>(saved);
+  const [openIds, setOpenIds] = useState<Set<string>>(() => new Set(saved[0] ? [saved[0].id] : []));
   const [reflecting, setReflecting] = useState(false);
   const [reflectError, setReflectError] = useState<string | null>(null);
 
@@ -41,6 +55,8 @@ export function DayEditor({ day, journal, customRules, aiEnabled }: { day: strin
   }, []);
 
   const persist = (patch: Parameters<typeof saveJournal>[1], key: string, delay: number) => {
+    // Anything written now is newer than every saved reflection.
+    setReflections((rs) => (rs.some((r) => r.current) ? rs.map((r) => ({ ...r, current: false })) : rs));
     if (timers.current[key]) clearTimeout(timers.current[key]);
     timers.current[key] = setTimeout(
       () =>
@@ -64,7 +80,10 @@ export function DayEditor({ day, journal, customRules, aiEnabled }: { day: strin
     try {
       const res = await fetch("/api/journal/reflect", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ day }) });
       const json = await res.json();
-      if (json.reflection) setReflection(json.reflection);
+      if (json.saved) {
+        setReflections((rs) => [json.saved as SavedReflection, ...rs]);
+        setOpenIds(new Set([json.saved.id]));
+      } else if (json.reflection) setReflectError("Read back, but it couldn't be saved — try again.");
       else setReflectError(json.error ?? (json.disabled ? "Add ANTHROPIC_API_KEY to switch reflections on." : "Couldn't reflect right now."));
     } catch {
       setReflectError("Couldn't reach the coach.");
@@ -201,21 +220,63 @@ export function DayEditor({ day, journal, customRules, aiEnabled }: { day: strin
                 <div className="font-serif text-[clamp(1.3rem,2.4vw,1.7rem)] font-light">
                   Read it back to <em>me</em>.
                 </div>
-                <div className="mt-2 font-mono text-[11.5px] leading-[1.9] text-ink-3">The coach reads this page next to the day&apos;s trades.</div>
+                <div className="mt-2 font-mono text-[11.5px] leading-[1.9] text-ink-3">
+                  The coach reads this page next to the day&apos;s trades. Every reflection is kept here, so you can compare after you change the page.
+                </div>
               </div>
               <Button onClick={reflect} disabled={reflecting}>
-                {reflecting ? "Reading…" : "◆ Reflect"}
+                {reflecting ? "Reading…" : reflections.length ? "◆ Reflect again" : "◆ Reflect"}
               </Button>
             </div>
-            {reflection && (
-              <div className="mt-8 space-y-4 border-l border-gold pl-6">
-                {reflection.observations.map((o) => (
-                  <p key={o} className="font-mono text-[12px] leading-[1.9] text-ink-2">
-                    {o}
-                  </p>
-                ))}
-                <p className="font-serif text-[1.3rem] leading-[1.45] font-light italic">{reflection.question}</p>
-                <p className="font-mono text-[11px] leading-[1.9] text-ink-4">{reflection.encouragement}</p>
+            {reflections.length > 0 && (
+              <div className="mt-8 space-y-6">
+                {reflections.map((r, i) => {
+                  const open = openIds.has(r.id);
+                  const when = new Date(r.createdAt).toLocaleString(undefined, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+                  return (
+                    <article key={r.id} className={cn("border-l pl-6", i === 0 ? "border-gold" : "border-line-2")}>
+                      <div className="flex flex-wrap items-baseline justify-between gap-x-5 gap-y-1.5">
+                        <button
+                          type="button"
+                          onClick={() => setOpenIds((s) => (s.has(r.id) ? new Set([...s].filter((x) => x !== r.id)) : new Set([...s, r.id])))}
+                          className="font-mono text-[9.5px] tracking-[0.26em] text-ink-3 uppercase hover:text-ink"
+                          aria-expanded={open}
+                        >
+                          {open ? "▾" : "▸"} Read back {when}
+                        </button>
+                        <span className="flex items-baseline gap-4 font-mono text-[9.5px] tracking-[0.22em] uppercase">
+                          {r.current ? <span className="text-pos">● Matches the page now</span> : <span className="text-ink-4">Page changed since</span>}
+                          <button
+                            type="button"
+                            className="text-ink-4 hover:text-ink"
+                            onClick={async () => {
+                              if (!confirm("Delete this reflection?")) return;
+                              await fetch(`/api/journal/reflect?id=${encodeURIComponent(r.id)}`, { method: "DELETE" });
+                              setReflections((rs) => rs.filter((x) => x.id !== r.id));
+                            }}
+                          >
+                            Delete
+                          </button>
+                        </span>
+                      </div>
+                      {open ? (
+                        <div className="mt-4 space-y-4" data-private>
+                          {r.reflection.observations.map((o) => (
+                            <p key={o} className="font-mono text-[12px] leading-[1.9] text-ink-2">
+                              {o}
+                            </p>
+                          ))}
+                          <p className="font-serif text-[1.3rem] leading-[1.45] font-light italic">{r.reflection.question}</p>
+                          <p className="font-mono text-[11px] leading-[1.9] text-ink-4">{r.reflection.encouragement}</p>
+                        </div>
+                      ) : (
+                        <p className="mt-2 line-clamp-1 font-mono text-[11px] text-ink-4" data-private>
+                          {r.reflection.observations[0]}
+                        </p>
+                      )}
+                    </article>
+                  );
+                })}
               </div>
             )}
             {reflectError && <p className="mt-4 font-mono text-[11px] text-ink-3">{reflectError}</p>}

@@ -4,6 +4,7 @@ import { getSettings } from "@/lib/data/settings";
 import { listTrades } from "@/lib/data/trades";
 import { getJournalDay } from "@/lib/data/journal";
 import { listPhotos } from "@/lib/data/photos";
+import { listReflections, reflectionContext } from "@/lib/data/reflections";
 import { addDays, dayKey, longDate, timeInTz, todayKey } from "@/lib/analytics/time";
 import { summarize } from "@/lib/analytics/stats";
 import { fmtMoney, fmtPct, fmtPrice } from "@/lib/format";
@@ -23,11 +24,13 @@ export default async function JournalDayPage({ params }: { params: Promise<{ day
   const settings = await getSettings();
   const tz = settings.profile.timezone;
   const today = todayKey(tz);
-  const [journal, trades, photos] = await Promise.all([
+  const [journal, trades, photos, basis] = await Promise.all([
     getJournalDay(day),
     listTrades({ since: new Date(`${addDays(day, -1)}T00:00:00Z`), until: new Date(`${addDays(day, 2)}T00:00:00Z`) }),
     listPhotos(day),
+    reflectionContext(day),
   ]);
+  const reflections = await listReflections(day, basis.hash);
   const dayTrades = trades.filter((t) => dayKey(t.exitTime, tz) === day).sort((a, b) => a.entryTime.localeCompare(b.entryTime));
   const s = summarize(dayTrades);
   const [weekday, date] = longDate(day).split(", ");
@@ -65,7 +68,7 @@ export default async function JournalDayPage({ params }: { params: Promise<{ day
 
       <div className="grid gap-x-[clamp(3rem,7vw,7rem)] gap-y-4 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
         <div className="min-w-0">
-          <DayEditor day={day} journal={journal} customRules={settings.rules.custom} aiEnabled={aiConfigured() && settings.ai.enabled} />
+          <DayEditor day={day} journal={journal} customRules={settings.rules.custom} aiEnabled={aiConfigured() && settings.ai.enabled} reflections={reflections} />
         </div>
 
         <aside className="min-w-0 space-y-14 lg:pt-1">
