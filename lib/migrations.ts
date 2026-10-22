@@ -317,4 +317,18 @@ export const MIGRATIONS: { version: number; sql: string }[] = [
       create index if not exists journal_reflections_day_idx on journal_reflections (day, created_at desc);
     `,
   },
+  {
+    version: 12,
+    sql: /* sql */ `
+      -- The closing line on Insights and Guardian, written from your own numbers.
+      -- hash fingerprints the facts it was written from, so it's rewritten only when they change.
+      create table if not exists personal_lines (
+        page text primary key check (page in ('insights', 'guardian')),
+        hash text not null,
+        line text not null check (char_length(line) <= 300),
+        cite text not null check (char_length(cite) <= 80),
+        created_at timestamptz not null default now()
+      );
+    `,
+  },
 ];

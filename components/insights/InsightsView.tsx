@@ -66,7 +66,18 @@ function InsightRows({ items, start = 0 }: { items: Insight[]; start?: number })
   );
 }
 
-export function InsightsView({ trades: all, journals, settings }: { trades: Trade[]; journals: JournalDay[]; settings: Settings }) {
+export function InsightsView({
+  trades: all,
+  journals,
+  settings,
+  closing,
+}: {
+  trades: Trade[];
+  journals: JournalDay[];
+  settings: Settings;
+  /** The closing line, written from your own last 90 days. */
+  closing?: { line: string; cite: string };
+}) {
   const tz = settings.profile.timezone;
   const [range, setRange] = useState<Range>("90");
   const [bd, setBd] = useState<Breakdown>("hour");
@@ -309,9 +320,13 @@ export function InsightsView({ trades: all, journals, settings }: { trades: Trad
       </Section>
 
       <div className="py-[clamp(4rem,12vh,9rem)]">
-        <Quote cite="the edge">
-          The edge is everything you <em className="not-italic">don&apos;t</em> do.
-        </Quote>
+        {closing ? (
+          <Quote cite={closing.cite}>{closing.line}</Quote>
+        ) : (
+          <Quote cite="the edge">
+            The edge is everything you <em className="not-italic">don&apos;t</em> do.
+          </Quote>
+        )}
       </div>
     </>
   );

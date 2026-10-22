@@ -4,6 +4,8 @@ import { listBrokerAccounts } from "@/lib/data/connections";
 import { listLedger } from "@/lib/data/ledger";
 import { listJournalDays } from "@/lib/data/journal";
 import { roadToPaid } from "@/lib/analytics/road";
+import { guardianFacts } from "@/lib/analytics/lines";
+import { personalLine } from "@/lib/data/lines";
 import { GRAINS, mindSummary, mindTimeline, type Grain, type MindRow } from "@/lib/analytics/mind";
 import { addDays, todayKey } from "@/lib/analytics/time";
 import { propStatus, simulateProp } from "@/lib/analytics/prop";
@@ -52,6 +54,8 @@ export default async function GuardianPage() {
   const pooled: PlanFirm = { firm: "All", counts: road.counts, medians: { daysToPass: road.daysToPass.median, daysToPayout: road.daysPassToPayout.median } };
   const mind = Object.fromEntries(GRAINS.map((g) => [g, mindTimeline(history, journals, tz, g)])) as Record<Grain, MindRow[]>;
   const mood = mindSummary(history, journals, tz);
+  const g = guardianFacts(summary, road, mood);
+  const closing = await personalLine("guardian", g.facts, g.fallback);
   // The firm being tracked leads the form's suggestions, then firms already in the ledger.
   const firms = [...new Map([prop.firm, ...summary.byFirm.map((f) => f.firm), ...FIRM_SUGGESTIONS].filter(Boolean).map((f) => [firmKey(f), f])).values()];
 
@@ -67,7 +71,6 @@ export default async function GuardianPage() {
         <>
           <StatusSection prop={prop} st={st} mc={mc} brokerBalance={tracked?.balance ?? null} n={++n} />
           <OddsSection prop={prop} st={st} mc={mc} target={target} n={++n} />
-          <GuardianQuote />
         </>
       ) : (
         <Explainer n={++n} />
@@ -90,6 +93,7 @@ export default async function GuardianPage() {
       >
         <PropForm initial={prop} accounts={accounts} />
       </Section>
+      <GuardianQuote line={closing} />
     </>
   );
 }

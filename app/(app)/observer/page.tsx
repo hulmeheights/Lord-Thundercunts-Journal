@@ -5,6 +5,7 @@ import { instructionInPlace } from "@/lib/analytics/observer";
 import { shortDate } from "@/lib/analytics/time";
 import { plural } from "@/lib/format";
 import { Dot, Quote, Section } from "@/components/m";
+import { quoteOfDay } from "@/lib/quotes";
 import { Seg } from "@/components/m/Seg";
 import { Manifesto } from "@/components/m/Manifesto";
 import { SectionIndex } from "@/components/m/SectionIndex";
@@ -30,6 +31,7 @@ export default async function ObserverPage({ searchParams }: { searchParams: Pro
   const n = dossier.name;
   const nowCost = Object.fromEntries(dossier.stopping.map((o) => [o.key, Math.round(o.cost)]));
   const todaySession = sessions[0]?.day === today ? sessions[0] : null;
+  const quote = quoteOfDay(today);
   const aiReady = aiConfigured() && settings.ai.enabled;
   const stopping = dossier.stopping.slice(0, 5);
   const sections = ["top", ...(order ? ["order"] : []), "wants", "doing", "stopping", "tell", "history"];
@@ -229,7 +231,7 @@ export default async function ObserverPage({ searchParams }: { searchParams: Pro
       </Section>
 
       <div className="pt-[clamp(3rem,8vh,5rem)]">
-        <Quote cite="Solomon's paradox · Grossmann & Kross, 2014">Wiser about everyone else&apos;s trading than our own — until we step outside.</Quote>
+        <Quote cite={quote.cite}>{quote.text}</Quote>
       </div>
 
       <footer className="reveal flex flex-col items-center gap-6 pt-[clamp(4.5rem,12vh,8rem)] pb-[clamp(2rem,6vh,4rem)] text-center">

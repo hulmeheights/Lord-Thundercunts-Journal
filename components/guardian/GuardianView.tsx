@@ -297,10 +297,10 @@ export function OddsSection({ prop, st, mc, target, n }: { prop: PropSettings; s
   );
 }
 
-export function GuardianQuote() {
+export function GuardianQuote({ line }: { line?: { line: string; cite: string } }) {
   return (
     <section className="py-[clamp(4rem,12vh,9rem)]">
-      <Quote cite="Guardian">The cheapest evaluation is the one you don&apos;t buy twice.</Quote>
+      <Quote cite={line?.cite ?? "Guardian"}>{line?.line ?? <>The cheapest evaluation is the one you don&apos;t buy twice.</>}</Quote>
     </section>
   );
 }
