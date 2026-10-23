@@ -2,16 +2,24 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { addGoal, addStep, deleteGoal, deleteStep, markGoal } from "@/lib/actions/goals";
+import { addGoal, addStep, claimReward, deleteGoal, deleteStep, markGoal, setGoalsTheme } from "@/lib/actions/goals";
 import type { Goal } from "@/lib/data/goals";
 import { Btn, Field } from "@/components/m";
 import { cn } from "@/lib/cn";
-import { GoalTree } from "./GoalTree";
+import { Seg } from "@/components/m/Seg";
+import { GoalRocket, GoalSky, GoalTree } from "./GoalTree";
+
+type Theme = "tree" | "stars" | "rocket";
+const WORDS: Record<Theme, { leaf: string; bloom: string; idle: string; empty: string; fresh: string }> = {
+  tree: { leaf: "+ Leaf", bloom: "✿", idle: "Every step is a leaf. Every goal reached, a blossom.", empty: "Plant the first goal and the tree begins.", fresh: "A new blossom." },
+  stars: { leaf: "+ Star", bloom: "✦", idle: "Every step is a star. Every goal reached, a constellation.", empty: "Name the first goal and the sky begins.", fresh: "A new constellation, shining." },
+  rocket: { leaf: "+ Thrust", bloom: "◉", idle: "Every step lifts the rocket. Every goal reached, a world behind you.", empty: "Set the first goal and the countdown begins.", fresh: "Another world behind you." },
+};
 
 const date = (d: string) => new Date(d.length === 10 ? `${d}T00:00:00Z` : d).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
 const daysTo = (d: string, today: string) => Math.round((Date.parse(`${d}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / 86_400_000);
 
-function GoalCard({ g, today, onReached }: { g: Goal; today: string; onReached: (id: string) => void }) {
+function GoalCard({ g, today, onReached, theme }: { g: Goal; today: string; onReached: (id: string) => void; theme: Theme }) {
   const router = useRouter();
   const [step, setStep] = useState("");
   const [showAll, setShowAll] = useState(false);
@@ -26,7 +34,7 @@ function GoalCard({ g, today, onReached }: { g: Goal; today: string; onReached: 
     <article className={cn("border-b border-line py-6", done && "opacity-80")}>
       <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2">
         <h3 className={cn("font-serif text-[clamp(1.25rem,2.2vw,1.6rem)] leading-[1.3] font-light", done && "text-pos")}>
-          {done && <span className="mr-2 text-[0.7em] text-gold">✿</span>}
+          {done && <span className="mr-2 text-[0.7em] text-gold">{WORDS[theme].bloom}</span>}
           {g.title}
         </h3>
         <span className="font-mono text-[9.5px] tracking-[0.24em] text-ink-4 uppercase">
@@ -44,6 +52,21 @@ function GoalCard({ g, today, onReached }: { g: Goal; today: string; onReached: 
         </span>
       </div>
       {g.why && <p className="mt-2 max-w-[60ch] font-mono text-[11.5px] leading-[1.85] text-ink-3" data-private>Why: {g.why}</p>}
+      {g.reward && (
+        <p className={cn("mt-2 font-mono text-[11px] tracking-[0.06em]", done ? "text-pos" : "text-gold")} data-private>
+          {done ? "◆ Earned: " : "◆ Earns: "}
+          <span className="text-ink">{g.reward}</span>
+          {done && (
+            <button
+              type="button"
+              onClick={() => run(() => claimReward(g.id, !g.rewardClaimedAt))}
+              className="ml-4 font-mono text-[9.5px] tracking-[0.24em] text-ink-4 uppercase underline decoration-line-2 underline-offset-4 hover:text-ink"
+            >
+              {g.rewardClaimedAt ? `claimed ${date(g.rewardClaimedAt)} · undo` : "I've claimed it"}
+            </button>
+          )}
+        </p>
+      )}
 
       {shown.length > 0 && (
         <ul className="mt-4 space-y-1.5">
@@ -85,7 +108,7 @@ function GoalCard({ g, today, onReached }: { g: Goal; today: string; onReached: 
             className="min-w-0 flex-1 border-0 border-b border-line-2 bg-transparent py-2 font-mono text-[12.5px] text-ink outline-none placeholder:text-ink-4 focus:border-gold"
           />
           <button type="submit" disabled={pending || !step.trim()} className="pb-2 font-mono text-[9.5px] tracking-[0.26em] text-pos uppercase disabled:opacity-30">
-            + Leaf
+            {WORDS[theme].leaf}
           </button>
         </form>
       )}
@@ -104,7 +127,7 @@ function GoalCard({ g, today, onReached }: { g: Goal; today: string; onReached: 
             }}
             className="text-gold hover:text-ink"
           >
-            ✿ Goal reached
+            {WORDS[theme].bloom} Goal reached
           </button>
         )}
         <button
@@ -120,10 +143,11 @@ function GoalCard({ g, today, onReached }: { g: Goal; today: string; onReached: 
 }
 
 /** Goals, the steps towards them, and the tree that grows with both. */
-export function Goals({ goals, today }: { goals: Goal[]; today: string }) {
+export function Goals({ goals, today, theme: initialTheme = "tree" }: { goals: Goal[]; today: string; theme?: Theme }) {
   const router = useRouter();
+  const [theme, setTheme] = useState<Theme>(initialTheme);
   const [adding, setAdding] = useState(goals.length === 0);
-  const [form, setForm] = useState({ title: "", why: "", targetDay: "" });
+  const [form, setForm] = useState({ title: "", why: "", targetDay: "", reward: "" });
   const [error, setError] = useState<string | null>(null);
   const [fresh, setFresh] = useState<string | null>(null);
   const [showReached, setShowReached] = useState(false);
@@ -132,17 +156,64 @@ export function Goals({ goals, today }: { goals: Goal[]; today: string }) {
   const reached = goals.filter((g) => g.completedAt);
   const steps = goals.reduce((n, g) => n + g.steps.length, 0);
   const tree = goals.map((g) => ({ id: g.id, done: !!g.completedAt, steps: g.steps.length }));
+  const freshGoal = fresh ? goals.find((g) => g.id === fresh) : null;
+  const toClaim = reached.filter((g) => g.reward && !g.rewardClaimedAt);
+  const waiting = open.filter((g) => g.reward);
+  const W = WORDS[theme];
 
   return (
     <div className="grid gap-x-[clamp(3rem,6vw,6rem)] gap-y-12 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
       <div className="lg:sticky lg:top-24 lg:self-start">
-        <GoalTree goals={tree} fresh={fresh} />
-        <div className="mt-4 text-center font-mono text-[9.5px] tracking-[0.28em] text-ink-4 uppercase">
-          <span className="text-gold">✿ {reached.length}</span> reached · <span className="text-pos">❦ {steps}</span> {steps === 1 ? "step" : "steps"} · {open.length} growing
+        <div className="mb-4 flex justify-center">
+          <Seg
+            value={theme}
+            onChange={(t) => {
+              setTheme(t);
+              start(() => void setGoalsTheme(t));
+            }}
+            options={[
+              { value: "tree", label: "Tree" },
+              { value: "stars", label: "Stars" },
+              { value: "rocket", label: "Rocket" },
+            ]}
+          />
         </div>
-        <p aria-live="polite" className="mt-3 text-center font-serif text-[1.15rem] font-light italic text-ink-2">
-          {fresh ? "A new blossom. You did what you said you would." : goals.length === 0 ? "Plant the first goal and the tree begins." : "Every step is a leaf. Every goal reached, a blossom."}
-        </p>
+        {theme === "stars" ? <GoalSky goals={tree} fresh={fresh} /> : theme === "rocket" ? <GoalRocket goals={tree} fresh={fresh} /> : <GoalTree goals={tree} fresh={fresh} />}
+        <div className="mt-4 text-center font-mono text-[9.5px] tracking-[0.28em] text-ink-4 uppercase">
+          <span className="text-gold">{W.bloom} {reached.length}</span> reached · <span className="text-pos">{steps}</span> {steps === 1 ? "step" : "steps"} · {open.length} in progress
+        </div>
+        {freshGoal?.reward ? (
+          <div aria-live="polite" className="mx-auto mt-5 max-w-[26rem] border border-gold/60 px-6 py-5 text-center">
+            <div className="font-mono text-[9.5px] tracking-[0.34em] text-gold uppercase">◆ You&apos;ve earned it</div>
+            <p className="mt-3 font-serif text-[clamp(1.4rem,2.6vw,1.9rem)] leading-[1.25] font-light" data-private>
+              {freshGoal.reward}
+            </p>
+            <p className="mt-2 font-mono text-[10.5px] text-ink-3">for “{freshGoal.title}”. You did what you said you would.</p>
+          </div>
+        ) : (
+          <p aria-live="polite" className="mt-3 text-center font-serif text-[1.15rem] font-light italic text-ink-2">
+            {fresh ? `${W.fresh} You did what you said you would.` : goals.length === 0 ? W.empty : W.idle}
+          </p>
+        )}
+        {(toClaim.length > 0 || waiting.length > 0) && (
+          <div className="mt-8 border-t border-line pt-5">
+            <div className="mb-3 eyebrow">Rewards</div>
+            <ul className="space-y-2 font-mono text-[11px]" data-private>
+              {toClaim.map((g) => (
+                <li key={g.id} className="flex items-baseline justify-between gap-4">
+                  <span className="text-pos">◆ {g.reward}</span>
+                  <span className="text-[9.5px] tracking-[0.22em] text-gold uppercase">earned · take it</span>
+                </li>
+              ))}
+              {waiting.map((g) => (
+                <li key={g.id} className="flex items-baseline justify-between gap-4">
+                  <span className="text-ink-3">◇ {g.reward}</span>
+                  <span className="truncate text-[9.5px] tracking-[0.18em] text-ink-4 uppercase">locked · {g.title}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </div>
 
       <div className="min-w-0">
@@ -162,9 +233,9 @@ export function Goals({ goals, today }: { goals: Goal[]; today: string }) {
               e.preventDefault();
               setError(null);
               start(async () => {
-                const r = await addGoal({ title: form.title, why: form.why || null, targetDay: form.targetDay || null });
+                const r = await addGoal({ title: form.title, why: form.why || null, targetDay: form.targetDay || null, reward: form.reward || null });
                 if ("error" in r && r.error) return setError(r.error);
-                setForm({ title: "", why: "", targetDay: "" });
+                setForm({ title: "", why: "", targetDay: "", reward: "" });
                 setAdding(false);
                 router.refresh();
               });
@@ -175,6 +246,9 @@ export function Goals({ goals, today }: { goals: Goal[]; today: string }) {
             </Field>
             <Field label="Why it matters · optional">
               <input className="field" value={form.why} maxLength={1000} placeholder="So the funded accounts pay the bills" onChange={(e) => setForm({ ...form, why: e.target.value })} />
+            </Field>
+            <Field label="Your reward when you reach it · optional" hint="Something you'll genuinely want, sized to what you can afford.">
+              <input className="field" value={form.reward} maxLength={160} placeholder="5 Litecoin" onChange={(e) => setForm({ ...form, reward: e.target.value })} />
             </Field>
             <Field label="By when · optional">
               <input className="field w-44" type="date" value={form.targetDay} min={today} onChange={(e) => setForm({ ...form, targetDay: e.target.value })} />
@@ -195,7 +269,7 @@ export function Goals({ goals, today }: { goals: Goal[]; today: string }) {
 
         <div className="border-t border-line">
           {open.map((g) => (
-            <GoalCard key={g.id} g={g} today={today} onReached={setFresh} />
+            <GoalCard key={g.id} g={g} today={today} onReached={setFresh} theme={theme} />
           ))}
           {open.length === 0 && !adding && <p className="py-6 font-mono text-[11.5px] text-ink-3">Nothing growing right now. Plant the next one.</p>}
         </div>
@@ -208,7 +282,7 @@ export function Goals({ goals, today }: { goals: Goal[]; today: string }) {
             {showReached && (
               <div className="mt-2 border-t border-line">
                 {[...reached].reverse().map((g) => (
-                  <GoalCard key={g.id} g={g} today={today} onReached={setFresh} />
+                  <GoalCard key={g.id} g={g} today={today} onReached={setFresh} theme={theme} />
                 ))}
               </div>
             )}

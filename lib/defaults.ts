@@ -19,6 +19,7 @@ export const DEFAULT_SETTINGS: Settings = {
     ],
   },
   plan: { monthlyTarget: 25000, batch: 5, overrides: {} },
+  goals: { theme: "tree" },
   prop: {
     enabled: false,
     firm: "Topstep",

@@ -79,3 +79,56 @@ export function growTree(goals: TreeGoal[]): Tree {
     roots,
   };
 }
+
+// ── Stars: each goal is a constellation, each step a star, a reached goal its bright anchor ──
+
+export type Star = { x: number; y: number; r: number };
+export type Constellation = { id: string; done: boolean; anchor: { x: number; y: number }; stars: Star[]; lines: string };
+export type Sky = { width: number; height: number; dust: Star[]; constellations: Constellation[] };
+
+const clampTo = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
+
+export function growSky(goals: TreeGoal[]): Sky {
+  const dust: Star[] = Array.from({ length: 70 }, (_, i) => ({ x: r1(rand("dust", i) * W), y: r1(rand("dust", 100 + i) * H), r: r1(0.4 + rand("dust", 200 + i) * 0.8) }));
+  const constellations = goals.map((g, i) => {
+    // Golden-angle spiral out from the middle of the sky, so the first goal sits centre-stage.
+    const a = i * 2.39996;
+    const rad = 30 + 34 * Math.sqrt(i);
+    const anchor = { x: r1(clampTo(W / 2 + Math.cos(a) * rad * 1.15, 40, W - 40)), y: r1(clampTo(H / 2 - 10 + Math.sin(a) * rad, 40, H - 40)) };
+    const stars: Star[] = [];
+    let x = anchor.x, y = anchor.y, heading = rand(g.id, 3) * Math.PI * 2;
+    for (let k = 0; k < Math.min(g.steps, MAX_LEAVES); k++) {
+      heading += (rand(g.id, 20 + k) - 0.5) * 1.6;
+      x = clampTo(x + Math.cos(heading) * 17, 12, W - 12);
+      y = clampTo(y + Math.sin(heading) * 17, 12, H - 12);
+      stars.push({ x: r1(x), y: r1(y), r: r1(1.1 + rand(g.id, 40 + k) * 0.9) });
+    }
+    const lines = [anchor, ...stars].map((p, k) => `${k ? "L" : "M"}${p.x} ${p.y}`).join(" ");
+    return { id: g.id, done: g.done, anchor, stars, lines };
+  });
+  return { width: W, height: H, dust, constellations };
+}
+
+// ── Rocket: every step lifts it, every goal reached is a world it has passed ──
+
+export type World = { id: string; x: number; y: number; r: number; done: boolean };
+export type Flight = { width: number; height: number; ground: number; dust: Star[]; rocket: { x: number; y: number }; trail: string; worlds: World[]; altitude: number };
+
+export function growRocket(goals: TreeGoal[]): Flight {
+  const steps = goals.reduce((s, g) => s + g.steps, 0);
+  const reached = goals.filter((g) => g.done);
+  const open = goals.filter((g) => !g.done);
+  const altitude = steps + reached.length * 6;
+  // Climbs fast at first and keeps climbing, without ever leaving the frame.
+  const lift = 360 * (1 - Math.exp(-altitude / 28));
+  const rocket = { x: W / 2, y: r1(GROUND - 30 - lift) };
+  const dust: Star[] = Array.from({ length: 60 }, (_, i) => ({ x: r1(rand("space", i) * W), y: r1(rand("space", 100 + i) * H), r: r1(0.4 + rand("space", 200 + i) * 0.8) }));
+  const worlds: World[] = [
+    // Worlds already passed, spaced along the climb.
+    ...reached.map((g, i) => ({ id: g.id, done: true, x: r1(W / 2 + (i % 2 ? 1 : -1) * (70 + rand(g.id, 5) * 70)), y: r1(GROUND - 30 - (lift * (i + 1)) / (reached.length + 1)), r: r1(8 + rand(g.id, 6) * 6) })),
+    // Worlds still ahead, just above the rocket.
+    ...open.slice(0, 4).map((g, i) => ({ id: g.id, done: false, x: r1(W / 2 + (i % 2 ? -1 : 1) * (55 + i * 28)), y: r1(Math.max(26, rocket.y - 46 - i * 30)), r: r1(5 + rand(g.id, 7) * 3) })),
+  ];
+  const trail = `M${W / 2} ${GROUND} C${W / 2 - 20} ${r1(GROUND - lift * 0.3)} ${W / 2 + 20} ${r1(GROUND - lift * 0.7)} ${rocket.x} ${r1(rocket.y + 24)}`;
+  return { width: W, height: H, ground: GROUND, dust, rocket, trail, worlds, altitude };
+}

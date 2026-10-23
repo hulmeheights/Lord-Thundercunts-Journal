@@ -175,7 +175,7 @@ export default async function JournalPage({ searchParams }: { searchParams: Prom
       </Section>
 
       <Section id="goals" n={4} label="Goals" lead={<>Say what you&apos;ll do. Then <em>grow</em> it.</>}>
-        <Goals goals={goals} today={today} />
+        <Goals goals={goals} today={today} theme={settings.goals.theme} />
       </Section>
 
       <Section n={5} label="Time capsule">

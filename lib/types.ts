@@ -104,6 +104,8 @@ export type PlanSettings = {
 export type Settings = {
   profile: { name: string; timezone: string };
   plan: PlanSettings;
+  /** How the Journal draws your goals. */
+  goals: { theme: "tree" | "stars" | "rocket" };
   rules: TradingRules;
   prop: PropSettings;
   ritual: RitualItem[];

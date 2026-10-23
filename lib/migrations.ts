@@ -360,4 +360,12 @@ export const MIGRATIONS: { version: number; sql: string }[] = [
       create index if not exists goal_steps_goal_idx on goal_steps (goal_id, created_at);
     `,
   },
+  {
+    version: 15,
+    sql: /* sql */ `
+      -- What you earn for reaching a goal, and when you actually took it.
+      alter table goals add column if not exists reward text check (reward is null or char_length(reward) <= 160);
+      alter table goals add column if not exists reward_claimed_at timestamptz;
+    `,
+  },
 ];

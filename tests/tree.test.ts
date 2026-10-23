@@ -19,3 +19,20 @@ test("tree: a branch per goal, a leaf per step, a blossom per goal reached, and 
   for (const b of taller.branches) assert.ok(b.tip.x >= 18 && b.tip.x <= 382 && b.tip.y >= 14);
   assert.equal(growTree([]).branches.length, 0);
 });
+
+import { growRocket, growSky } from "../lib/analytics/tree";
+
+test("stars and rocket: a star per step, a lit anchor or a world per goal reached, the rocket climbs with progress", () => {
+  const goals = [
+    { id: "goal_a", done: true, steps: 4 },
+    { id: "goal_b", done: false, steps: 2 },
+  ];
+  const sky = growSky(goals);
+  assert.deepEqual(sky.constellations.map((c) => [c.done, c.stars.length]), [[true, 4], [false, 2]]);
+  for (const c of sky.constellations) for (const s of c.stars) assert.ok(s.x >= 12 && s.x <= 388 && s.y >= 12 && s.y <= 468);
+  const low = growRocket([{ id: "goal_a", done: false, steps: 1 }]);
+  const high = growRocket(goals);
+  assert.ok(high.rocket.y < low.rocket.y);
+  assert.deepEqual(high.worlds.map((w) => w.done), [true, false]);
+  assert.ok(growRocket(Array.from({ length: 40 }, (_, i) => ({ id: `g${i}`, done: true, steps: 30 }))).rocket.y > 0); // never leaves the frame
+});
