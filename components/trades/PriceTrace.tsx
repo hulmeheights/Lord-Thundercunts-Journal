@@ -1,4 +1,5 @@
 import type { Trade } from "@/lib/types";
+import { riskFor } from "@/lib/analytics/stats";
 import { cn } from "@/lib/cn";
 import { fmtNum, fmtPrice } from "@/lib/format";
 import { fmtHold, holdMinutes, timeInTz } from "@/lib/analytics/time";
@@ -16,7 +17,7 @@ export function PriceTrace({ trade, tz, defaultRisk = null, compact = false, cla
   const long = trade.direction === "long";
   const win = trade.netPnl > 0.004;
   const loss = trade.netPnl < -0.004;
-  const risk = trade.plannedRisk ?? defaultRisk;
+  const risk = riskFor(trade, defaultRisk);
   const stopPts = risk && trade.qty > 0 && trade.pointValue > 0 ? risk / (trade.qty * trade.pointValue) : null;
   const stop = !compact && stopPts ? (long ? inP - stopPts : inP + stopPts) : null;
 

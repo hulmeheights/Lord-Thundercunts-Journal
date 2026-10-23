@@ -107,3 +107,14 @@ test("prop status trails end-of-day and Monte Carlo is deterministic", () => {
   assert.equal(a.passProb, b.passProb);
   assert.ok(Math.abs(a.passProb + a.bustProb + a.openProb - 1) < 1e-9);
 });
+
+import { riskFor, rMultiple as rOf } from "../lib/analytics/stats";
+
+test("risk: a loss counts as what was risked unless you typed a risk", () => {
+  const base = { plannedRisk: null as number | null };
+  assert.equal(riskFor({ ...base, netPnl: -248 }, 500), 248);
+  assert.equal(riskFor({ ...base, netPnl: 600 }, 500), 500);
+  assert.equal(riskFor({ ...base, netPnl: 600 }, null), null);
+  assert.equal(riskFor({ plannedRisk: 300, netPnl: -248 }, 500), 300);
+  assert.equal(rOf({ ...base, netPnl: -248 } as never, 500), -1);
+});

@@ -5,7 +5,7 @@ import { getTrade, listTrades } from "@/lib/data/trades";
 import { addDays, dayKey, holdMinutes, timeInTz } from "@/lib/analytics/time";
 import { evaluateRules, RULE_LABELS } from "@/lib/analytics/rules";
 import { detectTilt } from "@/lib/analytics/tilt";
-import { rMultiple, sortByEntry } from "@/lib/analytics/stats";
+import { riskFor, rMultiple, sortByEntry } from "@/lib/analytics/stats";
 import { fmtMoney, fmtNum, fmtPrice } from "@/lib/format";
 import { Cue, Label, Num, Rows, Stats } from "@/components/m";
 import { Lead, Row, Stat } from "@/components/trades/kit";
@@ -52,7 +52,7 @@ export default async function TradePage({ params }: { params: Promise<{ id: stri
   const pts = pointsFor(trade);
   const held = holdMinutes(trade.entryTime, trade.exitTime);
   const hp = holdParts(held);
-  const risk = trade.plannedRisk ?? settings.rules.defaultRisk;
+  const risk = riskFor(trade, settings.rules.defaultRisk);
   const r = rMultiple(trade, settings.rules.defaultRisk);
   const flags = rules.length + (tilt ? 1 : 0);
   const n = { trade: 1, numbers: 2, rules: 3, journal: flags ? 4 : 3 };

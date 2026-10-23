@@ -43,8 +43,18 @@ export function sortByEntry(trades: Trade[]): Trade[] {
   return [...trades].sort((a, b) => a.entryTime.localeCompare(b.entryTime) || a.id.localeCompare(b.id));
 }
 
+/**
+ * What was risked on a trade: what you typed; or, on a loss, the loss itself
+ * (a $248 loss risked $248); or your default risk per trade.
+ */
+export function riskFor(t: Pick<Trade, "plannedRisk" | "netPnl">, defaultRisk: number | null): number | null {
+  if (t.plannedRisk != null && t.plannedRisk > 0) return t.plannedRisk;
+  if (t.netPnl < 0) return Math.round(-t.netPnl * 100) / 100;
+  return defaultRisk;
+}
+
 export function rMultiple(t: Trade, defaultRisk: number | null): number | null {
-  const risk = t.plannedRisk ?? defaultRisk;
+  const risk = riskFor(t, defaultRisk);
   if (!risk || risk <= 0) return null;
   return t.netPnl / risk;
 }

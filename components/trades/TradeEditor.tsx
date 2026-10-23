@@ -6,6 +6,7 @@ import type { Trade } from "@/lib/types";
 import { cn } from "@/lib/cn";
 import { removeTrade, saveTradeJournal } from "@/lib/actions/trades";
 import { fmtNum } from "@/lib/format";
+import { riskFor } from "@/lib/analytics/stats";
 import { Btn, Dot } from "@/components/m";
 import { Seg } from "@/components/m/Seg";
 import { Choice } from "./Choice";
@@ -75,7 +76,8 @@ export function TradeEditor({
   useEffect(grow, []);
 
   const toggleIn = (list: string[], v: string) => (list.includes(v) ? list.filter((x) => x !== v) : [...list, v]);
-  const risk = t.plannedRisk ?? defaultRisk;
+  const risk = riskFor(t, defaultRisk);
+  const lossRisk = t.plannedRisk == null && t.netPnl < 0 ? risk : null;
   const r = risk ? t.netPnl / risk : null;
   const shownRating = hoverRating ?? t.rating ?? 0;
 
@@ -173,7 +175,16 @@ export function TradeEditor({
         />
       </Line>
 
-      <Line label="Planned risk" hint={defaultRisk ? `Defaults to $${defaultRisk} if left blank.` : "What you were willing to lose."}>
+      <Line
+        label="Planned risk"
+        hint={
+          lossRisk !== null
+            ? `Counted as $${fmtNum(lossRisk, 2)}: a loss shows what you risked. Type a number only if you risked more.`
+            : defaultRisk
+              ? `Defaults to $${defaultRisk} if left blank.`
+              : "What you were willing to lose."
+        }
+      >
         <div className="flex flex-wrap items-end gap-x-8 gap-y-3">
           <label className="flex w-44 items-baseline gap-2 border-b border-line-2 transition-colors duration-300 focus-within:border-ink-3">
             <span className="font-mono text-[13px] text-ink-4">$</span>
@@ -183,7 +194,7 @@ export function TradeEditor({
               step="any"
               inputMode="decimal"
               defaultValue={t.plannedRisk ?? ""}
-              placeholder={defaultRisk ? String(defaultRisk) : "150"}
+              placeholder={lossRisk !== null ? String(lossRisk) : defaultRisk ? String(defaultRisk) : "150"}
               onChange={(e) => save({ plannedRisk: e.target.value ? Math.max(0.01, Number(e.target.value)) : null }, 700)}
               className="num w-full bg-transparent py-2 text-[15px] text-ink outline-none placeholder:text-ink-4"
               aria-label="Planned risk in dollars"
