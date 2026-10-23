@@ -4,6 +4,8 @@ import { journaledDays, listCapsules, listJournalDays, pendingCapsuleCount } fro
 import { listLedger } from "@/lib/data/ledger";
 import { capsuleStatus, evaluateCapsule } from "@/lib/analytics/capsule";
 import { CapsuleList, type CapsuleView } from "@/components/journal/CapsuleList";
+import { Goals } from "@/components/journal/Goals";
+import { listGoals } from "@/lib/data/goals";
 import { photoCounts } from "@/lib/data/photos";
 import { addDays, addMonths, endOfMonth, longDate, monthLabel, startOfMonth, todayKey } from "@/lib/analytics/time";
 import { dailySeries, summarize } from "@/lib/analytics/stats";
@@ -27,7 +29,7 @@ export default async function JournalPage({ searchParams }: { searchParams: Prom
   const year = Number(m.slice(0, 4));
   const yStart = `${year}-01-01`;
   const yEnd = `${year}-12-31`;
-  const [trades, journaled, entries, pending, photos, capsules, ledger] = await Promise.all([
+  const [trades, journaled, entries, pending, photos, capsules, ledger, goals] = await Promise.all([
     listTrades({ since: new Date(`${addDays(yStart, -1)}T00:00:00Z`), until: new Date(`${addDays(yEnd, 2)}T00:00:00Z`) }),
     journaledDays(yStart, yEnd),
     listJournalDays(addDays(today, -90), today),
@@ -35,6 +37,7 @@ export default async function JournalPage({ searchParams }: { searchParams: Prom
     photoCounts(addDays(today, -90), today),
     listCapsules(),
     listLedger(),
+    listGoals(),
   ]);
   // Goals are measured from the oldest capsule's seal date, which can reach back before this year.
   const capFrom = capsules.reduce((m, c) => (c.createdAt < m ? c.createdAt : m), `${yStart}T00:00:00Z`);
@@ -171,7 +174,11 @@ export default async function JournalPage({ searchParams }: { searchParams: Prom
         )}
       </Section>
 
-      <Section n={4} label="Time capsule">
+      <Section id="goals" n={4} label="Goals" lead={<>Say what you&apos;ll do. Then <em>grow</em> it.</>}>
+        <Goals goals={goals} today={today} />
+      </Section>
+
+      <Section n={5} label="Time capsule">
         <Panel gold className="grid gap-10 lg:grid-cols-[1fr_1.2fr]">
           <div>
             <p className="font-serif text-[clamp(1.6rem,3.4vw,2.6rem)] leading-[1.15] font-light tracking-[-0.01em]">

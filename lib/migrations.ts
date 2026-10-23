@@ -338,4 +338,26 @@ export const MIGRATIONS: { version: number; sql: string }[] = [
       alter table capsules add column if not exists goals jsonb not null default '[]';
     `,
   },
+  {
+    version: 14,
+    sql: /* sql */ `
+      -- Goals and the steps taken towards them. Every step and every goal reached grows the tree.
+      create table if not exists goals (
+        id text primary key,
+        title text not null check (char_length(title) between 1 and 160),
+        why text check (why is null or char_length(why) <= 1000),
+        target_day text check (target_day is null or target_day ~ '^\\d{4}-\\d{2}-\\d{2}$'),
+        created_at timestamptz not null default now(),
+        completed_at timestamptz
+      );
+      create table if not exists goal_steps (
+        id text primary key,
+        goal_id text not null references goals (id) on delete cascade,
+        day text not null check (day ~ '^\\d{4}-\\d{2}-\\d{2}$'),
+        text text not null check (char_length(text) between 1 and 500),
+        created_at timestamptz not null default now()
+      );
+      create index if not exists goal_steps_goal_idx on goal_steps (goal_id, created_at);
+    `,
+  },
 ];
