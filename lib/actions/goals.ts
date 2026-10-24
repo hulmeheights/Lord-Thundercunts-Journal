@@ -3,7 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { assertSession } from "../auth/session";
-import { insertGoal, insertStep, removeGoal, removeStep, setGoalDone, setRewardClaimed } from "../data/goals";
+import { insertGoal, insertStep, removeGoal, removeStep, restartGoalFrom, setGoalDone, setRewardClaimed } from "../data/goals";
+import { describeMeasure, type GoalMeasure } from "../analytics/goalcheck";
 import { saveSetting } from "../data/settings";
 import { getSettings } from "../data/settings";
 import { todayKey } from "../analytics/time";
@@ -12,27 +13,53 @@ const clean = (s: string) => s.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\
 const Id = (prefix: string) => z.string().regex(new RegExp(`^${prefix}_[A-Za-z0-9_-]{1,40}$`));
 const done = () => revalidatePath("/journal");
 
+const HHMM = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Times are HH:MM");
+const Count = z.number().int().min(1).max(500);
+const Money = z.number().min(1).max(10_000_000);
+const Rule = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("window"), start: HHMM, end: HHMM }).refine((r) => r.start !== r.end, "The window needs a start and an end"),
+  z.object({ type: z.literal("maxTrades"), n: Count }),
+  z.object({ type: z.literal("maxDayLoss"), amount: Money }),
+  z.object({ type: z.literal("stopAfterLosses"), n: Count }),
+  z.object({ type: z.literal("maxLossPerTrade"), amount: Money }),
+  z.object({ type: z.literal("maxContracts"), n: Count }),
+  z.object({ type: z.literal("cooldown"), minutes: z.number().int().min(1).max(600) }),
+  z.object({ type: z.literal("noRevenge") }),
+  z.object({ type: z.literal("greenDay") }),
+  z.object({ type: z.literal("myRules") }),
+]);
+const Measure = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("days"), rules: z.array(Rule).min(1, "Pick at least one rule").max(10), span: z.enum(["weeks", "inARow", "total"]), n: z.number().int().min(1).max(365) }),
+  z.object({ kind: z.literal("total"), metric: z.enum(["net", "paidOut", "payouts", "evalsPassed"]), target: Money }),
+  z.object({ kind: z.literal("rate"), metric: z.enum(["winRate", "greenDays"]), target: z.number().min(1).max(100), over: Count }),
+]);
+
 export async function addGoal(input: {
   title: string;
   why?: string | null;
   targetDay?: string | null;
   reward?: string | null;
   kind?: "trading" | "life";
-  autoCleanDays?: number | null;
+  measure?: GoalMeasure | null;
 }) {
   await assertSession();
   const v = z
     .object({
-      title: z.string().transform(clean).pipe(z.string().min(1, "What's the goal?").max(160)),
+      title: z.string().transform(clean).pipe(z.string().max(160)),
       why: z.string().nullish().transform((s) => (s ? clean(s).slice(0, 1000) || null : null)),
       targetDay: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullish().transform((s) => s ?? null),
       reward: z.string().nullish().transform((s) => (s ? clean(s).slice(0, 160) || null : null)),
       kind: z.enum(["trading", "life"]).default("life"),
-      autoCleanDays: z.number().int().min(1).max(365).nullish().transform((n) => n ?? null),
+      measure: Measure.nullish().transform((m) => (m ?? null) as GoalMeasure | null),
     })
     .safeParse(input);
   if (!v.success) return { error: v.error.issues[0]?.message ?? "Check the goal." };
-  await insertGoal(v.data);
+  const measure = v.data.kind === "trading" ? v.data.measure : null;
+  // A measured goal can name itself from its rules.
+  const title = v.data.title || (measure ? describeMeasure(measure) : "");
+  if (!title) return { error: "What's the goal?" };
+  const settings = await getSettings();
+  await insertGoal({ ...v.data, title, measure, startedOn: todayKey(settings.profile.timezone) });
   done();
   return { ok: true };
 }
@@ -64,6 +91,15 @@ export async function deleteGoal(goalId: string) {
 export async function deleteStep(stepId: string) {
   await assertSession();
   await removeStep(Id("step").parse(stepId));
+  done();
+  return { ok: true };
+}
+
+/** A broken measured goal starts counting again from today. */
+export async function restartGoal(goalId: string) {
+  await assertSession();
+  const settings = await getSettings();
+  await restartGoalFrom(Id("goal").parse(goalId), todayKey(settings.profile.timezone));
   done();
   return { ok: true };
 }

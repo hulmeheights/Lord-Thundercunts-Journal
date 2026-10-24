@@ -1,6 +1,7 @@
 import "server-only";
 import { db } from "../db";
 import { randomToken } from "../crypto";
+import { legacyMeasure, type GoalMeasure } from "../analytics/goalcheck";
 
 export type GoalStep = { id: string; day: string; text: string; createdAt: string };
 export type Goal = {
@@ -15,12 +16,14 @@ export type Goal = {
   rewardClaimedAt: string | null;
   /** Trading goals feed off your trades; life goals (a marathon) you mark yourself. */
   kind: "trading" | "life";
-  /** A trading goal reached automatically after this many clean trading days. */
-  autoCleanDays: number | null;
+  /** How a trading goal checks itself against your trades; null = you mark it. */
+  measure: GoalMeasure | null;
+  /** The day it started counting from (its creation day, or the last "Start again"). */
+  startedOn: string | null;
   steps: GoalStep[];
 };
 
-type GoalRow = { id: string; title: string; why: string | null; target_day: string | null; created_at: Date; completed_at: Date | null; reward: string | null; reward_claimed_at: Date | null; kind: "trading" | "life"; auto_clean_days: number | null };
+type GoalRow = { id: string; title: string; why: string | null; target_day: string | null; created_at: Date; completed_at: Date | null; reward: string | null; reward_claimed_at: Date | null; kind: "trading" | "life"; auto_clean_days: number | null; measure: GoalMeasure | null; started_on: string | null };
 type StepRow = { id: string; goal_id: string; day: string; text: string; created_at: Date };
 
 /** Every goal with its steps, oldest first, so the tree grows in the order you lived it. */
@@ -42,19 +45,27 @@ export async function listGoals(): Promise<Goal[]> {
     reward: g.reward,
     rewardClaimedAt: g.reward_claimed_at?.toISOString() ?? null,
     kind: g.kind ?? "life",
-    autoCleanDays: g.auto_clean_days ?? null,
+    measure: g.kind === "trading" ? (g.measure ?? legacyMeasure(g.auto_clean_days)) : null,
+    startedOn: g.started_on,
     steps: byGoal.get(g.id) ?? [],
   }));
 }
 
-export async function insertGoal(g: { title: string; why: string | null; targetDay: string | null; reward: string | null; kind: "trading" | "life"; autoCleanDays: number | null }): Promise<string> {
+export async function insertGoal(g: { title: string; why: string | null; targetDay: string | null; reward: string | null; kind: "trading" | "life"; measure: GoalMeasure | null; startedOn: string }): Promise<string> {
   const sql = await db();
   const id = `goal_${randomToken(10)}`;
+  const measure = g.kind === "trading" && g.measure ? sql.json(g.measure as never) : null;
   await sql`
-    insert into goals (id, title, why, target_day, reward, kind, auto_clean_days)
-    values (${id}, ${g.title}, ${g.why}, ${g.targetDay}, ${g.reward}, ${g.kind}, ${g.kind === "trading" ? g.autoCleanDays : null})
+    insert into goals (id, title, why, target_day, reward, kind, measure, started_on)
+    values (${id}, ${g.title}, ${g.why}, ${g.targetDay}, ${g.reward}, ${g.kind}, ${measure}, ${g.startedOn})
   `;
   return id;
+}
+
+/** Start a measured goal over from a day: it counts again from there. */
+export async function restartGoalFrom(id: string, day: string): Promise<void> {
+  const sql = await db();
+  await sql`update goals set started_on = ${day}, completed_at = null where id = ${id}`;
 }
 
 export async function insertStep(goalId: string, day: string, text: string): Promise<void> {

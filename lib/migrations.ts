@@ -398,4 +398,13 @@ export const MIGRATIONS: { version: number; sql: string }[] = [
       );
     `,
   },
+  {
+    version: 18,
+    sql: /* sql */ `
+      -- How a trading goal measures itself (rules kept for a stretch, a number,
+      -- or a rate), and the day it started counting (moved by "Start again").
+      alter table goals add column if not exists measure jsonb;
+      alter table goals add column if not exists started_on text check (started_on is null or started_on ~ '^\\d{4}-\\d{2}-\\d{2}$');
+    `,
+  },
 ];

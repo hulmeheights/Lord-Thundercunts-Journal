@@ -6,7 +6,8 @@ import { capsuleStatus, evaluateCapsule } from "@/lib/analytics/capsule";
 import { CapsuleList, type CapsuleView } from "@/components/journal/CapsuleList";
 import { Goals } from "@/components/journal/Goals";
 import { listGoals, setGoalDone } from "@/lib/data/goals";
-import { cleanDaysSince, missionDays, missionState } from "@/lib/analytics/mission";
+import { missionDays, missionState } from "@/lib/analytics/mission";
+import { checkGoal, type GoalProgress } from "@/lib/analytics/goalcheck";
 import { photoCounts } from "@/lib/data/photos";
 import { addDays, addMonths, endOfMonth, longDate, monthLabel, startOfMonth, todayKey } from "@/lib/analytics/time";
 import { dailySeries, summarize } from "@/lib/analytics/stats";
@@ -45,16 +46,20 @@ export default async function JournalPage({ searchParams }: { searchParams: Prom
   const capTrades = capFrom < `${yStart}T00:00:00Z` ? await listTrades({ since: new Date(addDays(capFrom.slice(0, 10), -1)) }) : trades;
   // The mission: every weekday since it began, read from your trades.
   const missionStart = settings.goals.missionStart ?? goals.reduce((m, g) => (g.createdAt.slice(0, 10) < m ? g.createdAt.slice(0, 10) : m), today);
-  const missionTrades = `${missionStart}T00:00:00Z` < `${yStart}T00:00:00Z` ? await listTrades({ since: new Date(addDays(missionStart, -1)) }) : trades;
+  // The loaded trades only cover the year on screen, which may not be this one.
+  const missionTrades = missionStart < yStart || today > yEnd ? await listTrades({ since: new Date(addDays(missionStart, -1)) }) : trades;
   const mDays = missionDays(missionTrades, settings.rules, tz, missionStart, today);
-  // Trading goals that count themselves: reached once they've seen enough clean days.
-  const clean: Record<string, number> = {};
+  // Trading goals that check themselves: rules kept, numbers reached, rates hit.
+  const startOf = (g: (typeof goals)[number]) => g.startedOn ?? g.createdAt.slice(0, 10);
+  const goalFrom = goals.reduce((m, g) => (g.measure && startOf(g) < m ? startOf(g) : m), missionStart);
+  const goalTrades = goalFrom >= missionStart ? missionTrades : goalFrom < yStart || today > yEnd ? await listTrades({ since: new Date(addDays(goalFrom, -1)) }) : trades;
+  const progress: Record<string, GoalProgress> = {};
   const autoReached: string[] = [];
   for (const g of goals) {
-    if (g.kind !== "trading" || g.autoCleanDays === null) continue;
-    const n = cleanDaysSince(mDays, g.createdAt.slice(0, 10));
-    clean[g.id] = n;
-    if (!g.completedAt && n >= g.autoCleanDays) {
+    if (!g.measure) continue;
+    const p = checkGoal(g.measure, startOf(g), g.targetDay, { trades: goalTrades, ledger, rules: settings.rules, tz, today });
+    progress[g.id] = p;
+    if (!g.completedAt && p.status === "reached") {
       await setGoalDone(g.id, true);
       g.completedAt = new Date().toISOString();
       autoReached.push(g.id);
@@ -196,7 +201,7 @@ export default async function JournalPage({ searchParams }: { searchParams: Prom
       </Section>
 
       <Section id="goals" n={4} label="Goals" lead={<>The <em>mission</em>, flown by your discipline.</>}>
-        <Goals goals={goals} today={today} mission={mission} clean={clean} autoReached={autoReached} />
+        <Goals goals={goals} today={today} mission={mission} progress={progress} autoReached={autoReached} defaults={{ start: settings.rules.sessionStart, end: settings.rules.sessionEnd }} />
       </Section>
 
       <Section n={5} label="Time capsule">
