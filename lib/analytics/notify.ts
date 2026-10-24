@@ -9,7 +9,7 @@
 import { fmtMinute, weekdayIndex } from "./time";
 import type { MissionDay } from "./mission";
 
-export type NotifyKind = "checkin" | "pre" | "evening" | "weekly" | "capsule" | "goal" | "rule";
+export type NotifyKind = "checkin" | "pre" | "close" | "evening" | "weekly" | "capsule" | "goal" | "rule";
 export type Reminder = { kind: NotifyKind; /** What it's claimed under: once per this key. */ key: string; title: string; body: string; url: string };
 
 /** No pushes overnight, whatever is due. */
@@ -39,7 +39,19 @@ export function checkin(i: { day: string; minute: number; sessionStart: number |
 }
 
 /** In the 90 minutes before the window opens: when it opens, your streak. */
-export function preSession(i: { day: string; minute: number; sessionStart: number | null; streak: number; mission: string }): Reminder | null {
+export type Prep = { plan: boolean; readiness: boolean; ritualDone: number; ritualTotal: number };
+
+/** What's still missing from the pre-session journal, in words, or null when it's all done. */
+export function prepMissing(p: Prep): string | null {
+  const todo = [
+    !p.plan && "write your plan",
+    !p.readiness && "rate how ready you are",
+    p.ritualTotal > 0 && p.ritualDone < p.ritualTotal && `finish the ritual (${p.ritualDone}/${p.ritualTotal})`,
+  ].filter(Boolean) as string[];
+  return todo.length ? todo.join(", ") : null;
+}
+
+export function preSession(i: { day: string; minute: number; sessionStart: number | null; streak: number; mission: string; prep: Prep }): Reminder | null {
   if (!weekday(i.day) || i.sessionStart === null) return null;
   if (i.minute < i.sessionStart - 90 || i.minute >= i.sessionStart) return null;
   const left = i.sessionStart - i.minute;
@@ -47,9 +59,26 @@ export function preSession(i: { day: string; minute: number; sessionStart: numbe
     kind: "pre",
     key: i.day,
     title: clip(`Window opens ${fmtMinute(i.sessionStart)} · ${i.mission}`, 60),
-    body: `${left} min to go. Nothing before it.\n${i.streak > 0 ? `${plural(i.streak, "clean day")} in a row. Keep the engine lit.` : "Today can be day one of the streak."}`,
-    url: "/",
+    body: [
+      `${left} min to go. Nothing before it.`,
+      prepMissing(i.prep) ? `Before you trade: ${prepMissing(i.prep)}.` : "Plan, readiness and ritual done. You're ready.",
+      i.streak > 0 ? `${plural(i.streak, "clean day")} in a row. Keep the engine lit.` : "Today can be day one of the streak.",
+    ].join("\n"),
+    url: prepMissing(i.prep) ? `/journal/${i.day}` : "/",
   };
+}
+
+/** The hour after the window closes: platform off, and the review while it's fresh. */
+export function windowClosed(i: { day: string; minute: number; sessionEnd: number | null; trades: number; net: number; journaled: boolean }): Reminder | null {
+  if (!weekday(i.day) || i.sessionEnd === null) return null;
+  if (i.minute < i.sessionEnd || i.minute >= i.sessionEnd + 60 || quiet(i.minute)) return null;
+  const done = `Window closed at ${fmtMinute(i.sessionEnd)}. Platform off: anything now is outside your window.`;
+  const body = !i.trades
+    ? `${done}\nNo trades today. If nothing set up, that's the job done.`
+    : i.journaled
+      ? `${done}\n${plural(i.trades, "trade")}, ${money(i.net)}. Review written. Good.`
+      : `${done}\n${plural(i.trades, "trade")}, ${money(i.net)}. Write the review while it's fresh: what you saw, what you did, what you'd repeat.`;
+  return { kind: "close", key: i.day, title: i.trades ? `Session done · ${money(i.net)}` : "Session done", body, url: `/journal/${i.day}` };
 }
 
 /** The evening after a trading day: how it counted, and the journal. */

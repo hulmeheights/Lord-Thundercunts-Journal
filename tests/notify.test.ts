@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { capsuleReady, checkin, evening, goalNews, preSession, quiet, ruleAlerts, weekly } from "../lib/analytics/notify";
+import { capsuleReady, checkin, evening, goalNews, preSession, quiet, ruleAlerts, weekly, windowClosed } from "../lib/analytics/notify";
 
 const fri = "2026-10-23";
 const sat = "2026-10-24";
@@ -20,9 +20,11 @@ test("12:00 check-in: weekdays, noon hour only, nudges an empty plan, shows goal
 });
 
 test("pre-session: the 90 minutes before the window, with the streak", () => {
-  const base = { day: fri, minute: at(13, 40), sessionStart: at(14, 30), streak: 3, mission: "Payouts paying the bills" };
+  const base = { day: fri, minute: at(13, 40), sessionStart: at(14, 30), streak: 3, mission: "Payouts paying the bills", prep: { plan: false, readiness: true, ritualDone: 2, ritualTotal: 4 } };
   const r = preSession(base)!;
   assert.match(r.body, /50 min to go/);
+  assert.match(r.body, /Before you trade: write your plan, finish the ritual \(2\/4\)/);
+  assert.match(preSession({ ...base, prep: { plan: true, readiness: true, ritualDone: 4, ritualTotal: 4 } })!.body, /You're ready/);
   assert.match(r.body, /3 clean days/);
   assert.equal(preSession({ ...base, minute: at(12, 50) }), null);
   assert.equal(preSession({ ...base, minute: at(14, 31) }), null);
@@ -63,4 +65,16 @@ test("goals, capsules and rule alerts carry keys that dedupe them", () => {
   assert.equal(alerts[0]!.key, `${fri}:session`);
   assert.match(alerts[0]!.body, /Entry at 13:13/);
   assert.ok(quiet(at(23)) && quiet(at(6, 30)) && !quiet(at(7)));
+});
+
+test("window closed: the hour after, platform off, review nudge until it's written", () => {
+  const base = { day: fri, minute: at(16, 20), sessionEnd: at(16), trades: 3, net: 640, journaled: false };
+  const r = windowClosed(base)!;
+  assert.equal(r.title, "Session done · +$640");
+  assert.match(r.body, /Platform off/);
+  assert.match(r.body, /Write the review/);
+  assert.match(windowClosed({ ...base, journaled: true })!.body, /Review written/);
+  assert.match(windowClosed({ ...base, trades: 0, net: 0 })!.body, /No trades today/);
+  assert.equal(windowClosed({ ...base, minute: at(17, 5) }), null);
+  assert.equal(windowClosed({ ...base, day: sat }), null);
 });

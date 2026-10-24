@@ -118,7 +118,7 @@ export async function setAiEnabled(enabled: boolean) {
 
 export async function setNotify(v: NotifySettings) {
   await guard();
-  const keys: (keyof NotifySettings)[] = ["checkin", "preSession", "evening", "weekly", "capsules", "goals", "ruleAlerts"];
+  const keys: (keyof NotifySettings)[] = ["checkin", "preSession", "close", "evening", "weekly", "capsules", "goals", "ruleAlerts"];
   await saveSetting("notify", Object.fromEntries(keys.map((k) => [k, v[k] === true])) as NotifySettings);
   revalidatePath("/settings");
   return { ok: true };

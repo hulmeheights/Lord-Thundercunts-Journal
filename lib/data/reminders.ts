@@ -7,7 +7,7 @@ import { listLedger } from "./ledger";
 import { missionDays, missionState } from "../analytics/mission";
 import { checkGoal } from "../analytics/goalcheck";
 import { evaluateRules } from "../analytics/rules";
-import { capsuleReady, checkin, evening, goalNews, preSession, quiet, ruleAlerts, weekly, type GoalEvent, type Reminder, type RuleBreak } from "../analytics/notify";
+import { capsuleReady, checkin, evening, goalNews, preSession, quiet, ruleAlerts, weekly, windowClosed, type GoalEvent, type Reminder, type RuleBreak } from "../analytics/notify";
 import { addDays, dayKey, fmtMinute, minuteOfDay, parseHHMM } from "../analytics/time";
 import { claimDaily, pushAll, subscriptionCount } from "../push";
 
@@ -64,9 +64,15 @@ export async function sendDueReminders(now = new Date()): Promise<{ sent: string
   if (n.goals) add(goalNews({ day, minute, events, due: goals.filter((g) => !g.completedAt && g.targetDay).map((g) => ({ id: g.id, title: g.title, targetDay: g.targetDay!, headline: live.find((l) => l.title === g.title)?.headline ?? null })) }));
   if (n.capsules) add(capsuleReady({ minute, capsules: (await dueCapsules(day)).filter((c) => !c.openedAt) }));
   if (n.checkin) add(checkin({ day, minute, sessionStart, sessionEnd, plan: entry.plan, goals: live }));
-  if (n.preSession) add(preSession({ day, minute, sessionStart, streak: streak(addDays(day, -1)), mission: settings.goals.mission }));
+  const pre = settings.ritual.filter((r) => r.group === "pre");
+  const prep = { plan: !!entry.plan?.trim(), readiness: entry.readiness !== null, ritualDone: pre.filter((r) => entry.checklist[r.id]).length, ritualTotal: pre.length };
+  if (n.preSession) add(preSession({ day, minute, sessionStart, streak: streak(addDays(day, -1)), mission: settings.goals.mission, prep }));
+  const journaled = [entry.review, entry.lessons, entry.wins].some((s) => (s?.trim().length ?? 0) > 0);
+  if (n.close) {
+    const todays = days.find((d) => d.day === day);
+    add(windowClosed({ day, minute, sessionEnd, trades: todays?.trades ?? 0, net: todays?.net ?? 0, journaled }));
+  }
   if (n.evening) {
-    const journaled = [entry.review, entry.lessons, entry.wins].some((s) => (s?.trim().length ?? 0) > 0);
     add(evening({ day, minute, sessionEnd, today: days.find((d) => d.day === day), streak: streak(day), journaled }));
   }
   if (n.weekly) add(weekly({ day, minute, week: days.filter((d) => d.day > addDays(day, -7)) }));

@@ -105,6 +105,7 @@ export type PlanSettings = {
 export type NotifySettings = {
   checkin: boolean;
   preSession: boolean;
+  close: boolean;
   evening: boolean;
   weekly: boolean;
   capsules: boolean;

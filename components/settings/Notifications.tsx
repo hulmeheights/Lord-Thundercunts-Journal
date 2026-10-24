@@ -9,9 +9,10 @@ import type { NotifySettings } from "@/lib/types";
 
 const KINDS: { k: keyof NotifySettings; name: string; hint: string }[] = [
   { k: "checkin", name: "12:00 check-in", hint: "Trading days at noon: your window, no orders before it, today's plan (or a nudge to write one) and where your goals stand." },
-  { k: "preSession", name: "Before your window", hint: "In the 90 minutes before it opens: how long to go and your clean-day streak." },
+  { k: "preSession", name: "Before your window", hint: "In the 90 minutes before it opens: how long to go, what's missing from your pre-session journal (plan, readiness, ritual) and your streak." },
+  { k: "close", name: "Window closed", hint: "The hour after it closes: platform off, today's trades, and a nudge to write the review if you haven't." },
   { k: "ruleAlerts", name: "Rule alerts", hint: "When a sync shows a trade outside your window, past your trade limit, your daily loss limit or your losing-streak stop. Trades sync about hourly, so this can lag up to an hour." },
-  { k: "evening", name: "Evening recap", hint: "After the close: how the day counted for the mission, and a nudge if the journal is still empty." },
+  { k: "evening", name: "Evening recap", hint: "Later in the evening: how the day counted for the mission, and a last nudge if the journal is still empty." },
   { k: "goals", name: "Goals", hint: "When a goal is reached (and its reward unlocked) or broken, and 3 days and 1 day before a goal's date." },
   { k: "capsules", name: "Time capsules", hint: "The day a capsule is ready to open." },
   { k: "weekly", name: "Weekly Observer", hint: "Sunday evening: your week in one line, and ten minutes with the Observer before Monday." },
@@ -149,7 +150,7 @@ export function Notifications({ initial, scheduled }: { initial: NotifySettings;
           <Toggle checked={prefs[k]} onChange={(v) => save({ ...prefs, [k]: v })} label={name} />
         </SRow>
       ))}
-      <p className="mt-4 font-mono text-[10.5px] leading-[1.8] text-ink-4">Nothing between 22:30 and 07:00. At most three at a time. Times use your timezone in Profile.</p>
+      <p className="mt-4 font-mono text-[10.5px] leading-[1.8] text-ink-4">It checks every hour from 07:00 to 22:30 and sends what's due; each one goes at most once a day. A normal trading day is about four (noon, before the window, after it, evening) plus any alerts. Nothing overnight. Times use your timezone in Profile.</p>
       {!scheduled && <Note className="mt-6">The test works now. The scheduled reminders need CRON_SECRET set in Vercel (the same one that runs the hourly sync).</Note>}
       {msg && (
         <Note className="mt-6" tone={msg.tone}>
