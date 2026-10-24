@@ -29,7 +29,15 @@ const Rule = z.discriminatedUnion("type", [
   z.object({ type: z.literal("myRules") }),
 ]);
 const Measure = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("days"), rules: z.array(Rule).min(1, "Pick at least one rule").max(10), span: z.enum(["weeks", "inARow", "total"]), n: z.number().int().min(1).max(365) }),
+  z
+    .object({
+      kind: z.literal("days"),
+      rules: z.array(Rule).min(1, "Pick at least one rule").max(10),
+      span: z.enum(["weeks", "until", "inARow", "total"]),
+      n: z.number().int().min(1).max(365),
+      until: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    })
+    .refine((m) => m.span !== "until" || !!m.until, "Pick the end date"),
   z.object({ kind: z.literal("total"), metric: z.enum(["net", "paidOut", "payouts", "evalsPassed"]), target: Money }),
   z.object({ kind: z.literal("rate"), metric: z.enum(["winRate", "greenDays"]), target: z.number().min(1).max(100), over: Count }),
 ]);

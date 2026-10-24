@@ -1,38 +1,82 @@
 import "server-only";
 import { getSettings } from "./settings";
 import { listTrades } from "./trades";
-import { getJournalDay } from "./journal";
-import { listGoals } from "./goals";
+import { dueCapsules, getJournalDay } from "./journal";
+import { listGoals, setGoalDone } from "./goals";
+import { listLedger } from "./ledger";
 import { missionDays, missionState } from "../analytics/mission";
-import { evening, preSession, type Reminder } from "../analytics/notify";
-import { addDays, minuteOfDay, parseHHMM, todayKey } from "../analytics/time";
+import { checkGoal } from "../analytics/goalcheck";
+import { evaluateRules } from "../analytics/rules";
+import { capsuleReady, checkin, evening, goalNews, preSession, quiet, ruleAlerts, weekly, type GoalEvent, type Reminder, type RuleBreak } from "../analytics/notify";
+import { addDays, dayKey, fmtMinute, minuteOfDay, parseHHMM } from "../analytics/time";
 import { claimDaily, pushAll, subscriptionCount } from "../push";
 
-/** Called by the cron: sends whichever reminder is due right now, once per day. */
-export async function sendDueReminders(now = new Date()): Promise<{ kind: string; sent: number } | null> {
-  if ((await subscriptionCount()) === 0) return null;
+/** Called by the cron about once an hour: sends whatever is due right now, each reminder once. */
+export async function sendDueReminders(now = new Date()): Promise<{ sent: string[] }> {
+  const sent: string[] = [];
+  if ((await subscriptionCount()) === 0) return { sent };
   const settings = await getSettings();
+  const n = settings.notify;
   const tz = settings.profile.timezone;
-  const day = todayKey(tz);
+  const day = dayKey(now, tz);
   const minute = minuteOfDay(now.toISOString(), tz);
-  const goals = await listGoals();
-  const start = settings.goals.missionStart ?? goals.reduce((m, g) => (g.createdAt.slice(0, 10) < m ? g.createdAt.slice(0, 10) : m), addDays(day, -30));
-  const trades = await listTrades({ since: new Date(`${addDays(start, -1)}T00:00:00Z`) });
-  const days = missionDays(trades, settings.rules, tz, start, day);
-  const streak = missionState(days, 0, 0).streak;
-  const entry = await getJournalDay(day);
+  if (quiet(minute)) return { sent };
 
-  let r: Reminder | null = null;
-  if (settings.notify.preSession) {
-    // Streak as of yesterday: nothing has happened yet today.
-    const before = missionState(days.filter((d) => d.day < day), 0, 0).streak;
-    r = preSession({ day, minute, sessionStart: parseHHMM(settings.rules.sessionStart), plan: entry.plan, streak: before, mission: settings.goals.mission });
+  const [goals, ledger, entry] = await Promise.all([listGoals(), listLedger(), getJournalDay(day)]);
+  const startOf = (g: (typeof goals)[number]) => g.startedOn ?? g.createdAt.slice(0, 10);
+  const missionStart = settings.goals.missionStart ?? goals.reduce((m, g) => (g.createdAt.slice(0, 10) < m ? g.createdAt.slice(0, 10) : m), addDays(day, -30));
+  const from = [missionStart, addDays(day, -7), ...goals.filter((g) => g.measure).map(startOf)].sort()[0]!;
+  const trades = await listTrades({ since: new Date(`${addDays(from, -1)}T00:00:00Z`) });
+  const days = missionDays(trades, settings.rules, tz, missionStart < addDays(day, -7) ? missionStart : addDays(day, -7), day);
+  const sessionStart = parseHHMM(settings.rules.sessionStart);
+  const sessionEnd = parseHHMM(settings.rules.sessionEnd);
+
+  // Measured goals: where each stands, and whether it has just been reached or broken.
+  const ctx = { trades, ledger, rules: settings.rules, tz, today: day };
+  const live: { title: string; headline: string }[] = [];
+  const events: GoalEvent[] = [];
+  for (const g of goals) {
+    if (!g.measure) continue;
+    const p = checkGoal(g.measure, startOf(g), g.targetDay, ctx);
+    if (g.completedAt) continue;
+    if (p.status === "reached") {
+      await setGoalDone(g.id, true);
+      events.push({ id: g.id, title: g.title, reward: g.reward, startedOn: startOf(g), status: "reached", detail: p.detail, targetDay: g.targetDay });
+    } else if (p.status === "broken") {
+      events.push({ id: g.id, title: g.title, reward: g.reward, startedOn: startOf(g), status: "broken", detail: p.detail, targetDay: g.targetDay });
+    } else live.push({ title: g.title, headline: p.headline });
   }
-  if (!r && settings.notify.evening) {
+
+  const due: Reminder[] = [];
+  const add = (r: Reminder | Reminder[] | null) => (Array.isArray(r) ? due.push(...r) : r && due.push(r));
+  const streak = (upTo: string) => missionState(days.filter((d) => d.day <= upTo && d.day >= missionStart), 0, 0).streak;
+
+  if (n.ruleAlerts) {
+    const todays = trades.filter((t) => dayKey(t.entryTime, tz) === day);
+    const breaks: RuleBreak[] = [];
+    for (const v of evaluateRules(todays, settings.rules, tz).violations) {
+      if (v.rule !== "session" && v.rule !== "maxTrades" && v.rule !== "maxDailyLoss" && v.rule !== "stopAfterLosses") continue;
+      const first = todays.filter((t) => v.tradeIds.includes(t.id)).sort((a, b) => a.entryTime.localeCompare(b.entryTime))[0];
+      breaks.push({ rule: v.rule, firstEntry: first ? fmtMinute(minuteOfDay(first.entryTime, tz)) : "", detail: v.detail });
+    }
+    add(ruleAlerts({ day, minute, breaks }));
+  }
+  if (n.goals) add(goalNews({ day, minute, events, due: goals.filter((g) => !g.completedAt && g.targetDay).map((g) => ({ id: g.id, title: g.title, targetDay: g.targetDay!, headline: live.find((l) => l.title === g.title)?.headline ?? null })) }));
+  if (n.capsules) add(capsuleReady({ minute, capsules: (await dueCapsules(day)).filter((c) => !c.openedAt) }));
+  if (n.checkin) add(checkin({ day, minute, sessionStart, sessionEnd, plan: entry.plan, goals: live }));
+  if (n.preSession) add(preSession({ day, minute, sessionStart, streak: streak(addDays(day, -1)), mission: settings.goals.mission }));
+  if (n.evening) {
     const journaled = [entry.review, entry.lessons, entry.wins].some((s) => (s?.trim().length ?? 0) > 0);
-    r = evening({ day, minute, sessionEnd: parseHHMM(settings.rules.sessionEnd), today: days.find((d) => d.day === day), streak, journaled });
+    add(evening({ day, minute, sessionEnd, today: days.find((d) => d.day === day), streak: streak(day), journaled }));
   }
-  if (!r || !(await claimDaily(day, r.kind))) return null;
-  const { sent } = await pushAll({ title: r.title, body: r.body, url: r.url, tag: r.kind });
-  return { kind: r.kind, sent };
+  if (n.weekly) add(weekly({ day, minute, week: days.filter((d) => d.day > addDays(day, -7)) }));
+
+  // At most three a run, the most urgent first (the order above), so nothing piles up.
+  for (const r of due) {
+    if (sent.length >= 3) break;
+    if (!(await claimDaily(r.key, r.kind))) continue;
+    const res = await pushAll({ title: r.title, body: r.body, url: r.url, tag: `${r.kind}:${r.key}` });
+    if (res.sent > 0) sent.push(r.kind);
+  }
+  return { sent };
 }

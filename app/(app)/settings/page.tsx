@@ -80,12 +80,12 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
             Trades arrive <em>on their own</em>.
           </>
         }
-        aside={<span className="eyebrow">{nightly ? "Nightly sync · on" : "Syncs when you open it"}</span>}
+        aside={<span className="eyebrow">{nightly ? "Hourly sync · on" : "Syncs when you open it"}</span>}
       >
         <Connections connections={connections} accounts={accounts} notice={noticeFrom(sp)} />
         {!nightly && (
           <p className="mt-8 max-w-[60ch] font-mono text-[10.5px] leading-[1.8] text-ink-4">
-            Add CRON_SECRET in Vercel to switch on the nightly sync after the close. Until then it syncs whenever you open the journal.
+            Add CRON_SECRET in Vercel to switch on the hourly sync and the phone reminders. Until then it syncs whenever you open the journal.
           </p>
         )}
       </Section>

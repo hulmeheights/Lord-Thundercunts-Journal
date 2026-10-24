@@ -28,6 +28,7 @@ type MeasureForm = {
   v: { start: string; end: string; maxTrades: string; maxDayLoss: string; stopAfterLosses: string; maxLossPerTrade: string; maxContracts: string; cooldown: string };
   span: GoalSpan;
   spanN: string;
+  until: string;
   total: TotalMetric;
   target: string;
   rate: RateMetric;
@@ -44,6 +45,7 @@ function emptyMeasure(d: { start: string | null; end: string | null }): MeasureF
     v: { start: d.start ?? "14:30", end: d.end ?? "16:00", maxTrades: "3", maxDayLoss: "500", stopAfterLosses: "2", maxLossPerTrade: "300", maxContracts: "5", cooldown: "15" },
     span: "weeks",
     spanN: "2",
+    until: "",
     total: "net",
     target: "2000",
     rate: "winRate",
@@ -82,6 +84,10 @@ function buildMeasure(m: MeasureForm): { measure: GoalMeasure | null } | { error
     } else rules.push({ type: k });
   }
   if (!rules.length) return { error: "Tick at least one rule." };
+  if (m.span === "until") {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(m.until)) return { error: "Pick the end date." };
+    return { measure: { kind: "days", rules, span: "until", n: 1, until: m.until } };
+  }
   if (!whole(m.spanN)) return { error: "For how long?" };
   return { measure: { kind: "days", rules, span: m.span, n: num(m.spanN) } };
 }
@@ -146,20 +152,25 @@ function MeasureEditor({ m, setM }: { m: MeasureForm; setM: (m: MeasureForm) => 
           <div>
             <span className={label}>For how long</span>
             <div className="flex flex-wrap items-center gap-3">
-              <input className={small} inputMode="numeric" value={m.spanN} maxLength={3} aria-label="How long" onChange={(e) => setM({ ...m, spanN: e.target.value.replace(/[^\d]/g, "") })} />
+              {m.span === "until" ? (
+                <input className="field num h-9 w-44" type="date" value={m.until} min={new Date().toISOString().slice(0, 10)} aria-label="Until" onChange={(e) => setM({ ...m, until: e.target.value })} />
+              ) : (
+                <input className={small} inputMode="numeric" value={m.spanN} maxLength={3} aria-label="How long" onChange={(e) => setM({ ...m, spanN: e.target.value.replace(/[^\d]/g, "") })} />
+              )}
               <Seg
                 value={m.span}
                 onChange={(s) => setM({ ...m, span: s })}
                 options={[
                   { value: "weeks", label: "Weeks, no breaks" },
+                  { value: "until", label: "Until a date" },
                   { value: "inARow", label: "Trading days in a row" },
                   { value: "total", label: "Trading days in total" },
                 ]}
               />
             </div>
             <p className="mt-2 font-mono text-[10.5px] leading-[1.8] text-ink-4">
-              {m.span === "weeks"
-                ? "Starts today. One break and it's broken; you can start it again."
+              {m.span === "weeks" || m.span === "until"
+                ? `Starts today${m.span === "until" ? " and runs to the end of that day" : ""}. One break and it's broken; you can start it again.`
                 : m.span === "inARow"
                   ? "A break resets the count to zero."
                   : "Breaks don't reset it; every day kept counts."}

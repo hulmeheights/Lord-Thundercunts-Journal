@@ -101,6 +101,17 @@ export type PlanSettings = {
   overrides: Partial<Record<"passRate" | "evalPrice" | "avgPayout" | "payoutsPerFundedMonth" | "lossPerFundedMonth" | "daysToPass" | "daysToPayout", number>>;
 };
 
+/** Which pushes go to your phone. */
+export type NotifySettings = {
+  checkin: boolean;
+  preSession: boolean;
+  evening: boolean;
+  weekly: boolean;
+  capsules: boolean;
+  goals: boolean;
+  ruleAlerts: boolean;
+};
+
 export type Settings = {
   profile: { name: string; timezone: string };
   plan: PlanSettings;
@@ -113,7 +124,7 @@ export type Settings = {
   security: { passkeyOnly: boolean };
   ai: { enabled: boolean };
   /** Which pushes go to your phone. */
-  notify: { preSession: boolean; evening: boolean };
+  notify: NotifySettings;
   observer: {
     name: string | null;
     pronoun: "they" | "he" | "she";

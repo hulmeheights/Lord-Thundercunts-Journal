@@ -26,12 +26,12 @@ export type GoalRule =
   | { type: "greenDay" }
   | { type: "myRules" };
 
-export type GoalSpan = "weeks" | "inARow" | "total";
+export type GoalSpan = "weeks" | "until" | "inARow" | "total";
 export type TotalMetric = "net" | "paidOut" | "payouts" | "evalsPassed";
 export type RateMetric = "winRate" | "greenDays";
 
 export type GoalMeasure =
-  | { kind: "days"; rules: GoalRule[]; span: GoalSpan; n: number }
+  | { kind: "days"; rules: GoalRule[]; span: GoalSpan; n: number; /** Last day, for span "until". */ until?: string }
   | { kind: "total"; metric: TotalMetric; target: number }
   | { kind: "rate"; metric: RateMetric; target: number; over: number };
 
@@ -74,7 +74,7 @@ export function describeRule(r: GoalRule): string {
 export function describeMeasure(m: GoalMeasure): string {
   if (m.kind === "days") {
     const rules = m.rules.map(describeRule).join(", ");
-    const span = m.span === "weeks" ? `for ${plural(m.n, "week")}` : m.span === "inARow" ? `for ${plural(m.n, "trading day")} in a row` : `on ${plural(m.n, "trading day")}`;
+    const span = m.span === "weeks" ? `for ${plural(m.n, "week")}` : m.span === "until" ? `until ${shortDay(m.until ?? "")}` : m.span === "inARow" ? `for ${plural(m.n, "trading day")} in a row` : `on ${plural(m.n, "trading day")}`;
     const s = `${rules.charAt(0).toUpperCase()}${rules.slice(1)} ${span}`;
     return s.length > 160 ? `${s.slice(0, 159)}…` : s;
   }
@@ -144,16 +144,16 @@ export function checkGoal(m: GoalMeasure, start: string, byDay: string | null, c
   const base = { marks: [] as GoalDayMark[], reachedOn: null as string | null };
 
   if (m.kind === "days") {
-    const end = m.span === "weeks" ? addDays(start, m.n * 7 - 1) : today;
+    const end = m.span === "weeks" ? addDays(start, m.n * 7 - 1) : m.span === "until" && m.until ? m.until : today;
     const marks = judgeDays(ctx.trades, m.rules, ctx.rules, ctx.tz, start, end < today ? end : today);
     const broke = marks.find((d) => !d.ok);
     const why = (d: GoalDayMark) => `${shortDay(d.day)}: ${d.why.join(", ")}`;
 
-    if (m.span === "weeks") {
-      const total = m.n * 7;
+    if (m.span === "weeks" || m.span === "until") {
+      const total = Math.max(1, daysBetween(start, end) + 1);
       const elapsed = Math.min(total, daysBetween(start, today) + 1);
       if (broke) return { ...base, marks, status: "broken", headline: `Broken on day ${daysBetween(start, broke.day) + 1} of ${total}`, progress: (daysBetween(start, broke.day) + 1) / total, detail: why(broke) };
-      if (today > end) return { ...base, marks, status: "reached", reachedOn: addDays(end, 1), headline: `${plural(m.n, "week")}, no breaks`, progress: 1, detail: `${plural(marks.length, "trading day")}, every one inside the rules.` };
+      if (today > end) return { ...base, marks, status: "reached", reachedOn: addDays(end, 1), headline: m.span === "weeks" ? `${plural(m.n, "week")}, no breaks` : `Kept to ${shortDay(end)}, no breaks`, progress: 1, detail: `${plural(marks.length, "trading day")}, every one inside the rules.` };
       return {
         ...base,
         marks,

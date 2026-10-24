@@ -5,6 +5,17 @@ import { setNotify } from "@/lib/actions/settings";
 import { Button } from "@/components/ui/Button";
 import { Toggle } from "@/components/ui/Toggle";
 import { Note, SRow } from "./ui";
+import type { NotifySettings } from "@/lib/types";
+
+const KINDS: { k: keyof NotifySettings; name: string; hint: string }[] = [
+  { k: "checkin", name: "12:00 check-in", hint: "Trading days at noon: your window, no orders before it, today's plan (or a nudge to write one) and where your goals stand." },
+  { k: "preSession", name: "Before your window", hint: "In the 90 minutes before it opens: how long to go and your clean-day streak." },
+  { k: "ruleAlerts", name: "Rule alerts", hint: "When a sync shows a trade outside your window, past your trade limit, your daily loss limit or your losing-streak stop. Trades sync about hourly, so this can lag up to an hour." },
+  { k: "evening", name: "Evening recap", hint: "After the close: how the day counted for the mission, and a nudge if the journal is still empty." },
+  { k: "goals", name: "Goals", hint: "When a goal is reached (and its reward unlocked) or broken, and 3 days and 1 day before a goal's date." },
+  { k: "capsules", name: "Time capsules", hint: "The day a capsule is ready to open." },
+  { k: "weekly", name: "Weekly Observer", hint: "Sunday evening: your week in one line, and ten minutes with the Observer before Monday." },
+];
 
 type State = "loading" | "unsupported" | "needs-home-screen" | "denied" | "off" | "on";
 
@@ -27,7 +38,7 @@ async function call(method: "GET" | "POST" | "DELETE", body?: unknown) {
 }
 
 /** Push notifications to this phone or computer: a nudge before the session, and a recap after. */
-export function Notifications({ initial, scheduled }: { initial: { preSession: boolean; evening: boolean }; scheduled: boolean }) {
+export function Notifications({ initial, scheduled }: { initial: NotifySettings; scheduled: boolean }) {
   const [state, setState] = useState<State>("loading");
   const [prefs, setPrefs] = useState(initial);
   const [msg, setMsg] = useState<{ text: string; tone?: "pos" | "warn" } | null>(null);
@@ -133,13 +144,13 @@ export function Notifications({ initial, scheduled }: { initial: { preSession: b
           </Button>
         ) : null}
       </SRow>
-      <SRow name="Before your session" hint="On trading days, before your window opens: when it opens, your plan, and your clean-day streak.">
-        <Toggle checked={prefs.preSession} onChange={(v) => save({ ...prefs, preSession: v })} label="Before your session" />
-      </SRow>
-      <SRow name="Evening recap" hint="After the close: how the day counted for the mission, and a nudge if the journal is still empty.">
-        <Toggle checked={prefs.evening} onChange={(v) => save({ ...prefs, evening: v })} label="Evening recap" />
-      </SRow>
-      {!scheduled && <Note className="mt-6">The test works now. The daily reminders need CRON_SECRET set in Vercel (the same one that runs the nightly sync).</Note>}
+      {KINDS.map(({ k, name, hint }) => (
+        <SRow key={k} name={name} hint={hint}>
+          <Toggle checked={prefs[k]} onChange={(v) => save({ ...prefs, [k]: v })} label={name} />
+        </SRow>
+      ))}
+      <p className="mt-4 font-mono text-[10.5px] leading-[1.8] text-ink-4">Nothing between 22:30 and 07:00. At most three at a time. Times use your timezone in Profile.</p>
+      {!scheduled && <Note className="mt-6">The test works now. The scheduled reminders need CRON_SECRET set in Vercel (the same one that runs the hourly sync).</Note>}
       {msg && (
         <Note className="mt-6" tone={msg.tone}>
           {msg.text}

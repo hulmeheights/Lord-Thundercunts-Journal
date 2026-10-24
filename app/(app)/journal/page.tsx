@@ -204,7 +204,7 @@ export default async function JournalPage({ searchParams }: { searchParams: Prom
         <Goals goals={goals} today={today} mission={mission} progress={progress} autoReached={autoReached} defaults={{ start: settings.rules.sessionStart, end: settings.rules.sessionEnd }} />
       </Section>
 
-      <Section n={5} label="Time capsule">
+      <Section id="capsules" n={5} label="Time capsule">
         <Panel gold className="grid gap-10 lg:grid-cols-[1fr_1.2fr]">
           <div>
             <p className="font-serif text-[clamp(1.6rem,3.4vw,2.6rem)] leading-[1.15] font-light tracking-[-0.01em]">

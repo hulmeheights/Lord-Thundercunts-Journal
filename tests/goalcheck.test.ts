@@ -78,3 +78,11 @@ test("old clean-day goals read as keep-all-my-rules on N days", () => {
   assert.equal(p.status, "reached");
   assert.equal(p.marks.filter((d) => !d.ok)[0]!.why[0], "outside your window");
 });
+
+test("rules kept until an exact date", () => {
+  const m: GoalMeasure = { kind: "days", rules: [{ type: "window", start: "14:30", end: "16:00" }], span: "until", n: 1, until: "2026-11-07" };
+  assert.equal(describeMeasure(m), "Only enter 14:30–16:00 until Sat 7 Nov");
+  const t = [trade("2026-10-26", "14:35", 200)];
+  assert.equal(checkGoal(m, "2026-10-26", null, ctx(t, "2026-11-01")).headline, "Day 7 of 13 · no breaks");
+  assert.equal(checkGoal(m, "2026-10-26", null, ctx(t, "2026-11-08")).status, "reached");
+});

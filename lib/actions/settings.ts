@@ -17,6 +17,7 @@ import type { TradovateCreds } from "../brokers/tradovate";
 import { firmById, type PlatformKind } from "../brokers/firms";
 import { parseShareInput, type ShareCreds } from "../brokers/topstepshare";
 import { BrokerError } from "../brokers/types";
+import type { NotifySettings } from "../types";
 
 const num = (max: number) => z.number().min(0).max(max).nullable();
 const hhmm = z.string().regex(/^\d{2}:\d{2}$/).nullable();
@@ -115,9 +116,10 @@ export async function setAiEnabled(enabled: boolean) {
   return { ok: true };
 }
 
-export async function setNotify(v: { preSession: boolean; evening: boolean }) {
+export async function setNotify(v: NotifySettings) {
   await guard();
-  await saveSetting("notify", { preSession: v.preSession === true, evening: v.evening === true });
+  const keys: (keyof NotifySettings)[] = ["checkin", "preSession", "evening", "weekly", "capsules", "goals", "ruleAlerts"];
+  await saveSetting("notify", Object.fromEntries(keys.map((k) => [k, v[k] === true])) as NotifySettings);
   revalidatePath("/settings");
   return { ok: true };
 }
