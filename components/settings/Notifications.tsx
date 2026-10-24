@@ -8,6 +8,7 @@ import { Note, SRow } from "./ui";
 import type { NotifySettings } from "@/lib/types";
 
 const KINDS: { k: keyof NotifySettings; name: string; hint: string }[] = [
+  { k: "morning", name: "9:00 prayer or quote", hint: "Every morning: some days a moment to pray, to God or the universe; some days a line to carry into the session." },
   { k: "checkin", name: "12:00 check-in", hint: "Trading days at noon: your window, no orders before it, today's plan (or a nudge to write one) and where your goals stand." },
   { k: "preSession", name: "Before your window", hint: "In the 90 minutes before it opens: how long to go, what's missing from your pre-session journal (plan, readiness, ritual) and your streak." },
   { k: "close", name: "Window closed", hint: "The hour after it closes: platform off, today's trades, and a nudge to write the review if you haven't." },
@@ -96,11 +97,11 @@ export function Notifications({ initial, scheduled }: { initial: NotifySettings;
       }
     });
 
-  const test = () =>
+  const test = (which: true | "morning" = true) =>
     start(async () => {
       setMsg(null);
       try {
-        const r = await call("POST", { test: true });
+        const r = await call("POST", { test: which });
         setMsg(Number(r.sent) > 0 ? { text: "Sent. It should land in a few seconds.", tone: "pos" } : { text: `Nothing was delivered${r.reason ? ` (push service said: ${String(r.reason)})` : ""}. Turn them off and on again on this device.`, tone: "warn" });
       } catch (e) {
         setMsg({ text: e instanceof Error ? e.message : "Couldn't send.", tone: "warn" });
@@ -131,9 +132,12 @@ export function Notifications({ initial, scheduled }: { initial: NotifySettings;
         }
       >
         {state === "on" ? (
-          <div className="flex gap-3">
-            <Button variant="secondary" onClick={test} disabled={busy}>
+          <div className="flex flex-wrap gap-3">
+            <Button variant="secondary" onClick={() => test()} disabled={busy}>
               Send a test
+            </Button>
+            <Button variant="secondary" onClick={() => test("morning")} disabled={busy}>
+              Test 9:00 message
             </Button>
             <Button variant="secondary" onClick={turnOff} disabled={busy}>
               Turn off

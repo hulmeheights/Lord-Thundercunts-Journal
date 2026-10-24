@@ -103,6 +103,7 @@ export type PlanSettings = {
 
 /** Which pushes go to your phone. */
 export type NotifySettings = {
+  morning: boolean;
   checkin: boolean;
   preSession: boolean;
   close: boolean;

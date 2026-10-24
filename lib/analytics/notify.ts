@@ -9,7 +9,7 @@
 import { fmtMinute, weekdayIndex } from "./time";
 import type { MissionDay } from "./mission";
 
-export type NotifyKind = "checkin" | "pre" | "close" | "evening" | "weekly" | "capsule" | "goal" | "rule";
+export type NotifyKind = "morning" | "checkin" | "pre" | "close" | "evening" | "weekly" | "capsule" | "goal" | "rule";
 export type Reminder = { kind: NotifyKind; /** What it's claimed under: once per this key. */ key: string; title: string; body: string; url: string };
 
 /** No pushes overnight, whatever is due. */
@@ -183,4 +183,40 @@ export function ruleAlerts(i: { day: string; minute: number; breaks: RuleBreak[]
     const [title, body] = say[b.rule](b);
     return { kind: "rule", key: `${i.day}:${b.rule}`, title, body, url: "/" };
   });
+}
+
+/**
+ * 9:00 every day: a moment to pray, to God or the universe, or a line to
+ * carry into the day. Which one, and which line, is drawn from the date, so
+ * it changes daily but is the same however often the cron looks.
+ */
+export const PRAYERS: { title: string; body: string }[] = [
+  { title: "Pray", body: "Before the charts: a minute with God. Ask for patience, not profit." },
+  { title: "Pray", body: "Thank God for one thing that has nothing to do with money. Then ask for a calm head at 14:30." },
+  { title: "Pray to the universe", body: "Tell the universe what you're grateful for today. Ask for discipline, and let the outcome go." },
+  { title: "Pray", body: "Ask God for the strength to wait. Your window is coming; you don't have to chase anything before it." },
+  { title: "A moment for the universe", body: "Breathe in for four, out for six. Ask the universe for clarity, and trust that what's meant for you won't pass you by." },
+  { title: "Pray", body: "Give the debt, the bills and the worry to God for a minute. You only have to do today, and do it well." },
+  { title: "Pray to the universe", body: "Ask the universe to put the right trades in front of you, and for the wisdom to skip the wrong ones." },
+  { title: "Pray", body: "Lord, grant me the serenity to accept the losses I cannot change, the courage to follow my plan, and the wisdom to know the difference." },
+  { title: "A moment of gratitude", body: "Three things you're grateful for, out loud, before you open anything. God hears it; so do you." },
+  { title: "Pray", body: "Ask God to protect what you've built. One clean session is a prayer answered." },
+  { title: "Pray to the universe", body: "Set your intention with the universe: inside the window, inside the rules, then walk away." },
+  { title: "Pray", body: "Pray for the people you're doing this for. Then trade like they're watching." },
+  { title: "A moment for the universe", body: "You are more than your P&L. Ask the universe for peace with whatever today brings." },
+  { title: "Pray", body: "Ask God for a quiet mind. Fear and greed are loud; you don't have to listen to either today." },
+];
+
+export function morning(i: { day: string; minute: number; quotes: readonly { text: string; cite: string }[]; pick?: number }): Reminder | null {
+  if (i.pick === undefined && (i.minute < 9 * 60 || i.minute >= 10 * 60)) return null;
+  let h = 2166136261;
+  for (const c of `morning:${i.day}`) h = Math.imul(h ^ c.charCodeAt(0), 16777619);
+  const seed = i.pick ?? h >>> 0;
+  const url = "/";
+  if (seed % 2 === 0 || !i.quotes.length) {
+    const p = PRAYERS[Math.floor(seed / 2) % PRAYERS.length]!;
+    return { kind: "morning", key: i.day, title: p.title, body: p.body, url };
+  }
+  const q = i.quotes[Math.floor(seed / 2) % i.quotes.length]!;
+  return { kind: "morning", key: i.day, title: "Thought for the day", body: `“${q.text}”\n— ${q.cite}`, url };
 }

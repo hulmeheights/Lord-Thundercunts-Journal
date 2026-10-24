@@ -20,7 +20,7 @@ export const DEFAULT_SETTINGS: Settings = {
   },
   plan: { monthlyTarget: 25000, batch: 5, overrides: {} },
   goals: { mission: "Payouts paying the bills", missionStart: null },
-  notify: { checkin: true, preSession: true, close: true, evening: true, weekly: true, capsules: true, goals: true, ruleAlerts: true },
+  notify: { morning: true, checkin: true, preSession: true, close: true, evening: true, weekly: true, capsules: true, goals: true, ruleAlerts: true },
   prop: {
     enabled: false,
     firm: "Topstep",

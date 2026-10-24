@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { assertSameOrigin, assertSession } from "@/lib/auth/session";
+import { morning } from "@/lib/analytics/notify";
+import { OBSERVER_QUOTES } from "@/lib/quotes";
 import { pushAll, removeSubscription, saveSubscription, subscriptionCount, vapidKeys } from "@/lib/push";
 
 /** Signed-in only; changes must also come from this site (browsers omit Origin on same-origin GETs). */
@@ -31,6 +33,11 @@ export async function POST(request: Request) {
   const denied = await guard();
   if (denied) return denied;
   const body = (await request.json().catch(() => ({}))) as { subscription?: unknown; device?: unknown; test?: unknown };
+  if (body.test === "morning") {
+    // A random draw, so each tap shows another prayer or quote.
+    const m = morning({ day: "test", minute: 9 * 60, quotes: OBSERVER_QUOTES, pick: Math.floor(Math.random() * 1e6) })!;
+    return NextResponse.json(await pushAll({ title: m.title, body: m.body, url: m.url, tag: "test-morning" }, new URL(request.url).origin));
+  }
   if (body.test === true) {
     const r = await pushAll({ title: "Thunder ◆", body: "Notifications are on. This is what a reminder looks like.", url: "/", tag: "test" }, new URL(request.url).origin);
     return NextResponse.json(r);

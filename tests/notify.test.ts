@@ -78,3 +78,17 @@ test("window closed: the hour after, platform off, review nudge until it's writt
   assert.equal(windowClosed({ ...base, minute: at(17, 5) }), null);
   assert.equal(windowClosed({ ...base, day: sat }), null);
 });
+
+test("9:00 message: prayer or quote, fixed per day, varied across days", async () => {
+  const { morning, PRAYERS } = await import("../lib/analytics/notify");
+  const quotes = [{ text: "Anything can happen.", cite: "Mark Douglas · Trading in the Zone" }];
+  assert.equal(morning({ day: fri, minute: at(8, 59), quotes }), null);
+  assert.equal(morning({ day: fri, minute: at(10), quotes }), null);
+  const a = morning({ day: fri, minute: at(9, 10), quotes })!;
+  assert.deepEqual(morning({ day: fri, minute: at(9, 50), quotes }), a);
+  const kinds = new Set<string>();
+  for (let d = 1; d <= 28; d++) kinds.add(morning({ day: `2026-11-${String(d).padStart(2, "0")}`, minute: at(9), quotes })!.title === "Thought for the day" ? "quote" : "prayer");
+  assert.deepEqual([...kinds].sort(), ["prayer", "quote"]);
+  assert.ok(PRAYERS.some((p) => /God/.test(p.body)) && PRAYERS.some((p) => /universe/.test(p.body)));
+  assert.match(morning({ day: "test", minute: 0, quotes, pick: 1 })!.body, /Anything can happen/);
+});
