@@ -32,7 +32,7 @@ export async function POST(request: Request) {
   if (denied) return denied;
   const body = (await request.json().catch(() => ({}))) as { subscription?: unknown; device?: unknown; test?: unknown };
   if (body.test === true) {
-    const r = await pushAll({ title: "Thunder ◆", body: "Notifications are on. This is what a reminder looks like.", url: "/", tag: "test" });
+    const r = await pushAll({ title: "Thunder ◆", body: "Notifications are on. This is what a reminder looks like.", url: "/", tag: "test" }, new URL(request.url).origin);
     return NextResponse.json(r);
   }
   const sub = Sub.safeParse(body.subscription);

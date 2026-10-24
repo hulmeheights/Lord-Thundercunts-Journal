@@ -89,7 +89,7 @@ export function Notifications({ initial, scheduled }: { initial: { preSession: b
       setMsg(null);
       try {
         const r = await call("POST", { test: true });
-        setMsg(Number(r.sent) > 0 ? { text: "Sent. It should land in a few seconds.", tone: "pos" } : { text: "Nothing was delivered. Turn them off and on again on this device.", tone: "warn" });
+        setMsg(Number(r.sent) > 0 ? { text: "Sent. It should land in a few seconds.", tone: "pos" } : { text: `Nothing was delivered${r.reason ? ` (push service said: ${String(r.reason)})` : ""}. Turn them off and on again on this device.`, tone: "warn" });
       } catch (e) {
         setMsg({ text: e instanceof Error ? e.message : "Couldn't send.", tone: "warn" });
       }
