@@ -79,20 +79,40 @@ test("window closed: the hour after, platform off, review nudge until it's writt
   assert.equal(windowClosed({ ...base, day: sat }), null);
 });
 
-test("9:00 message: prayer or quote, fixed per day, varied across days", async () => {
-  const { morning, PRAYERS } = await import("../lib/analytics/notify");
-  const quotes = [{ text: "Anything can happen.", cite: "Mark Douglas · Trading in the Zone" }];
-  assert.equal(morning({ day: fri, minute: at(8, 59), quotes }), null);
-  assert.equal(morning({ day: fri, minute: at(10), quotes }), null);
-  const a = morning({ day: fri, minute: at(9, 10), quotes })!;
-  assert.deepEqual(morning({ day: fri, minute: at(9, 50), quotes }), a);
-  const kinds = new Set<string>();
-  for (let d = 1; d <= 28; d++) kinds.add(morning({ day: `2026-11-${String(d).padStart(2, "0")}`, minute: at(9), quotes })!.title);
-  assert.ok(kinds.has("Thought for the day") && kinds.has("Thankful") && kinds.has("Manifest") && [...kinds].some((k) => k.startsWith("Pray")));
+test("positive pushes: 9:00 daily and 15:00 at weekends, rotating categories, no repeats", async () => {
+  const { morning, weekendLift, uplift, upliftIndex, PRAYERS, THANKFUL, MANIFEST } = await import("../lib/analytics/notify");
+  const { QUOTES } = await import("../lib/content/quotes");
+  assert.ok(QUOTES.length > 365, `only ${QUOTES.length} quotes`);
+  for (const list of [PRAYERS, THANKFUL, MANIFEST]) {
+    assert.ok(list.length >= 100);
+    assert.equal(new Set(list.map((x) => x.body)).size, list.length, "duplicate wording");
+  }
+  assert.equal(new Set(QUOTES.map((x) => x.text.toLowerCase())).size, QUOTES.length);
   assert.ok(PRAYERS.some((p) => /God/.test(p.body)) && PRAYERS.some((p) => /universe/.test(p.body)));
-  assert.match(morning({ day: "test", minute: 0, quotes, pick: 3 })!.body, /Anything can happen/);
-  const { weekendLift } = await import("../lib/analytics/notify");
-  assert.equal(weekendLift({ day: fri, minute: at(15, 10), quotes }), null);
-  assert.equal(weekendLift({ day: sat, minute: at(14, 50), quotes }), null);
-  assert.equal(weekendLift({ day: sat, minute: at(15, 10), quotes })!.kind, "uplift");
+
+  assert.equal(morning({ day: fri, minute: at(8, 59), quotes: QUOTES }), null);
+  assert.equal(morning({ day: fri, minute: at(10), quotes: QUOTES }), null);
+  assert.deepEqual(morning({ day: fri, minute: at(9, 10), quotes: QUOTES }), morning({ day: fri, minute: at(9, 50), quotes: QUOTES }));
+  assert.equal(weekendLift({ day: fri, minute: at(15, 10), quotes: QUOTES }), null);
+  assert.equal(weekendLift({ day: sat, minute: at(14, 50), quotes: QUOTES }), null);
+  assert.equal(weekendLift({ day: sat, minute: at(15, 10), quotes: QUOTES })!.kind, "uplift");
+
+  // A year of pushes (every morning plus weekend afternoons): every index distinct, no line twice.
+  const seen = new Set<string>();
+  const idx = new Set<number>();
+  let last = "";
+  for (let d = 0; d < 365; d++) {
+    const day = new Date(Date.UTC(2026, 9, 24 + d)).toISOString().slice(0, 10);
+    const slots: ("morning" | "weekend")[] = ["morning", new Date(`${day}T00:00:00Z`).getUTCDay() % 6 === 0 ? "weekend" : null].filter(Boolean) as never;
+    for (const slot of slots) {
+      const n = upliftIndex(day, slot);
+      assert.ok(!idx.has(n), `index ${n} reused on ${day}`);
+      idx.add(n);
+      const u = uplift({ day, quotes: QUOTES, slot });
+      assert.ok(!seen.has(u.body), `repeated on ${day}: ${u.body}`);
+      assert.notEqual(u.title === "Thought for the day" ? "q" : u.title, last, `same kind twice in a row on ${day}`);
+      last = u.title === "Thought for the day" ? "q" : u.title;
+      seen.add(u.body);
+    }
+  }
 });

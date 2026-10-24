@@ -10,7 +10,7 @@ import { evaluateRules } from "../analytics/rules";
 import { capsuleReady, morning, weekendLift, checkin, evening, goalNews, preSession, quiet, ruleAlerts, weekly, windowClosed, type GoalEvent, type Reminder, type RuleBreak } from "../analytics/notify";
 import { addDays, dayKey, fmtMinute, minuteOfDay, parseHHMM } from "../analytics/time";
 import { claimDaily, pushAll, subscriptionCount } from "../push";
-import { OBSERVER_QUOTES } from "../quotes";
+import { QUOTES } from "../content/quotes";
 
 /** Called by the cron about once an hour: sends whatever is due right now, each reminder once. */
 export async function sendDueReminders(now = new Date()): Promise<{ sent: string[] }> {
@@ -64,8 +64,8 @@ export async function sendDueReminders(now = new Date()): Promise<{ sent: string
   }
   if (n.goals) add(goalNews({ day, minute, events, due: goals.filter((g) => !g.completedAt && g.targetDay).map((g) => ({ id: g.id, title: g.title, targetDay: g.targetDay!, headline: live.find((l) => l.title === g.title)?.headline ?? null })) }));
   if (n.capsules) add(capsuleReady({ minute, capsules: (await dueCapsules(day)).filter((c) => !c.openedAt) }));
-  if (n.morning) add(morning({ day, minute, quotes: OBSERVER_QUOTES }));
-  if (n.morning) add(weekendLift({ day, minute, quotes: OBSERVER_QUOTES }));
+  if (n.morning) add(morning({ day, minute, quotes: QUOTES }));
+  if (n.morning) add(weekendLift({ day, minute, quotes: QUOTES }));
   if (n.checkin) add(checkin({ day, minute, sessionStart, sessionEnd, plan: entry.plan, goals: live }));
   const pre = settings.ritual.filter((r) => r.group === "pre");
   const prep = { plan: !!entry.plan?.trim(), readiness: entry.readiness !== null, ritualDone: pre.filter((r) => entry.checklist[r.id]).length, ritualTotal: pre.length };

@@ -8,6 +8,8 @@
  */
 import { fmtMinute, weekdayIndex } from "./time";
 import type { MissionDay } from "./mission";
+import { MANIFEST, PRAYERS, THANKFUL, type Uplift } from "../content/uplift";
+
 
 export type NotifyKind = "morning" | "uplift" | "checkin" | "pre" | "close" | "evening" | "weekly" | "capsule" | "goal" | "rule";
 export type Reminder = { kind: NotifyKind; /** What it's claimed under: once per this key. */ key: string; title: string; body: string; url: string };
@@ -185,62 +187,52 @@ export function ruleAlerts(i: { day: string; minute: number; breaks: RuleBreak[]
   });
 }
 
+export { MANIFEST, PRAYERS, THANKFUL };
+
+type Draw = { day: string; quotes: readonly { text: string; cite: string }[]; pick?: number; slot?: "morning" | "weekend" };
+
+const EPOCH = Date.parse("2026-01-01T00:00:00Z");
+/** Weekend days from the epoch up to (not including) day number d. */
+function weekendsBefore(d: number): number {
+  // 2026-01-01 is a Thursday (weekdayIndex 3); count Saturdays and Sundays in [0, d).
+  const full = Math.floor(d / 7) * 2;
+  let extra = 0;
+  for (let i = Math.floor(d / 7) * 7; i < d; i++) if ((3 + i) % 7 >= 5) extra++;
+  return full + extra;
+}
+
 /**
- * 9:00 every day: a moment to pray, to God or the universe, or a line to
- * carry into the day. Which one, and which line, is drawn from the date, so
- * it changes daily but is the same however often the cron looks.
+ * The n-th positive push ever sent: one each morning, one more on weekend
+ * afternoons, numbered in order. Categories rotate (see uplift), and each list is walked by a fixed stride that is coprime to its
+ * length, so no line repeats until the whole list has been used, and lines
+ * next to each other in the list don't land on neighbouring days.
  */
-export const PRAYERS: { title: string; body: string }[] = [
-  { title: "Pray", body: "Before the charts: a minute with God. Ask for patience, not profit." },
-  { title: "Pray", body: "Thank God for one thing that has nothing to do with money. Then ask for a calm head at 14:30." },
-  { title: "Pray to the universe", body: "Tell the universe what you're grateful for today. Ask for discipline, and let the outcome go." },
-  { title: "Pray", body: "Ask God for the strength to wait. Your window is coming; you don't have to chase anything before it." },
-  { title: "A moment for the universe", body: "Breathe in for four, out for six. Ask the universe for clarity, and trust that what's meant for you won't pass you by." },
-  { title: "Pray", body: "Give the debt, the bills and the worry to God for a minute. You only have to do today, and do it well." },
-  { title: "Pray to the universe", body: "Ask the universe to put the right trades in front of you, and for the wisdom to skip the wrong ones." },
-  { title: "Pray", body: "Lord, grant me the serenity to accept the losses I cannot change, the courage to follow my plan, and the wisdom to know the difference." },
-  { title: "A moment of gratitude", body: "Three things you're grateful for, out loud, before you open anything. God hears it; so do you." },
-  { title: "Pray", body: "Ask God to protect what you've built. One clean session is a prayer answered." },
-  { title: "Pray to the universe", body: "Set your intention with the universe: inside the window, inside the rules, then walk away." },
-  { title: "Pray", body: "Pray for the people you're doing this for. Then trade like they're watching." },
-  { title: "A moment for the universe", body: "You are more than your P&L. Ask the universe for peace with whatever today brings." },
-  { title: "Pray", body: "Ask God for a quiet mind. Fear and greed are loud; you don't have to listen to either today." },
-];
+export function upliftIndex(day: string, slot: "morning" | "weekend"): number {
+  const d = Math.max(0, Math.round((Date.parse(`${day}T00:00:00Z`) - EPOCH) / 86_400_000));
+  return d + weekendsBefore(d) + (slot === "weekend" ? 1 : 0);
+}
 
-export const GRATITUDE: { title: string; body: string }[] = [
-  { title: "Thankful", body: "Name three things you're thankful for right now. Small counts: a brew, a laugh, a roof." },
-  { title: "Thankful", body: "Who's in your corner? Send one of them a message today, no reason needed." },
-  { title: "Thankful", body: "Your body carried you through this week. Thank it with water, a walk and an early night." },
-  { title: "Thankful", body: "Write one line in the journal about something good that happened this week, however small." },
-  { title: "Thankful", body: "You're still here, still learning, still showing up. That's worth being grateful for." },
-  { title: "Thankful", body: "Think of a moment this week you handled better than the old you would have. Thank yourself for it." },
-];
+const gcd = (a: number, b: number): number => (b ? gcd(b, a % b) : a);
+function walk<T>(list: readonly T[], k: number): T {
+  const n = list.length;
+  let stride = Math.max(1, Math.round(n * 0.382));
+  while (gcd(stride, n) !== 1) stride++;
+  return list[(k * stride) % n]!;
+}
 
-export const MANIFEST: { title: string; body: string }[] = [
-  { title: "Manifest", body: "See it: the payout lands, the card is cleared, and you got there trading only your window. Hold that picture for a minute." },
-  { title: "Manifest", body: "Say it out loud: “I am a patient trader. I wait for my setup, I take my stop, I walk away.”" },
-  { title: "Manifest", body: "Picture next Friday's evening recap: five clean days. Feel what that's like, then go make it real one day at a time." },
-  { title: "Manifest", body: "“Money comes to me through discipline, not desperation.” Read it twice." },
-  { title: "Manifest", body: "Write down the life the payouts are for. Be specific. Read it before Monday's session." },
-  { title: "Manifest", body: "You don't need every move. You need yours. Let the rest go by, knowing yours is coming." },
-  { title: "Manifest", body: "Imagine the version of you a year from now, debt gone, calm at the screen. What would they thank you for doing this weekend?" },
-];
-
-type Draw = { day: string; quotes: readonly { text: string; cite: string }[]; pick?: number; salt?: string };
-
-/** One positive message, drawn from the date: a prayer, a quote, gratitude or manifesting. */
-export function uplift(i: Draw): { title: string; body: string } {
-  let h = 2166136261;
-  for (const c of `${i.salt ?? "morning"}:${i.day}`) h = Math.imul(h ^ c.charCodeAt(0), 16777619);
-  const seed = i.pick ?? h >>> 0;
-  const n = Math.floor(seed / 4);
-  switch (seed % 4) {
-    case 0: return PRAYERS[n % PRAYERS.length]!;
-    case 1: return GRATITUDE[n % GRATITUDE.length]!;
-    case 2: return MANIFEST[n % MANIFEST.length]!;
+/** One positive message: a prayer, a quote, something to be thankful for, or something to manifest. */
+export function uplift(i: Draw): Uplift {
+  const s = i.pick ?? upliftIndex(i.day, i.slot ?? "morning");
+  // Every five: prayer, quote, thankful, quote, manifest. Quotes have the biggest
+  // library, so they take two slots; each list then lasts well over a year.
+  const round = Math.floor(s / 5);
+  switch (s % 5) {
+    case 0: return walk(PRAYERS, round);
+    case 2: return walk(THANKFUL, round);
+    case 4: return walk(MANIFEST, round);
     default: {
-      if (!i.quotes.length) return PRAYERS[n % PRAYERS.length]!;
-      const q = i.quotes[n % i.quotes.length]!;
+      if (!i.quotes.length) return walk(PRAYERS, round);
+      const q = walk(i.quotes, round * 2 + (s % 5 === 3 ? 1 : 0));
       return { title: "Thought for the day", body: `“${q.text}”\n— ${q.cite}` };
     }
   }
@@ -255,5 +247,5 @@ export function morning(i: Draw & { minute: number }): Reminder | null {
 /** Weekends, 15:00: one more positive one, nothing about the market (a different draw from the morning's). */
 export function weekendLift(i: Draw & { minute: number }): Reminder | null {
   if (weekdayIndex(i.day) < 5 || i.minute < 15 * 60 || i.minute >= 16 * 60) return null;
-  return { kind: "uplift", key: i.day, url: "/", ...uplift({ ...i, salt: "weekend" }) };
+  return { kind: "uplift", key: i.day, url: "/", ...uplift({ ...i, slot: "weekend" }) };
 }

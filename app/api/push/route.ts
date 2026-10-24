@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { assertSameOrigin, assertSession } from "@/lib/auth/session";
 import { morning } from "@/lib/analytics/notify";
-import { OBSERVER_QUOTES } from "@/lib/quotes";
+import { QUOTES } from "@/lib/content/quotes";
 import { pushAll, removeSubscription, saveSubscription, subscriptionCount, vapidKeys } from "@/lib/push";
 
 /** Signed-in only; changes must also come from this site (browsers omit Origin on same-origin GETs). */
@@ -35,7 +35,7 @@ export async function POST(request: Request) {
   const body = (await request.json().catch(() => ({}))) as { subscription?: unknown; device?: unknown; test?: unknown };
   if (body.test === "morning") {
     // A random draw, so each tap shows another prayer or quote.
-    const m = morning({ day: "test", minute: 9 * 60, quotes: OBSERVER_QUOTES, pick: Math.floor(Math.random() * 1e6) })!;
+    const m = morning({ day: "test", minute: 9 * 60, quotes: QUOTES, pick: Math.floor(Math.random() * 1e6) })!;
     return NextResponse.json(await pushAll({ title: m.title, body: m.body, url: m.url, tag: "test-morning" }, new URL(request.url).origin));
   }
   if (body.test === true) {
