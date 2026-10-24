@@ -9,7 +9,7 @@
 import { fmtMinute, weekdayIndex } from "./time";
 import type { MissionDay } from "./mission";
 
-export type NotifyKind = "morning" | "checkin" | "pre" | "close" | "evening" | "weekly" | "capsule" | "goal" | "rule";
+export type NotifyKind = "morning" | "uplift" | "checkin" | "pre" | "close" | "evening" | "weekly" | "capsule" | "goal" | "rule";
 export type Reminder = { kind: NotifyKind; /** What it's claimed under: once per this key. */ key: string; title: string; body: string; url: string };
 
 /** No pushes overnight, whatever is due. */
@@ -207,16 +207,53 @@ export const PRAYERS: { title: string; body: string }[] = [
   { title: "Pray", body: "Ask God for a quiet mind. Fear and greed are loud; you don't have to listen to either today." },
 ];
 
-export function morning(i: { day: string; minute: number; quotes: readonly { text: string; cite: string }[]; pick?: number }): Reminder | null {
-  if (i.pick === undefined && (i.minute < 9 * 60 || i.minute >= 10 * 60)) return null;
+export const GRATITUDE: { title: string; body: string }[] = [
+  { title: "Thankful", body: "Name three things you're thankful for right now. Small counts: a brew, a laugh, a roof." },
+  { title: "Thankful", body: "Who's in your corner? Send one of them a message today, no reason needed." },
+  { title: "Thankful", body: "Your body carried you through this week. Thank it with water, a walk and an early night." },
+  { title: "Thankful", body: "Write one line in the journal about something good that happened this week, however small." },
+  { title: "Thankful", body: "You're still here, still learning, still showing up. That's worth being grateful for." },
+  { title: "Thankful", body: "Think of a moment this week you handled better than the old you would have. Thank yourself for it." },
+];
+
+export const MANIFEST: { title: string; body: string }[] = [
+  { title: "Manifest", body: "See it: the payout lands, the card is cleared, and you got there trading only your window. Hold that picture for a minute." },
+  { title: "Manifest", body: "Say it out loud: “I am a patient trader. I wait for my setup, I take my stop, I walk away.”" },
+  { title: "Manifest", body: "Picture next Friday's evening recap: five clean days. Feel what that's like, then go make it real one day at a time." },
+  { title: "Manifest", body: "“Money comes to me through discipline, not desperation.” Read it twice." },
+  { title: "Manifest", body: "Write down the life the payouts are for. Be specific. Read it before Monday's session." },
+  { title: "Manifest", body: "You don't need every move. You need yours. Let the rest go by, knowing yours is coming." },
+  { title: "Manifest", body: "Imagine the version of you a year from now, debt gone, calm at the screen. What would they thank you for doing this weekend?" },
+];
+
+type Draw = { day: string; quotes: readonly { text: string; cite: string }[]; pick?: number; salt?: string };
+
+/** One positive message, drawn from the date: a prayer, a quote, gratitude or manifesting. */
+export function uplift(i: Draw): { title: string; body: string } {
   let h = 2166136261;
-  for (const c of `morning:${i.day}`) h = Math.imul(h ^ c.charCodeAt(0), 16777619);
+  for (const c of `${i.salt ?? "morning"}:${i.day}`) h = Math.imul(h ^ c.charCodeAt(0), 16777619);
   const seed = i.pick ?? h >>> 0;
-  const url = "/";
-  if (seed % 2 === 0 || !i.quotes.length) {
-    const p = PRAYERS[Math.floor(seed / 2) % PRAYERS.length]!;
-    return { kind: "morning", key: i.day, title: p.title, body: p.body, url };
+  const n = Math.floor(seed / 4);
+  switch (seed % 4) {
+    case 0: return PRAYERS[n % PRAYERS.length]!;
+    case 1: return GRATITUDE[n % GRATITUDE.length]!;
+    case 2: return MANIFEST[n % MANIFEST.length]!;
+    default: {
+      if (!i.quotes.length) return PRAYERS[n % PRAYERS.length]!;
+      const q = i.quotes[n % i.quotes.length]!;
+      return { title: "Thought for the day", body: `“${q.text}”\n— ${q.cite}` };
+    }
   }
-  const q = i.quotes[Math.floor(seed / 2) % i.quotes.length]!;
-  return { kind: "morning", key: i.day, title: "Thought for the day", body: `“${q.text}”\n— ${q.cite}`, url };
+}
+
+/** 9:00 every day. */
+export function morning(i: Draw & { minute: number }): Reminder | null {
+  if (i.pick === undefined && (i.minute < 9 * 60 || i.minute >= 10 * 60)) return null;
+  return { kind: "morning", key: i.day, url: "/", ...uplift(i) };
+}
+
+/** Weekends, 15:00: one more positive one, nothing about the market (a different draw from the morning's). */
+export function weekendLift(i: Draw & { minute: number }): Reminder | null {
+  if (weekdayIndex(i.day) < 5 || i.minute < 15 * 60 || i.minute >= 16 * 60) return null;
+  return { kind: "uplift", key: i.day, url: "/", ...uplift({ ...i, salt: "weekend" }) };
 }

@@ -87,8 +87,12 @@ test("9:00 message: prayer or quote, fixed per day, varied across days", async (
   const a = morning({ day: fri, minute: at(9, 10), quotes })!;
   assert.deepEqual(morning({ day: fri, minute: at(9, 50), quotes }), a);
   const kinds = new Set<string>();
-  for (let d = 1; d <= 28; d++) kinds.add(morning({ day: `2026-11-${String(d).padStart(2, "0")}`, minute: at(9), quotes })!.title === "Thought for the day" ? "quote" : "prayer");
-  assert.deepEqual([...kinds].sort(), ["prayer", "quote"]);
+  for (let d = 1; d <= 28; d++) kinds.add(morning({ day: `2026-11-${String(d).padStart(2, "0")}`, minute: at(9), quotes })!.title);
+  assert.ok(kinds.has("Thought for the day") && kinds.has("Thankful") && kinds.has("Manifest") && [...kinds].some((k) => k.startsWith("Pray")));
   assert.ok(PRAYERS.some((p) => /God/.test(p.body)) && PRAYERS.some((p) => /universe/.test(p.body)));
-  assert.match(morning({ day: "test", minute: 0, quotes, pick: 1 })!.body, /Anything can happen/);
+  assert.match(morning({ day: "test", minute: 0, quotes, pick: 3 })!.body, /Anything can happen/);
+  const { weekendLift } = await import("../lib/analytics/notify");
+  assert.equal(weekendLift({ day: fri, minute: at(15, 10), quotes }), null);
+  assert.equal(weekendLift({ day: sat, minute: at(14, 50), quotes }), null);
+  assert.equal(weekendLift({ day: sat, minute: at(15, 10), quotes })!.kind, "uplift");
 });

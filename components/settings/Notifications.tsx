@@ -8,7 +8,7 @@ import { Note, SRow } from "./ui";
 import type { NotifySettings } from "@/lib/types";
 
 const KINDS: { k: keyof NotifySettings; name: string; hint: string }[] = [
-  { k: "morning", name: "9:00 prayer or quote", hint: "Every morning: some days a moment to pray, to God or the universe; some days a line to carry into the session." },
+  { k: "morning", name: "Prayer, gratitude and quotes", hint: "Every day at 9:00, and again at 15:00 on weekends: a moment to pray (to God or the universe), something to be thankful for, a picture to manifest, or a psychology quote. Never market talk at weekends." },
   { k: "checkin", name: "12:00 check-in", hint: "Trading days at noon: your window, no orders before it, today's plan (or a nudge to write one) and where your goals stand." },
   { k: "preSession", name: "Before your window", hint: "In the 90 minutes before it opens: how long to go, what's missing from your pre-session journal (plan, readiness, ritual) and your streak." },
   { k: "close", name: "Window closed", hint: "The hour after it closes: platform off, today's trades, and a nudge to write the review if you haven't." },
@@ -137,7 +137,7 @@ export function Notifications({ initial, scheduled }: { initial: NotifySettings;
               Send a test
             </Button>
             <Button variant="secondary" onClick={() => test("morning")} disabled={busy}>
-              Test 9:00 message
+              Test a positive one
             </Button>
             <Button variant="secondary" onClick={turnOff} disabled={busy}>
               Turn off
