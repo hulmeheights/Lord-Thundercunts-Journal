@@ -40,7 +40,20 @@ async function call(method: "GET" | "POST" | "DELETE", body?: unknown) {
 }
 
 /** Push notifications to this phone or computer: a nudge before the session, and a recap after. */
-export function Notifications({ initial, scheduled }: { initial: NotifySettings; scheduled: boolean }) {
+const KIND_LABEL: Record<string, string> = {
+  morning: "9:00 positive",
+  uplift: "Weekend 15:00 positive",
+  checkin: "12:00 check-in",
+  pre: "Before your window",
+  close: "Window closed",
+  evening: "Evening recap",
+  weekly: "Weekly Observer",
+  capsule: "Time capsule",
+  goal: "Goal",
+  rule: "Rule alert",
+};
+
+export function Notifications({ initial, scheduled, recent = [], timezone }: { initial: NotifySettings; scheduled: boolean; recent?: { kind: string; sentAt: string }[]; timezone: string }) {
   const [state, setState] = useState<State>("loading");
   const [prefs, setPrefs] = useState(initial);
   const [msg, setMsg] = useState<{ text: string; tone?: "pos" | "warn" } | null>(null);
@@ -155,6 +168,22 @@ export function Notifications({ initial, scheduled }: { initial: NotifySettings;
         </SRow>
       ))}
       <p className="mt-4 font-mono text-[10.5px] leading-[1.8] text-ink-4">It checks every hour from 07:00 to 22:30 and sends what's due; each one goes at most once a day. A normal trading day is about four (noon, before the window, after it, evening) plus any alerts. Nothing overnight. Times use your timezone in Profile.</p>
+      {recent.length > 0 && (
+        <div className="mt-8">
+          <div className="mb-2 font-mono text-[9.5px] tracking-[0.3em] text-ink-4 uppercase">Recently sent</div>
+          <ul className="space-y-1 font-mono text-[11px] text-ink-3">
+            {recent.map((r, i) => (
+              <li key={i} className="flex justify-between gap-4 border-b border-line py-1.5">
+                <span>{KIND_LABEL[r.kind] ?? r.kind}</span>
+                <span className="num text-ink-2">
+                  {new Date(r.sentAt).toLocaleString("en-GB", { timeZone: timezone, weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+                </span>
+              </li>
+            ))}
+          </ul>
+          <p className="mt-2 font-mono text-[10.5px] leading-[1.8] text-ink-4">The time the server sent it, in {timezone}. Your phone can show it a minute or two later.</p>
+        </div>
+      )}
       {!scheduled && <Note className="mt-6">The test works now. The scheduled reminders need CRON_SECRET set in Vercel (the same one that runs the hourly sync).</Note>}
       {msg && (
         <Note className="mt-6" tone={msg.tone}>

@@ -99,3 +99,10 @@ export async function claimDaily(day: string, kind: string): Promise<boolean> {
   const rows = await sql`insert into push_log (day, kind) values (${day}, ${kind}) on conflict do nothing returning day`;
   return rows.length > 0;
 }
+
+/** The most recent reminders the scheduler sent, newest first (tests aren't logged). */
+export async function recentPushes(limit = 12): Promise<{ kind: string; sentAt: string }[]> {
+  const sql = await db();
+  const rows = await sql<{ kind: string; sent_at: Date }[]>`select kind, sent_at from push_log order by sent_at desc limit ${limit}`;
+  return rows.map((r) => ({ kind: r.kind, sentAt: r.sent_at.toISOString() }));
+}

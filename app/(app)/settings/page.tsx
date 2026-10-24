@@ -14,6 +14,7 @@ import { Security } from "@/components/settings/Security";
 import { DataControls } from "@/components/settings/DataControls";
 import { Appearance } from "@/components/settings/Appearance";
 import { Notifications } from "@/components/settings/Notifications";
+import { recentPushes } from "@/lib/push";
 import { Dot, PageHead, Section } from "@/components/m";
 import { SectionIndex } from "@/components/m/SectionIndex";
 
@@ -31,7 +32,7 @@ function noticeFrom(sp: Record<string, string | string[] | undefined>): ConnectN
 
 export default async function SettingsPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const session = await requireSession();
-  const [settings, connections, accounts, passkeys, sessions, counts, sp, jar] = await Promise.all([
+  const [settings, connections, accounts, passkeys, sessions, counts, sp, jar, pushes] = await Promise.all([
     getSettings(),
     listConnections(),
     listBrokerAccounts(),
@@ -40,6 +41,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
     tradeCounts(),
     searchParams,
     cookies(),
+    recentPushes(),
   ]);
   const prefs = parseUiPrefs(jar.get(UI_COOKIE)?.value);
   const nightly = env.cronSecret.length >= 16;
@@ -110,7 +112,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
       </Section>
 
       <Section id="notifications" n={6} label="Notifications" lead={<>A tap on the <em>shoulder</em>.</>}>
-        <Notifications initial={settings.notify} scheduled={nightly} />
+        <Notifications initial={settings.notify} scheduled={nightly} recent={pushes} timezone={settings.profile.timezone} />
       </Section>
 
       <Section id="security" n={7} label="Security" lead={<>No one gets in but <em>you</em>.</>}>
