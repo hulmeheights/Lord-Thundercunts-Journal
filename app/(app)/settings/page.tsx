@@ -13,12 +13,13 @@ import { AiToggle, ProfileForm, RitualEditor, RulesForm, VocabEditor } from "@/c
 import { Security } from "@/components/settings/Security";
 import { DataControls } from "@/components/settings/DataControls";
 import { Appearance } from "@/components/settings/Appearance";
+import { Notifications } from "@/components/settings/Notifications";
 import { Dot, PageHead, Section } from "@/components/m";
 import { SectionIndex } from "@/components/m/SectionIndex";
 
 export const metadata = { title: "Settings" };
 
-const SECTIONS = ["connections", "rules", "ritual", "tags", "appearance", "security", "ai", "profile", "data"];
+const SECTIONS = ["connections", "rules", "ritual", "tags", "appearance", "notifications", "security", "ai", "profile", "data"];
 
 function noticeFrom(sp: Record<string, string | string[] | undefined>): ConnectNotice {
   const k = sp.tradovate;
@@ -108,19 +109,23 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
         <Appearance initial={prefs} />
       </Section>
 
-      <Section id="security" n={6} label="Security" lead={<>No one gets in but <em>you</em>.</>}>
+      <Section id="notifications" n={6} label="Notifications" lead={<>A tap on the <em>shoulder</em>.</>}>
+        <Notifications initial={settings.notify} scheduled={nightly} />
+      </Section>
+
+      <Section id="security" n={7} label="Security" lead={<>No one gets in but <em>you</em>.</>}>
         <Security passkeys={passkeys} sessions={sessions} passkeyOnly={settings.security.passkeyOnly} />
       </Section>
 
-      <Section id="ai" n={7} label="AI coach">
+      <Section id="ai" n={8} label="AI coach">
         <AiToggle enabled={settings.ai.enabled} configured={aiConfigured()} model={`${env.aiModelDeep} · ${env.aiModelLight}`} />
       </Section>
 
-      <Section id="profile" n={8} label="Profile">
+      <Section id="profile" n={9} label="Profile">
         <ProfileForm initial={settings.profile} />
       </Section>
 
-      <Section id="data" n={9} label="Your data">
+      <Section id="data" n={10} label="Your data">
         <DataControls sampleCount={counts.sample} />
       </Section>
     </>

@@ -112,6 +112,8 @@ export type Settings = {
   vocab: { setups: string[]; mistakes: string[]; emotions: string[] };
   security: { passkeyOnly: boolean };
   ai: { enabled: boolean };
+  /** Which pushes go to your phone. */
+  notify: { preSession: boolean; evening: boolean };
   observer: {
     name: string | null;
     pronoun: "they" | "he" | "she";

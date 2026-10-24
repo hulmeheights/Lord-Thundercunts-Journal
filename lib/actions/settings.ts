@@ -115,6 +115,13 @@ export async function setAiEnabled(enabled: boolean) {
   return { ok: true };
 }
 
+export async function setNotify(v: { preSession: boolean; evening: boolean }) {
+  await guard();
+  await saveSetting("notify", { preSession: v.preSession === true, evening: v.evening === true });
+  revalidatePath("/settings");
+  return { ok: true };
+}
+
 // ── Data ────────────────────────────────────────────────────────────────────
 
 export async function loadSampleData() {

@@ -377,4 +377,25 @@ export const MIGRATIONS: { version: number; sql: string }[] = [
       alter table goals add column if not exists auto_clean_days int check (auto_clean_days is null or auto_clean_days between 1 and 365);
     `,
   },
+  {
+    version: 17,
+    sql: /* sql */ `
+      -- Phones and browsers that get push notifications. The subscription (its
+      -- endpoint and keys) is AES-256-GCM encrypted; id is a hash of the endpoint.
+      create table if not exists push_subscriptions (
+        id text primary key,
+        sub_enc text not null,
+        device text check (device is null or char_length(device) <= 120),
+        created_at timestamptz not null default now(),
+        last_sent_at timestamptz
+      );
+      -- One reminder of each kind a day, however many times the cron fires.
+      create table if not exists push_log (
+        day text not null,
+        kind text not null,
+        sent_at timestamptz not null default now(),
+        primary key (day, kind)
+      );
+    `,
+  },
 ];
