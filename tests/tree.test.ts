@@ -1,38 +1,54 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { growTree } from "../lib/analytics/tree";
+import { growFlight } from "../lib/analytics/tree";
+import { cleanDaysSince, missionDays, missionState } from "../lib/analytics/mission";
+import type { Trade, TradingRules } from "../lib/types";
 
-test("tree: a branch per goal, a leaf per step, a blossom per goal reached, and the same tree every time", () => {
-  const goals = [
-    { id: "goal_a", done: true, steps: 3 },
-    { id: "goal_b", done: false, steps: 20 },
-    { id: "goal_c", done: false, steps: 0 },
+test("flight: the rocket climbs with altitude, worlds behind for goals reached, ahead for goals open, the destination grows", () => {
+  const stages = [
+    { id: "goal_a", done: true },
+    { id: "goal_b", done: false },
   ];
-  const t = growTree(goals);
-  assert.equal(t.branches.length, 3);
-  assert.deepEqual(t.branches.map((b) => [b.done, b.leaves.length]), [[true, 3], [false, 12], [false, 0]]); // leaves cap at 12 per branch
-  assert.deepEqual(growTree(goals), t);
-  const taller = growTree([...goals, { id: "goal_d", done: true, steps: 2 }]);
-  const top = (d: string) => Number(d.trim().split(/\s+/).pop());
-  assert.ok(top(taller.trunk) < top(t.trunk)); // the crown rises as goals are added
-  assert.ok(taller.trunkWidth > t.trunkWidth); // and the trunk thickens with each one reached
-  for (const b of taller.branches) assert.ok(b.tip.x >= 18 && b.tip.x <= 382 && b.tip.y >= 14);
-  assert.equal(growTree([]).branches.length, 0);
-});
-
-import { growRocket, growSky } from "../lib/analytics/tree";
-
-test("stars and rocket: a star per step, a lit anchor or a world per goal reached, the rocket climbs with progress", () => {
-  const goals = [
-    { id: "goal_a", done: true, steps: 4 },
-    { id: "goal_b", done: false, steps: 2 },
-  ];
-  const sky = growSky(goals);
-  assert.deepEqual(sky.constellations.map((c) => [c.done, c.stars.length]), [[true, 4], [false, 2]]);
-  for (const c of sky.constellations) for (const s of c.stars) assert.ok(s.x >= 12 && s.x <= 388 && s.y >= 12 && s.y <= 468);
-  const low = growRocket([{ id: "goal_a", done: false, steps: 1 }]);
-  const high = growRocket(goals);
+  const low = growFlight(stages, 3);
+  const high = growFlight(stages, 60);
   assert.ok(high.rocket.y < low.rocket.y);
   assert.deepEqual(high.worlds.map((w) => w.done), [true, false]);
-  assert.ok(growRocket(Array.from({ length: 40 }, (_, i) => ({ id: `g${i}`, done: true, steps: 30 }))).rocket.y > 0); // never leaves the frame
+  const behind = high.worlds.find((w) => w.done)!;
+  const ahead = high.worlds.find((w) => !w.done)!;
+  assert.ok(behind.y > high.rocket.y && ahead.y < high.rocket.y);
+  assert.ok(growFlight([{ id: "a", done: true }], 0).destination.r > growFlight([{ id: "a", done: false }], 0).destination.r);
+  assert.ok(growFlight(stages, 100000).rocket.y > high.destination.y); // never flies past the destination
+  assert.deepEqual(growFlight(stages, 20), growFlight(stages, 20));
+});
+
+let seq = 0;
+const trade = (day: string, hhmm: string, net: number): Trade => ({
+  id: `m${++seq}`, source: "import", accountId: null, symbol: "MNQZ6", root: "MNQ", direction: "long", qty: 3, maxPosition: 3,
+  entryTime: `${day}T${hhmm}:00Z`, exitTime: `${day}T${hhmm}:00Z`, entryPrice: 1, exitPrice: 2, grossPnl: net, fees: 0, netPnl: net, pointValue: 2,
+  fillCount: 2, setups: [], tags: [], mistakes: [], emotion: null, rating: null, notes: null, plannedRisk: null, followedPlan: null, chartUrl: null,
+});
+const rules = { maxTradesPerDay: 3, maxDailyLoss: 1000, stopAfterConsecutiveLosses: 2, maxContracts: null, maxLossPerTrade: null, cooldownMinutesAfterLoss: null, sessionStart: "14:30", sessionEnd: "16:00", defaultRisk: 300, custom: [] } as unknown as TradingRules;
+
+test("mission: in-window days burn, sat-out weekdays hold, early or over-limit days leak, weekends skipped", () => {
+  const trades = [
+    trade("2026-10-20", "14:40", 300), // Tue: clean
+    trade("2026-10-22", "14:45", 200), // Thu: clean
+    trade("2026-10-23", "13:13", -216), // Fri: before the window
+    trade("2026-10-23", "14:50", 300),
+  ];
+  const days = missionDays(trades, rules, "UTC", "2026-10-19", "2026-10-26");
+  assert.deepEqual(days.map((d) => [d.day, d.kind]), [
+    ["2026-10-19", "hold"],
+    ["2026-10-20", "burn"],
+    ["2026-10-21", "hold"],
+    ["2026-10-22", "burn"],
+    ["2026-10-23", "leak"],
+    ["2026-10-26", "hold"],
+  ]);
+  assert.deepEqual(days[4]!.reasons, ["outside your window"]);
+  const s = missionState(days, 2, 1);
+  assert.equal(s.streak, 0); // Monday's hold keeps nothing going past Friday's leak
+  assert.equal(s.altitude, 1 + 3 + 1 + 3 - 2 + 1 + 2 + 5);
+  assert.equal(missionState(days.slice(0, 4), 0, 0).streak, 2);
+  assert.equal(cleanDaysSince(days, "2026-10-21"), 1);
 });

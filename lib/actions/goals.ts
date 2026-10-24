@@ -12,7 +12,14 @@ const clean = (s: string) => s.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\
 const Id = (prefix: string) => z.string().regex(new RegExp(`^${prefix}_[A-Za-z0-9_-]{1,40}$`));
 const done = () => revalidatePath("/journal");
 
-export async function addGoal(input: { title: string; why?: string | null; targetDay?: string | null; reward?: string | null }) {
+export async function addGoal(input: {
+  title: string;
+  why?: string | null;
+  targetDay?: string | null;
+  reward?: string | null;
+  kind?: "trading" | "life";
+  autoCleanDays?: number | null;
+}) {
   await assertSession();
   const v = z
     .object({
@@ -20,6 +27,8 @@ export async function addGoal(input: { title: string; why?: string | null; targe
       why: z.string().nullish().transform((s) => (s ? clean(s).slice(0, 1000) || null : null)),
       targetDay: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullish().transform((s) => s ?? null),
       reward: z.string().nullish().transform((s) => (s ? clean(s).slice(0, 160) || null : null)),
+      kind: z.enum(["trading", "life"]).default("life"),
+      autoCleanDays: z.number().int().min(1).max(365).nullish().transform((n) => n ?? null),
     })
     .safeParse(input);
   if (!v.success) return { error: v.error.issues[0]?.message ?? "Check the goal." };
@@ -66,10 +75,13 @@ export async function claimReward(goalId: string, claimed: boolean) {
   return { ok: true };
 }
 
-/** Tree, stars or rocket: how your progress is drawn. */
-export async function setGoalsTheme(theme: string) {
+/** Name the mission. Naming it for the first time starts the clock on it. */
+export async function setMission(name: string) {
   await assertSession();
-  await saveSetting("goals", { theme: z.enum(["tree", "stars", "rocket"]).parse(theme) });
+  const mission = z.string().transform(clean).pipe(z.string().min(1).max(80)).parse(name);
+  const settings = await getSettings();
+  const missionStart = settings.goals.missionStart ?? todayKey(settings.profile.timezone);
+  await saveSetting("goals", { mission, missionStart });
   done();
   return { ok: true };
 }

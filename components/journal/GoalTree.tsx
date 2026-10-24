@@ -1,151 +1,124 @@
 "use client";
 
-import { growRocket, growSky, growTree, type TreeGoal } from "@/lib/analytics/tree";
+import { useId } from "react";
+import { growFlight, type Stage } from "@/lib/analytics/tree";
 
 const CSS = `
-@keyframes ltj-grow { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
-@keyframes ltj-leaf { from { opacity: 0; transform: scale(0.2); } to { opacity: 1; transform: scale(1); } }
-@keyframes ltj-bloom { 0% { opacity: 0; transform: scale(0.1) rotate(-40deg); } 70% { transform: scale(1.25) rotate(6deg); } 100% { opacity: 1; transform: scale(1) rotate(0); } }
-@keyframes ltj-halo { 0% { opacity: 0.7; transform: scale(0.4); } 100% { opacity: 0; transform: scale(3); } }
-.ltj-tree .grow { stroke-dasharray: 1; animation: ltj-grow 1.6s cubic-bezier(0.16,1,0.3,1) both; }
-.ltj-tree .leaf, .ltj-tree .bloom, .ltj-tree .halo { transform-box: fill-box; transform-origin: center; }
-.ltj-tree .leaf { animation: ltj-leaf 0.7s cubic-bezier(0.16,1,0.3,1) both; }
-.ltj-tree .bloom { animation: ltj-bloom 1.1s cubic-bezier(0.16,1,0.3,1) both; }
-.ltj-tree .halo { animation: ltj-halo 1.6s ease-out both; }
-@keyframes ltj-twinkle { 0%, 100% { opacity: 0.35; } 50% { opacity: 0.9; } }
-@keyframes ltj-flame { 0%, 100% { transform: scaleY(1); } 50% { transform: scaleY(1.35); } }
-@keyframes ltj-rise { from { transform: translateY(40px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
-.ltj-tree .twinkle { animation: ltj-twinkle 3.2s ease-in-out infinite; }
-.ltj-tree .flame { transform-box: fill-box; transform-origin: top center; animation: ltj-flame 0.35s ease-in-out infinite; }
-.ltj-tree .rise { animation: ltj-rise 1.6s cubic-bezier(0.16,1,0.3,1) both; }
-@media (prefers-reduced-motion: reduce) { .ltj-tree * { animation: none !important; stroke-dasharray: none !important; } }
+@keyframes ltj-drift { from { transform: translateY(0); } to { transform: translateY(520px); } }
+@keyframes ltj-flicker { 0%, 100% { transform: scaleY(1) scaleX(1); } 30% { transform: scaleY(1.25) scaleX(0.92); } 60% { transform: scaleY(0.9) scaleX(1.06); } }
+@keyframes ltj-breathe { 0%, 100% { opacity: 0.55; transform: scale(1); } 50% { opacity: 0.9; transform: scale(1.18); } }
+@keyframes ltj-hover { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
+@keyframes ltj-pop { 0% { opacity: 0; transform: scale(0.1); } 70% { transform: scale(1.2); } 100% { opacity: 1; transform: scale(1); } }
+@keyframes ltj-halo { 0% { opacity: 0.8; transform: scale(0.5); } 100% { opacity: 0; transform: scale(3.2); } }
+@keyframes ltj-spin { to { transform: rotate(360deg); } }
+.ltj-scene .drift { animation: ltj-drift linear infinite; }
+.ltj-scene .flame, .ltj-scene .glow, .ltj-scene .pop, .ltj-scene .halo { transform-box: fill-box; }
+.ltj-scene .flame { transform-origin: top center; animation: ltj-flicker 0.22s ease-in-out infinite; }
+.ltj-scene .glow { transform-origin: center; animation: ltj-breathe 2.4s ease-in-out infinite; }
+.ltj-scene .craft { animation: ltj-hover 3.6s ease-in-out infinite; }
+.ltj-scene .pop { transform-origin: center; animation: ltj-pop 1s cubic-bezier(0.16,1,0.3,1) both; }
+.ltj-scene .halo { transform-origin: center; animation: ltj-halo 1.8s ease-out both; }
+@media (prefers-reduced-motion: reduce) { .ltj-scene * { animation: none !important; } }
 `;
 
-/** Five gold petals around a cream heart. */
-function Blossom({ x, y, fresh }: { x: number; y: number; fresh: boolean }) {
+/**
+ * The mission: a rocket flown by your discipline, past a ringed world for every
+ * goal reached, towards the destination you named. The engine runs hotter the
+ * longer your clean-day streak; a recent leak makes it sputter.
+ */
+export function MissionScene({ stages, altitude, streak, leaking, fresh }: { stages: Stage[]; altitude: number; streak: number; leaking: boolean; fresh?: string | null }) {
+  const id = useId().replace(/:/g, "");
+  const f = growFlight(stages, altitude);
+  const { x, y } = f.rocket;
+  const hot = streak >= 5;
+  const flameLen = leaking ? 12 : 22 + Math.min(streak, 10) * 2.4;
+  // Faster stars the hotter the engine.
+  const speed = [90, 55, 30].map((s) => s / (1 + Math.min(streak, 10) * 0.12));
+
   return (
-    <g>
-      {fresh && <circle className="halo" cx={x} cy={y} r={9} fill="none" stroke="var(--gold)" strokeWidth={1} />}
-      <g className="bloom" style={{ animationDelay: fresh ? "0.9s" : "1.2s" }}>
-        {[0, 72, 144, 216, 288].map((a) => (
-          <ellipse key={a} cx={x} cy={y - 5.2} rx={3.1} ry={5.2} fill="var(--gold)" opacity={0.9} transform={`rotate(${a} ${x} ${y})`} />
+    <svg viewBox={`0 0 ${f.width} ${f.height}`} className="ltj-scene h-auto w-full" role="img" aria-label={`Mission: altitude ${altitude}, ${streak} clean days in a row, ${stages.filter((s) => s.done).length} of ${stages.length} goals reached`}>
+      <style>{CSS}</style>
+      <defs>
+        <linearGradient id={`hull${id}`} x1="0" x2="1">
+          <stop offset="0" stopColor="var(--ink-2)" />
+          <stop offset="0.45" stopColor="var(--ink)" />
+          <stop offset="1" stopColor="var(--ink-3)" />
+        </linearGradient>
+        <radialGradient id={`glow${id}`}>
+          <stop offset="0" stopColor={hot ? "var(--ink)" : "var(--gold)"} stopOpacity="0.9" />
+          <stop offset="0.4" stopColor="var(--gold)" stopOpacity="0.35" />
+          <stop offset="1" stopColor="var(--gold)" stopOpacity="0" />
+        </radialGradient>
+        <radialGradient id={`planet${id}`} cx="0.35" cy="0.35">
+          <stop offset="0" stopColor="var(--ink)" stopOpacity="0.9" />
+          <stop offset="0.35" stopColor="var(--gold)" />
+          <stop offset="1" stopColor="var(--gold)" stopOpacity="0.35" />
+        </radialGradient>
+        <clipPath id={`frame${id}`}>
+          <rect width={f.width} height={f.height} />
+        </clipPath>
+      </defs>
+
+      <g clipPath={`url(#frame${id})`}>
+        {/* Parallax: three layers of stars drifting past, nearest fastest. */}
+        {f.layers.map((layer, L) => (
+          <g key={L} className="drift" style={{ animationDuration: `${speed[L]}s` }}>
+            {[0, -f.height].map((dy) => (
+              <g key={dy} transform={`translate(0 ${dy})`}>
+                {layer.map((d, i) => (
+                  <circle key={i} cx={d.x} cy={d.y} r={d.r} fill={L === 2 ? "var(--ink-2)" : "var(--ink-4)"} opacity={0.4 + L * 0.25} />
+                ))}
+              </g>
+            ))}
+          </g>
         ))}
-        <circle cx={x} cy={y} r={2.4} fill="var(--ink)" />
-      </g>
-    </g>
-  );
-}
 
-/** The goal tree, drawn in hairlines: a leaf per step, a blossom per goal reached. */
-export function GoalTree({ goals, fresh }: { goals: TreeGoal[]; fresh?: string | null }) {
-  const t = growTree(goals);
-  return (
-    <svg viewBox={`0 ${t.crown} ${t.width} ${t.height - t.crown}`} className="ltj-tree h-auto w-full" role="img" aria-label={`Your tree: ${goals.length} goals, ${goals.filter((g) => g.done).length} reached`}>
-      <style>{CSS}</style>
-      <line x1={40} x2={t.width - 40} y1={t.ground} y2={t.ground} stroke="var(--line-2)" strokeWidth={1} />
-      {t.roots.map((d) => (
-        <path key={d} d={d} fill="none" stroke="var(--ink-4)" strokeWidth={1} strokeLinecap="round" />
-      ))}
-      <path className="grow" pathLength={1} d={t.trunk} fill="none" stroke="var(--ink-2)" strokeWidth={t.trunkWidth} strokeLinecap="round" />
-      {t.branches.map((b, i) => (
-        <g key={b.id}>
-          <path
-            className="grow"
-            pathLength={1}
-            d={b.d}
-            fill="none"
-            stroke={b.done ? "var(--ink-2)" : "var(--ink-3)"}
-            strokeWidth={b.done ? 1.8 : 1.2}
-            strokeLinecap="round"
-            style={{ animationDelay: `${0.5 + i * 0.08}s` }}
-          />
-          {b.leaves.map((l, k) => (
-            <ellipse
-              key={k}
-              className="leaf"
-              cx={l.x}
-              cy={l.y}
-              rx={2.4}
-              ry={5.6}
-              fill="var(--pos)"
-              opacity={0.85}
-              transform={`rotate(${l.angle} ${l.x} ${l.y})`}
-              style={{ animationDelay: `${0.9 + i * 0.08 + k * 0.05}s` }}
-            />
-          ))}
-          {b.done ? (
-            <Blossom x={b.tip.x} y={b.tip.y} fresh={fresh === b.id} />
-          ) : (
-            <circle cx={b.tip.x} cy={b.tip.y} r={2.6} fill="var(--bg)" stroke="var(--gold)" strokeWidth={1} />
-          )}
+        {/* The destination: grows as the goals fall behind you. */}
+        <g>
+          <circle cx={f.destination.x} cy={f.destination.y} r={f.destination.r * 1.9} fill={`url(#glow${id})`} opacity={0.35} />
+          <circle cx={f.destination.x} cy={f.destination.y} r={f.destination.r} fill={`url(#planet${id})`} />
+          <ellipse cx={f.destination.x} cy={f.destination.y} rx={f.destination.r * 1.75} ry={f.destination.r * 0.38} fill="none" stroke="var(--gold)" strokeWidth={1.2} opacity={0.8} transform={`rotate(-16 ${f.destination.x} ${f.destination.y})`} />
         </g>
-      ))}
-    </svg>
-  );
-}
 
-/** The sky: each goal a constellation, each step a star joined to the last, a reached goal shining gold. */
-export function GoalSky({ goals, fresh }: { goals: TreeGoal[]; fresh?: string | null }) {
-  const sky = growSky(goals);
-  return (
-    <svg viewBox={`0 0 ${sky.width} ${sky.height}`} className="ltj-tree h-auto w-full" role="img" aria-label={`Your sky: ${goals.length} constellations, ${goals.filter((g) => g.done).length} complete`}>
-      <style>{CSS}</style>
-      {sky.dust.map((d, i) => (
-        <circle key={i} cx={d.x} cy={d.y} r={d.r} fill="var(--ink-4)" className={i % 5 === 0 ? "twinkle" : undefined} style={{ animationDelay: `${(i % 7) * 0.4}s` }} />
-      ))}
-      {sky.constellations.map((c, i) => (
-        <g key={c.id}>
-          <path className="grow" pathLength={1} d={c.lines} fill="none" stroke={c.done ? "var(--gold)" : "var(--ink-3)"} strokeWidth={c.done ? 0.9 : 0.6} opacity={c.done ? 0.8 : 0.6} style={{ animationDelay: `${0.3 + i * 0.1}s` }} />
-          {c.stars.map((st, k) => (
-            <circle key={k} className="leaf" cx={st.x} cy={st.y} r={st.r} fill={c.done ? "var(--ink)" : "var(--ink-2)"} style={{ animationDelay: `${0.6 + i * 0.1 + k * 0.05}s` }} />
-          ))}
-          {c.done ? (
-            <g>
-              {fresh === c.id && <circle className="halo" cx={c.anchor.x} cy={c.anchor.y} r={8} fill="none" stroke="var(--gold)" strokeWidth={1} />}
-              <g className="bloom" style={{ animationDelay: fresh === c.id ? "0.8s" : "1s" }}>
-                <circle cx={c.anchor.x} cy={c.anchor.y} r={9} fill="var(--gold)" opacity={0.18} />
-                <path d={`M${c.anchor.x} ${c.anchor.y - 8} L${c.anchor.x + 2} ${c.anchor.y - 2} L${c.anchor.x + 8} ${c.anchor.y} L${c.anchor.x + 2} ${c.anchor.y + 2} L${c.anchor.x} ${c.anchor.y + 8} L${c.anchor.x - 2} ${c.anchor.y + 2} L${c.anchor.x - 8} ${c.anchor.y} L${c.anchor.x - 2} ${c.anchor.y - 2} Z`} fill="var(--gold)" />
+        <line x1={30} x2={f.width - 30} y1={f.ground} y2={f.ground} stroke="var(--line-2)" strokeWidth={1} />
+        <path d={f.trail} fill="none" stroke="var(--ink-3)" strokeWidth={1.2} strokeDasharray={leaking ? "3 6" : "1 3"} strokeLinecap="round" opacity={0.75} />
+
+        {f.worlds.map((w) =>
+          w.done ? (
+            <g key={w.id}>
+              {fresh === w.id && <circle className="halo" cx={w.x} cy={w.y} r={w.r} fill="none" stroke="var(--gold)" strokeWidth={1.2} />}
+              <g className="pop">
+                <circle cx={w.x} cy={w.y} r={w.r} fill={`url(#planet${id})`} />
+                <ellipse cx={w.x} cy={w.y} rx={w.r * 1.8} ry={w.r * 0.42} fill="none" stroke="var(--gold)" strokeWidth={1} transform={`rotate(-18 ${w.x} ${w.y})`} />
               </g>
             </g>
           ) : (
-            <circle cx={c.anchor.x} cy={c.anchor.y} r={3} fill="var(--bg)" stroke="var(--gold)" strokeWidth={1} />
-          )}
-        </g>
-      ))}
-    </svg>
-  );
-}
-
-/** The rocket: every step lifts it, every goal reached is a world it has flown past. */
-export function GoalRocket({ goals, fresh }: { goals: TreeGoal[]; fresh?: string | null }) {
-  const f = growRocket(goals);
-  const { x, y } = f.rocket;
-  return (
-    <svg viewBox={`0 0 ${f.width} ${f.height}`} className="ltj-tree h-auto w-full" role="img" aria-label={`Your rocket: altitude ${f.altitude}, ${goals.filter((g) => g.done).length} worlds passed`}>
-      <style>{CSS}</style>
-      {f.dust.map((d, i) => (
-        <circle key={i} cx={d.x} cy={d.y} r={d.r} fill="var(--ink-4)" className={i % 4 === 0 ? "twinkle" : undefined} style={{ animationDelay: `${(i % 6) * 0.5}s` }} />
-      ))}
-      <line x1={40} x2={f.width - 40} y1={f.ground} y2={f.ground} stroke="var(--line-2)" strokeWidth={1} />
-      <path className="grow" pathLength={1} d={f.trail} fill="none" stroke="var(--ink-3)" strokeWidth={1} strokeDasharray="1" opacity={0.7} />
-      {f.worlds.map((w) =>
-        w.done ? (
-          <g key={w.id}>
-            {fresh === w.id && <circle className="halo" cx={w.x} cy={w.y} r={w.r} fill="none" stroke="var(--gold)" strokeWidth={1} />}
-            <g className="bloom">
-              <circle cx={w.x} cy={w.y} r={w.r} fill="var(--gold)" opacity={0.85} />
-              <ellipse cx={w.x} cy={w.y} rx={w.r * 1.8} ry={w.r * 0.45} fill="none" stroke="var(--gold)" strokeWidth={1} transform={`rotate(-18 ${w.x} ${w.y})`} />
+            <g key={w.id}>
+              <circle cx={w.x} cy={w.y} r={w.r} fill="none" stroke="var(--ink-3)" strokeWidth={1} strokeDasharray="2 2.5" />
+              <circle cx={w.x} cy={w.y} r={1.2} fill="var(--gold)" />
             </g>
-          </g>
-        ) : (
-          <circle key={w.id} cx={w.x} cy={w.y} r={w.r} fill="none" stroke="var(--ink-3)" strokeWidth={1} strokeDasharray="2 2" />
-        ),
-      )}
-      <g className="rise">
-        <path className="flame" d={`M${x - 4} ${y + 18} Q${x} ${y + 34} ${x + 4} ${y + 18} Z`} fill="var(--gold)" opacity={0.9} />
-        <path d={`M${x} ${y - 22} C${x + 9} ${y - 12} ${x + 8} ${y + 6} ${x + 6} ${y + 18} L${x - 6} ${y + 18} C${x - 8} ${y + 6} ${x - 9} ${y - 12} ${x} ${y - 22} Z`} fill="var(--ink)" />
-        <circle cx={x} cy={y - 6} r={2.6} fill="var(--bg)" stroke="var(--pos)" strokeWidth={1} />
-        <path d={`M${x - 6} ${y + 8} L${x - 12} ${y + 20} L${x - 6} ${y + 18} Z M${x + 6} ${y + 8} L${x + 12} ${y + 20} L${x + 6} ${y + 18} Z`} fill="var(--ink-2)" />
+          ),
+        )}
+
+        {/* The craft. */}
+        <g className="craft">
+          <circle className="glow" cx={x} cy={y + 30} r={hot ? 30 : 22} fill={`url(#glow${id})`} />
+          <path className="flame" d={`M${x - 6.5} ${y + 24} Q${x} ${y + 24 + flameLen * 1.6} ${x + 6.5} ${y + 24} Z`} fill="var(--gold)" opacity={leaking ? 0.55 : 0.92} />
+          <path className="flame" style={{ animationDelay: "0.08s" }} d={`M${x - 3} ${y + 24} Q${x} ${y + 24 + flameLen} ${x + 3} ${y + 24} Z`} fill={hot ? "var(--ink)" : "var(--gold)"} opacity={0.95} />
+          {/* fins */}
+          <path d={`M${x - 8} ${y + 4} L${x - 18} ${y + 22} L${x - 17} ${y + 26} L${x - 8} ${y + 20} Z`} fill="var(--gold)" opacity={0.85} />
+          <path d={`M${x + 8} ${y + 4} L${x + 18} ${y + 22} L${x + 17} ${y + 26} L${x + 8} ${y + 20} Z`} fill="var(--gold)" opacity={0.85} />
+          {/* nozzle */}
+          <path d={`M${x - 5.5} ${y + 20} L${x + 5.5} ${y + 20} L${x + 7} ${y + 25} L${x - 7} ${y + 25} Z`} fill="var(--ink-3)" />
+          {/* hull */}
+          <path d={`M${x} ${y - 34} C${x + 11} ${y - 22} ${x + 10} ${y + 4} ${x + 8} ${y + 21} L${x - 8} ${y + 21} C${x - 10} ${y + 4} ${x - 11} ${y - 22} ${x} ${y - 34} Z`} fill={`url(#hull${id})`} />
+          {/* nose */}
+          <path d={`M${x} ${y - 34} C${x + 4.5} ${y - 29} ${x + 6.5} ${y - 25} ${x + 7.5} ${y - 21} L${x - 7.5} ${y - 21} C${x - 6.5} ${y - 25} ${x - 4.5} ${y - 29} ${x} ${y - 34} Z`} fill="var(--gold)" />
+          <line x1={x - 9.2} x2={x + 9.2} y1={y + 9} y2={y + 9} stroke="var(--ink-3)" strokeWidth={0.8} />
+          {/* window */}
+          <circle cx={x} cy={y - 9} r={4.4} fill="var(--bg)" stroke="var(--gold)" strokeWidth={1} />
+          <circle cx={x - 1.3} cy={y - 10.3} r={1.4} fill="var(--pos)" opacity={0.9} />
+        </g>
       </g>
     </svg>
   );

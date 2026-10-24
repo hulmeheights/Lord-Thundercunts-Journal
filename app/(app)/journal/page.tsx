@@ -5,7 +5,8 @@ import { listLedger } from "@/lib/data/ledger";
 import { capsuleStatus, evaluateCapsule } from "@/lib/analytics/capsule";
 import { CapsuleList, type CapsuleView } from "@/components/journal/CapsuleList";
 import { Goals } from "@/components/journal/Goals";
-import { listGoals } from "@/lib/data/goals";
+import { listGoals, setGoalDone } from "@/lib/data/goals";
+import { cleanDaysSince, missionDays, missionState } from "@/lib/analytics/mission";
 import { photoCounts } from "@/lib/data/photos";
 import { addDays, addMonths, endOfMonth, longDate, monthLabel, startOfMonth, todayKey } from "@/lib/analytics/time";
 import { dailySeries, summarize } from "@/lib/analytics/stats";
@@ -42,6 +43,26 @@ export default async function JournalPage({ searchParams }: { searchParams: Prom
   // Goals are measured from the oldest capsule's seal date, which can reach back before this year.
   const capFrom = capsules.reduce((m, c) => (c.createdAt < m ? c.createdAt : m), `${yStart}T00:00:00Z`);
   const capTrades = capFrom < `${yStart}T00:00:00Z` ? await listTrades({ since: new Date(addDays(capFrom.slice(0, 10), -1)) }) : trades;
+  // The mission: every weekday since it began, read from your trades.
+  const missionStart = settings.goals.missionStart ?? goals.reduce((m, g) => (g.createdAt.slice(0, 10) < m ? g.createdAt.slice(0, 10) : m), today);
+  const missionTrades = `${missionStart}T00:00:00Z` < `${yStart}T00:00:00Z` ? await listTrades({ since: new Date(addDays(missionStart, -1)) }) : trades;
+  const mDays = missionDays(missionTrades, settings.rules, tz, missionStart, today);
+  // Trading goals that count themselves: reached once they've seen enough clean days.
+  const clean: Record<string, number> = {};
+  const autoReached: string[] = [];
+  for (const g of goals) {
+    if (g.kind !== "trading" || g.autoCleanDays === null) continue;
+    const n = cleanDaysSince(mDays, g.createdAt.slice(0, 10));
+    clean[g.id] = n;
+    if (!g.completedAt && n >= g.autoCleanDays) {
+      await setGoalDone(g.id, true);
+      g.completedAt = new Date().toISOString();
+      autoReached.push(g.id);
+    }
+  }
+  const ms = missionState(mDays, goals.reduce((n, g) => n + g.steps.length, 0), goals.filter((g) => g.completedAt).length);
+  const mission = { name: settings.goals.mission, altitude: ms.altitude, streak: ms.streak, burns: ms.burns, holds: ms.holds, leaks: ms.leaks, days: ms.days };
+
   const capsuleViews: CapsuleView[] = capsules.map((c) => ({
     capsule: c,
     status: capsuleStatus(c, today),
@@ -174,8 +195,8 @@ export default async function JournalPage({ searchParams }: { searchParams: Prom
         )}
       </Section>
 
-      <Section id="goals" n={4} label="Goals" lead={<>Say what you&apos;ll do. Then <em>grow</em> it.</>}>
-        <Goals goals={goals} today={today} theme={settings.goals.theme} />
+      <Section id="goals" n={4} label="Goals" lead={<>The <em>mission</em>, flown by your discipline.</>}>
+        <Goals goals={goals} today={today} mission={mission} clean={clean} autoReached={autoReached} />
       </Section>
 
       <Section n={5} label="Time capsule">

@@ -13,10 +13,14 @@ export type Goal = {
   /** What you earn when it's reached. */
   reward: string | null;
   rewardClaimedAt: string | null;
+  /** Trading goals feed off your trades; life goals (a marathon) you mark yourself. */
+  kind: "trading" | "life";
+  /** A trading goal reached automatically after this many clean trading days. */
+  autoCleanDays: number | null;
   steps: GoalStep[];
 };
 
-type GoalRow = { id: string; title: string; why: string | null; target_day: string | null; created_at: Date; completed_at: Date | null; reward: string | null; reward_claimed_at: Date | null };
+type GoalRow = { id: string; title: string; why: string | null; target_day: string | null; created_at: Date; completed_at: Date | null; reward: string | null; reward_claimed_at: Date | null; kind: "trading" | "life"; auto_clean_days: number | null };
 type StepRow = { id: string; goal_id: string; day: string; text: string; created_at: Date };
 
 /** Every goal with its steps, oldest first, so the tree grows in the order you lived it. */
@@ -37,14 +41,19 @@ export async function listGoals(): Promise<Goal[]> {
     completedAt: g.completed_at?.toISOString() ?? null,
     reward: g.reward,
     rewardClaimedAt: g.reward_claimed_at?.toISOString() ?? null,
+    kind: g.kind ?? "life",
+    autoCleanDays: g.auto_clean_days ?? null,
     steps: byGoal.get(g.id) ?? [],
   }));
 }
 
-export async function insertGoal(g: { title: string; why: string | null; targetDay: string | null; reward: string | null }): Promise<string> {
+export async function insertGoal(g: { title: string; why: string | null; targetDay: string | null; reward: string | null; kind: "trading" | "life"; autoCleanDays: number | null }): Promise<string> {
   const sql = await db();
   const id = `goal_${randomToken(10)}`;
-  await sql`insert into goals (id, title, why, target_day, reward) values (${id}, ${g.title}, ${g.why}, ${g.targetDay}, ${g.reward})`;
+  await sql`
+    insert into goals (id, title, why, target_day, reward, kind, auto_clean_days)
+    values (${id}, ${g.title}, ${g.why}, ${g.targetDay}, ${g.reward}, ${g.kind}, ${g.kind === "trading" ? g.autoCleanDays : null})
+  `;
   return id;
 }
 

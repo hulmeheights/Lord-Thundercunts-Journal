@@ -105,7 +105,7 @@ export type Settings = {
   profile: { name: string; timezone: string };
   plan: PlanSettings;
   /** How the Journal draws your goals. */
-  goals: { theme: "tree" | "stars" | "rocket" };
+  goals: { mission: string; missionStart: string | null };
   rules: TradingRules;
   prop: PropSettings;
   ritual: RitualItem[];

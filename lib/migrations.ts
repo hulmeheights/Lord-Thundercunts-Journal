@@ -368,4 +368,13 @@ export const MIGRATIONS: { version: number; sql: string }[] = [
       alter table goals add column if not exists reward_claimed_at timestamptz;
     `,
   },
+  {
+    version: 16,
+    sql: /* sql */ `
+      -- Trading goals and life goals. A trading goal can count itself: it's reached
+      -- after N clean trading days (inside your window, within your stops).
+      alter table goals add column if not exists kind text not null default 'life' check (kind in ('trading', 'life'));
+      alter table goals add column if not exists auto_clean_days int check (auto_clean_days is null or auto_clean_days between 1 and 365);
+    `,
+  },
 ];
