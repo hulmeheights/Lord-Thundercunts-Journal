@@ -110,9 +110,18 @@ test("positive pushes: 9:00 daily and 15:00 at weekends, rotating categories, no
       idx.add(n);
       const u = uplift({ day, quotes: QUOTES, slot });
       assert.ok(!seen.has(u.body), `repeated on ${day}: ${u.body}`);
-      assert.notEqual(u.title === "Thought for the day" ? "q" : u.title, last, `same kind twice in a row on ${day}`);
-      last = u.title === "Thought for the day" ? "q" : u.title;
+      const kind = ["Thankful", "Manifest"].includes(u.title) || /^Pray|prayer|moment/i.test(u.title) ? u.title.replace(/ .*/, "") : "q";
+      assert.notEqual(kind, last, `same kind twice in a row on ${day}`);
+      last = kind;
       seen.add(u.body);
     }
   }
+});
+
+test("quote notifications: author as title, the quote alone as the body", async () => {
+  const { quoteTitle } = await import("../lib/analytics/notify");
+  assert.equal(quoteTitle("Mark Douglas · Trading in the Zone"), "Mark Douglas");
+  assert.equal(quoteTitle("Psalm 46:10 (KJV)"), "Psalm 46:10");
+  assert.equal(quoteTitle("attributed to Lao Tzu"), "Lao Tzu (attributed)");
+  assert.equal(quoteTitle("Thich Nhat Hanh"), "Thich Nhat Hanh");
 });

@@ -53,7 +53,7 @@ const KIND_LABEL: Record<string, string> = {
   rule: "Rule alert",
 };
 
-export function Notifications({ initial, scheduled, recent = [], timezone }: { initial: NotifySettings; scheduled: boolean; recent?: { kind: string; sentAt: string }[]; timezone: string }) {
+export function Notifications({ initial, scheduled, recent = [], timezone }: { initial: NotifySettings; scheduled: boolean; recent?: { kind: string; at: string }[]; timezone: string }) {
   const [state, setState] = useState<State>("loading");
   const [prefs, setPrefs] = useState(initial);
   const [msg, setMsg] = useState<{ text: string; tone?: "pos" | "warn" } | null>(null);
@@ -175,9 +175,7 @@ export function Notifications({ initial, scheduled, recent = [], timezone }: { i
             {recent.map((r, i) => (
               <li key={i} className="flex justify-between gap-4 border-b border-line py-1.5">
                 <span>{KIND_LABEL[r.kind] ?? r.kind}</span>
-                <span className="num text-ink-2">
-                  {new Date(r.sentAt).toLocaleString("en-GB", { timeZone: timezone, weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
-                </span>
+                <span className="num text-ink-2">{r.at}</span>
               </li>
             ))}
           </ul>

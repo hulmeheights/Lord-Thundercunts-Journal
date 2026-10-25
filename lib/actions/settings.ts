@@ -124,6 +124,20 @@ export async function setNotify(v: NotifySettings) {
   return { ok: true };
 }
 
+export async function newWidgetLink() {
+  await guard();
+  const { createWidgetToken } = await import("../data/widget");
+  return { token: await createWidgetToken() };
+}
+
+export async function revokeWidgetLink() {
+  await guard();
+  const { revokeWidgetTokens } = await import("../data/widget");
+  await revokeWidgetTokens();
+  revalidatePath("/settings");
+  return { ok: true };
+}
+
 // ── Data ────────────────────────────────────────────────────────────────────
 
 export async function loadSampleData() {

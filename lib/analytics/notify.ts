@@ -220,6 +220,18 @@ function walk<T>(list: readonly T[], k: number): T {
   return list[(k * stride) % n]!;
 }
 
+/**
+ * The author as the notification's title, the quote alone as its body: iOS
+ * already adds the app's name under the title, so anything more is clutter.
+ * "Mark Douglas · Trading in the Zone" → "Mark Douglas"; "Psalm 46:10 (KJV)" →
+ * "Psalm 46:10"; "attributed to Lao Tzu" → "Lao Tzu (attributed)".
+ */
+export function quoteTitle(cite: string): string {
+  let t = cite.split(" · ")[0]!.replace(/\s*\(KJV\)$/, "").trim();
+  if (/^attributed to /i.test(t)) t = `${t.replace(/^attributed to /i, "")} (attributed)`;
+  return t;
+}
+
 /** One positive message: a prayer, a quote, something to be thankful for, or something to manifest. */
 export function uplift(i: Draw): Uplift {
   const s = i.pick ?? upliftIndex(i.day, i.slot ?? "morning");
@@ -233,7 +245,7 @@ export function uplift(i: Draw): Uplift {
     default: {
       if (!i.quotes.length) return walk(PRAYERS, round);
       const q = walk(i.quotes, round * 2 + (s % 5 === 3 ? 1 : 0));
-      return { title: "Thought for the day", body: `“${q.text}”\n— ${q.cite}` };
+      return { title: quoteTitle(q.cite), body: q.text };
     }
   }
 }

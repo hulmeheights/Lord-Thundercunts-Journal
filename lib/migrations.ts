@@ -407,4 +407,16 @@ export const MIGRATIONS: { version: number; sql: string }[] = [
       alter table goals add column if not exists started_on text check (started_on is null or started_on ~ '^\\d{4}-\\d{2}-\\d{2}$');
     `,
   },
+  {
+    version: 19,
+    sql: /* sql */ `
+      -- The phone widget's read-only key. Only a SHA-256 of it is stored; it
+      -- can read today's quote, window and streak, nothing else.
+      create table if not exists widget_tokens (
+        token_hash text primary key,
+        created_at timestamptz not null default now(),
+        last_used_at timestamptz
+      );
+    `,
+  },
 ];

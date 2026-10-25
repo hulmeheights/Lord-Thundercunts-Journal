@@ -3,7 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 const SESSION_COOKIE = process.env.NODE_ENV === "production" ? "__Host-ltj_session" : "ltj_session";
 
 /** Paths reachable without a session. Everything else is locked. */
-const PUBLIC_PREFIXES = ["/unlock", "/setup", "/api/auth/", "/api/cron/"];
+const PUBLIC_PREFIXES = ["/unlock", "/setup", "/api/auth/", "/api/cron/", "/api/widget"];
 const PUBLIC_FILES = ["/manifest.webmanifest", "/robots.txt", "/icon.svg", "/apple-icon", "/icon-192.png", "/icon-512.png", "/sw.js"];
 
 function isPublic(pathname: string) {

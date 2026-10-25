@@ -15,12 +15,18 @@ import { DataControls } from "@/components/settings/DataControls";
 import { Appearance } from "@/components/settings/Appearance";
 import { Notifications } from "@/components/settings/Notifications";
 import { recentPushes } from "@/lib/push";
+import { Widget } from "@/components/settings/Widget";
+import { widgetStatus } from "@/lib/data/widget";
 import { Dot, PageHead, Section } from "@/components/m";
 import { SectionIndex } from "@/components/m/SectionIndex";
 
 export const metadata = { title: "Settings" };
 
-const SECTIONS = ["connections", "rules", "ritual", "tags", "appearance", "notifications", "security", "ai", "profile", "data"];
+const SECTIONS = ["connections", "rules", "ritual", "tags", "appearance", "notifications", "widget", "security", "ai", "profile", "data"];
+
+/** Dates are formatted here, once, so the server and the phone never disagree on the text. */
+const stamp = (iso: string, tz: string) =>
+  new Date(iso).toLocaleString("en-GB", { timeZone: tz, weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 
 function noticeFrom(sp: Record<string, string | string[] | undefined>): ConnectNotice {
   const k = sp.tradovate;
@@ -32,7 +38,7 @@ function noticeFrom(sp: Record<string, string | string[] | undefined>): ConnectN
 
 export default async function SettingsPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const session = await requireSession();
-  const [settings, connections, accounts, passkeys, sessions, counts, sp, jar, pushes] = await Promise.all([
+  const [settings, connections, accounts, passkeys, sessions, counts, sp, jar, pushes, widget] = await Promise.all([
     getSettings(),
     listConnections(),
     listBrokerAccounts(),
@@ -42,6 +48,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
     searchParams,
     cookies(),
     recentPushes(),
+    widgetStatus(),
   ]);
   const prefs = parseUiPrefs(jar.get(UI_COOKIE)?.value);
   const nightly = env.cronSecret.length >= 16;
@@ -112,22 +119,31 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
       </Section>
 
       <Section id="notifications" n={6} label="Notifications" lead={<>A tap on the <em>shoulder</em>.</>}>
-        <Notifications initial={settings.notify} scheduled={nightly} recent={pushes} timezone={settings.profile.timezone} />
+        <Notifications
+          initial={settings.notify}
+          scheduled={nightly}
+          timezone={settings.profile.timezone}
+          recent={pushes.map((r) => ({ kind: r.kind, at: stamp(r.sentAt, settings.profile.timezone) }))}
+        />
       </Section>
 
-      <Section id="security" n={7} label="Security" lead={<>No one gets in but <em>you</em>.</>}>
+      <Section id="widget" n={7} label="Widget" lead={<>On your <em>Lock Screen</em>, all day.</>}>
+        <Widget active={widget.active} lastUsed={widget.lastUsedAt ? stamp(widget.lastUsedAt, settings.profile.timezone) : null} />
+      </Section>
+
+      <Section id="security" n={8} label="Security" lead={<>No one gets in but <em>you</em>.</>}>
         <Security passkeys={passkeys} sessions={sessions} passkeyOnly={settings.security.passkeyOnly} />
       </Section>
 
-      <Section id="ai" n={8} label="AI coach">
+      <Section id="ai" n={9} label="AI coach">
         <AiToggle enabled={settings.ai.enabled} configured={aiConfigured()} model={`${env.aiModelDeep} · ${env.aiModelLight}`} />
       </Section>
 
-      <Section id="profile" n={9} label="Profile">
+      <Section id="profile" n={10} label="Profile">
         <ProfileForm initial={settings.profile} />
       </Section>
 
-      <Section id="data" n={10} label="Your data">
+      <Section id="data" n={11} label="Your data">
         <DataControls sampleCount={counts.sample} />
       </Section>
     </>
