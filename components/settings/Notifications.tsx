@@ -66,10 +66,12 @@ export function Notifications({ initial, scheduled, recent = [], timezone }: { i
         return;
       }
       if (Notification.permission === "denied") return setState("denied");
-      const reg = await navigator.serviceWorker.getRegistration("/");
-      const sub = await reg?.pushManager.getSubscription();
+      // iOS can sit on these for a long time after an update; give up after 3s and offer to turn on.
+      const timeout = new Promise<null>((r) => setTimeout(() => r(null), 3000));
+      const reg = await Promise.race([navigator.serviceWorker.getRegistration("/"), timeout]);
+      const sub = reg ? await Promise.race([reg.pushManager.getSubscription(), timeout]) : null;
       setState(sub ? "on" : "off");
-    })().catch(() => setState("unsupported"));
+    })().catch(() => setState("off"));
   }, []);
 
   const turnOn = () =>
@@ -141,26 +143,29 @@ export function Notifications({ initial, scheduled, recent = [], timezone }: { i
                 ? "Notifications are blocked. On iPhone: Settings → Notifications → Thundercunts → Allow Notifications. Then come back and turn them on."
                 : state === "on"
                   ? "Receiving notifications."
+                  : state === "loading"
+                    ? "Checking this device…"
                   : "Nothing is sent until you turn it on. Notifications show a short line and open the journal when tapped."
         }
       >
-        {state === "on" ? (
-          <div className="flex flex-wrap gap-3">
-            <Button variant="secondary" onClick={() => test()} disabled={busy}>
-              Send a test
-            </Button>
-            <Button variant="secondary" onClick={() => test("morning")} disabled={busy}>
-              Test a positive one
-            </Button>
+        <div className="flex flex-wrap gap-3">
+          {/* Tests go to every device that's turned on, so they're always here. */}
+          <Button variant="secondary" onClick={() => test()} disabled={busy}>
+            Send a test
+          </Button>
+          <Button variant="secondary" onClick={() => test("morning")} disabled={busy}>
+            Test a positive one
+          </Button>
+          {state === "on" ? (
             <Button variant="secondary" onClick={turnOff} disabled={busy}>
               Turn off
             </Button>
-          </div>
-        ) : state === "off" ? (
-          <Button onClick={turnOn} disabled={busy}>
-            {busy ? "Asking…" : "Turn on notifications"}
-          </Button>
-        ) : null}
+          ) : state === "off" || state === "loading" ? (
+            <Button onClick={turnOn} disabled={busy || state === "loading"}>
+              {busy ? "Asking…" : state === "loading" ? "Checking…" : "Turn on notifications"}
+            </Button>
+          ) : null}
+        </div>
       </SRow>
       {KINDS.map(({ k, name, hint }) => (
         <SRow key={k} name={name} hint={hint}>
