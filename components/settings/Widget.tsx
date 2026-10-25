@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import { newWidgetLink, revokeWidgetLink, saveWidgetStyle, widgetPreviewLine } from "@/lib/actions/settings";
-import { ACCENTS, FONTS, FOOTER, KINDS, LOCKS, THEMES, TOPS, quoteLines, quoteSize, type FooterItem, type Kind, type WidgetStyle } from "@/lib/widget/style";
+import { ACCENTS, CORNERS, FONTS, FOOTER, KINDS, LOCKS, THEMES, TOPS, quoteLines, quoteSize, type FooterItem, type Kind, type WidgetStyle } from "@/lib/widget/style";
 import { Button } from "@/components/ui/Button";
 import { Toggle } from "@/components/ui/Toggle";
 import { Seg } from "@/components/m/Seg";
@@ -38,7 +38,7 @@ try { d = await req.loadJSON(); } catch (e) {}
 
 const THEMES = ${JSON.stringify(Object.fromEntries(Object.entries(THEMES).map(([k, v]) => [k, { bg: v.bg, ink: v.ink, dim: v.dim }])))};
 const ACCENTS = ${JSON.stringify(Object.fromEntries(Object.entries(ACCENTS).map(([k, v]) => [k, v.hex])))};
-const s = Object.assign({ theme: "night", accent: "gold", font: "serif", size: "m", align: "left", top: "status", author: true, border: false, footer: ["window", "streak", "mission"], lock: "words", refresh: 15 }, (d && d.style) || {});
+const s = Object.assign({ theme: "night", accent: "gold", font: "serif", size: "m", align: "left", top: "status", author: true, border: false, footer: ["window", "streak"], corner: "mission", cornerText: "", lock: "words", refresh: 15 }, (d && d.style) || {});
 const th = THEMES[s.theme] || THEMES.night;
 const ink = new Color(th.ink), dim = new Color(th.dim), accent = new Color(ACCENTS[s.accent] || ACCENTS.gold);
 const fam = config.widgetFamily || "medium";
@@ -51,18 +51,17 @@ function qfont(n) {
   if (s.font === "mono") return Font.regularMonospacedSystemFont(n - 1);
   return new Font("Georgia", n);
 }
-function footer() {
-  const out = [];
-  for (const f of s.footer) {
-    if (f === "window" && d.window) out.push(d.window);
-    if (f === "streak") out.push(d.streak + " clean in a row");
-    if (f === "mission") out.push(d.mission);
-    if (f === "funded" && d.funded !== undefined) out.push(d.funded + " funded");
-    if (f === "payouts" && d.payouts !== undefined) out.push(d.payouts + (d.payouts === 1 ? " payout" : " payouts"));
-    if (f === "paidOut" && d.paidOut !== undefined) out.push("$" + d.paidOut.toLocaleString() + " paid out");
-  }
-  return out.join("  ·  ");
+function item(f) {
+  if (f === "window") return d.window || "";
+  if (f === "streak") return d.streak + " clean in a row";
+  if (f === "mission") return d.mission;
+  if (f === "funded" && d.funded !== undefined) return d.funded + " funded";
+  if (f === "payouts" && d.payouts !== undefined) return d.payouts + (d.payouts === 1 ? " payout" : " payouts");
+  if (f === "paidOut" && d.paidOut !== undefined) return "$" + d.paidOut.toLocaleString() + " paid out";
+  return "";
 }
+function footer() { return s.footer.map(item).filter(Boolean).join("  ·  "); }
+function corner() { return s.corner === "custom" ? (s.cornerText || "") : s.corner === "none" || !s.corner ? "" : item(s.corner); }
 const top = d ? (s.top === "status" ? d.status : s.top === "date" ? d.date : s.top === "mission" ? d.mission : "") : "";
 const words = d ? (d.words || d.body || "") : "";
 const by = d ? (d.by || d.title || "") : "";
@@ -125,10 +124,13 @@ if (!d || d.error) {
   }
   c.addSpacer();
   const foot = footer();
-  if (foot) {
-    const frow = c.addStack(); if (s.align === "center") frow.addSpacer();
-    const ft = frow.addText(foot); ft.font = Font.mediumMonospacedSystemFont(9); ft.textColor = dim; ft.lineLimit = 1; ft.minimumScaleFactor = 0.7;
-    if (s.align === "center") frow.addSpacer();
+  const right = fam === "small" ? "" : corner();
+  if (foot || right) {
+    const frow = c.addStack(); frow.bottomAlignContent();
+    if (s.align === "center" && !right) frow.addSpacer();
+    if (foot) { const ft = frow.addText(foot); ft.font = Font.mediumMonospacedSystemFont(9); ft.textColor = dim; ft.lineLimit = 1; ft.minimumScaleFactor = 0.7; }
+    frow.addSpacer();
+    if (right) { const rt = frow.addText(right); rt.font = Font.italicSystemFont(10); rt.textColor = dim; rt.lineLimit = 1; rt.minimumScaleFactor = 0.8; }
   }
 }
 
@@ -137,19 +139,17 @@ Script.complete();
 `;
 }
 
-/** The footer text, built the same way the script builds it. */
-function footerText(s: WidgetStyle, p: PreviewData) {
-  const out: string[] = [];
-  for (const f of s.footer) {
-    if (f === "window" && p.window) out.push(p.window);
-    if (f === "streak") out.push(`${p.streak} clean in a row`);
-    if (f === "mission") out.push(p.mission);
-    if (f === "funded") out.push(`${p.funded} funded`);
-    if (f === "payouts") out.push(`${p.payouts} ${p.payouts === 1 ? "payout" : "payouts"}`);
-    if (f === "paidOut") out.push(`$${p.paidOut.toLocaleString("en-US")} paid out`);
-  }
-  return out.join("  ·  ");
+/** Footer and corner text, built the same way the script builds them. */
+function itemText(f: FooterItem, p: PreviewData): string {
+  if (f === "window") return p.window ?? "";
+  if (f === "streak") return `${p.streak} clean in a row`;
+  if (f === "mission") return p.mission;
+  if (f === "funded") return `${p.funded} funded`;
+  if (f === "payouts") return `${p.payouts} ${p.payouts === 1 ? "payout" : "payouts"}`;
+  return `$${p.paidOut.toLocaleString("en-US")} paid out`;
 }
+const footerText = (s: WidgetStyle, p: PreviewData) => s.footer.map((f) => itemText(f, p)).filter(Boolean).join("  ·  ");
+const cornerText = (s: WidgetStyle, p: PreviewData) => (s.corner === "custom" ? s.cornerText : s.corner === "none" ? "" : itemText(s.corner, p));
 
 function HomePreview({ s, p, family }: { s: WidgetStyle; p: PreviewData; family: "small" | "medium" | "large" }) {
   const th = THEMES[s.theme];
@@ -157,6 +157,7 @@ function HomePreview({ s, p, family }: { s: WidgetStyle; p: PreviewData; family:
   const top = s.top === "status" ? p.status : s.top === "date" ? p.date : s.top === "mission" ? p.mission : "";
   const author = p.line.kind === "quote" ? `— ${p.line.by}` : p.line.by;
   const foot = footerText(s, p);
+  const right = family === "small" ? "" : cornerText(s, p);
   const box = family === "small" ? "h-[158px] w-[158px]" : family === "medium" ? "h-[158px] w-[338px]" : "h-[354px] w-[338px]";
   const center = s.align === "center";
   return (
@@ -189,15 +190,20 @@ function HomePreview({ s, p, family }: { s: WidgetStyle; p: PreviewData; family:
             {p.line.words}
           </p>
           {s.author && author && (
-            <p className="mt-1.5 w-full truncate italic" style={{ color: accent, fontSize: family === "small" ? 10 : 11 }}>
+            <p className="mt-1.5 w-full truncate italic" style={{ color: accent, fontSize: family === "small" ? 10 : 11, fontFamily: FONTS.sans.css }}>
               {author}
             </p>
           )}
         </div>
-        {foot && (
-          <p className="mt-2 w-full truncate font-mono text-[9px]" style={{ color: th.dim }}>
-            {foot}
-          </p>
+        {(foot || right) && (
+          <div className={cn("mt-2 flex w-full items-end gap-3", center && !right && "justify-center")} style={{ color: th.dim }}>
+            {foot && <span className="min-w-0 truncate font-mono text-[9px]">{foot}</span>}
+            {right && (
+              <span className="ml-auto shrink-0 truncate text-[10px] italic" style={{ fontFamily: FONTS.sans.css }}>
+                {right}
+              </span>
+            )}
+          </div>
         )}
       </div>
     </div>
@@ -372,9 +378,23 @@ export function Widget({ active, lastUsed, initial, preview }: { active: boolean
           <p className="mt-2 font-mono text-[10.5px] leading-[1.8] text-ink-4">They take turns day by day, and no line repeats until its whole list has been used.</p>
         </div>
         <div className="md:col-span-2">
-          <span className={label}>Along the bottom · up to 3</span>
+          <span className={label}>Bottom left · up to 3</span>
           <Checks<FooterItem> value={s.footer} onChange={(v) => set("footer", v)} options={FOOTER} max={3} />
-          {s.footer.includes("paidOut") && <p className="mt-2 font-mono text-[10.5px] text-ink">◆ Total paid out puts money on your Home Screen, where anyone holding your phone can see it.</p>}
+          {(s.footer.includes("paidOut") || s.corner === "paidOut") && <p className="mt-2 font-mono text-[10.5px] text-ink">◆ Total paid out puts money on your Home Screen, where anyone holding your phone can see it.</p>}
+        </div>
+        <div className="md:col-span-2">
+          <span className={label}>Bottom right · in italics (medium and large)</span>
+          <Seg value={s.corner} onChange={(v) => set("corner", v)} options={(Object.keys(CORNERS) as (keyof typeof CORNERS)[]).map((k) => ({ value: k, label: CORNERS[k] }))} />
+          {s.corner === "custom" && (
+            <input
+              className="field mt-4 max-w-sm"
+              value={s.cornerText}
+              maxLength={40}
+              placeholder="e.g. One clean session at a time"
+              aria-label="Your own words for the corner"
+              onChange={(e) => set("cornerText", e.target.value)}
+            />
+          )}
         </div>
         <div>
           <span className={label}>Lock Screen widget</span>

@@ -86,7 +86,8 @@ export async function widgetFeed(now = new Date()): Promise<WidgetFeed> {
   const raw = widgetLine(day, style.kinds, QUOTES);
   // Widgets are small: just the name, not the book ("Mark Douglas · Trading in the Zone" → "Mark Douglas").
   const line = { ...raw, by: raw.kind === "quote" ? raw.by.split(" · ")[0]! : raw.by };
-  const money = style.footer.some((f) => f === "funded" || f === "payouts" || f === "paidOut");
+  const uses = (k: "funded" | "payouts" | "paidOut") => style.footer.includes(k) || style.corner === k;
+  const money = uses("funded") || uses("payouts") || uses("paidOut");
   const ledger = money ? summarizeLedger(await listLedger()) : null;
   return {
     style,
@@ -98,9 +99,9 @@ export async function widgetFeed(now = new Date()): Promise<WidgetFeed> {
     date: new Date(`${day}T12:00:00Z`).toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" }),
     streak,
     mission: settings.goals.mission,
-    ...(style.footer.includes("funded") && ledger ? { funded: ledger.liveFunded } : {}),
-    ...(style.footer.includes("payouts") && ledger ? { payouts: ledger.payouts } : {}),
-    ...(style.footer.includes("paidOut") && ledger ? { paidOut: Math.round(ledger.paidOut) } : {}),
+    ...(uses("funded") && ledger ? { funded: ledger.liveFunded } : {}),
+    ...(uses("payouts") && ledger ? { payouts: ledger.payouts } : {}),
+    ...(uses("paidOut") && ledger ? { paidOut: Math.round(ledger.paidOut) } : {}),
     updated: now.toISOString(),
     title: line.kind === "quote" ? "Thought for the day" : line.by,
     body: raw.kind === "quote" ? `“${raw.words}”\n— ${raw.by}` : raw.words,

@@ -38,6 +38,17 @@ export const FOOTER = {
   payouts: "Payouts so far",
   paidOut: "Total paid out ($)",
 } as const;
+/** The bottom-right corner, in italics: one item, your own words, or nothing. */
+export const CORNERS = {
+  mission: "Mission name",
+  custom: "My own words",
+  streak: "Clean-day streak",
+  window: "Your window",
+  funded: "Funded accounts",
+  payouts: "Payouts so far",
+  paidOut: "Total paid out ($)",
+  none: "Nothing",
+} as const;
 export const TOPS = { status: "Window status", date: "Today's date", mission: "Mission name", none: "Nothing" } as const;
 export const LOCKS = { words: "The words only", "status-words": "Window status + words", streak: "Streak and status" } as const;
 
@@ -56,6 +67,8 @@ export const WidgetStyle = z.object({
   kinds: z.array(z.enum(Object.keys(KINDS) as [Kind])).min(1, "Pick at least one kind of message"),
   footer: z.array(z.enum(Object.keys(FOOTER) as [FooterItem])).max(3, "Up to three things fit along the bottom"),
   lock: z.enum(Object.keys(LOCKS) as [keyof typeof LOCKS]),
+  corner: z.enum(Object.keys(CORNERS) as [keyof typeof CORNERS]),
+  cornerText: z.string().max(40, "Keep the corner to 40 characters").transform((t) => t.replace(/[\u0000-\u001f\u007f]/g, "").trim()),
   refresh: z.union([z.literal(15), z.literal(30), z.literal(60)]),
 });
 export type WidgetStyle = z.infer<typeof WidgetStyle>;
@@ -70,8 +83,10 @@ export const DEFAULT_WIDGET: WidgetStyle = {
   author: true,
   border: false,
   kinds: ["prayer", "quote", "thankful", "manifest"],
-  footer: ["window", "streak", "mission"],
+  footer: ["window", "streak"],
   lock: "words",
+  corner: "mission",
+  cornerText: "",
   refresh: 15,
 };
 
