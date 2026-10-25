@@ -59,7 +59,7 @@ export const WidgetStyle = z.object({
   theme: z.enum(Object.keys(THEMES) as [keyof typeof THEMES]),
   accent: z.enum(Object.keys(ACCENTS) as [keyof typeof ACCENTS]),
   font: z.enum(Object.keys(FONTS) as [keyof typeof FONTS]),
-  size: z.enum(["s", "m", "l"]),
+  size: z.enum(["s", "m", "ml", "l"]),
   align: z.enum(["left", "center"]),
   top: z.enum(Object.keys(TOPS) as [keyof typeof TOPS]),
   author: z.boolean(),
@@ -90,10 +90,13 @@ export const DEFAULT_WIDGET: WidgetStyle = {
   refresh: 15,
 };
 
+/** Small 13 · Medium 15 · Medium+ 16 · Large 17 on the medium widget. */
+export const SIZE_SCALE = { s: 0.87, m: 1, ml: 1.07, l: 1.15 } as const;
+
 /** Quote text size per widget size, scaled by the size setting. */
 export function quoteSize(family: "small" | "medium" | "large", size: WidgetStyle["size"]): number {
   const base = family === "small" ? 13 : family === "large" ? 19 : 15;
-  return Math.round(base * (size === "s" ? 0.87 : size === "l" ? 1.15 : 1));
+  return Math.round(base * SIZE_SCALE[size]);
 }
 /** How many lines the quote may take before it's cut. */
 export const quoteLines = (family: "small" | "medium" | "large") => (family === "small" ? 5 : family === "large" ? 10 : 4);

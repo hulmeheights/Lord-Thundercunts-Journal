@@ -8,7 +8,7 @@ import { missionDays, missionState } from "../analytics/mission";
 import { widgetLine } from "../analytics/notify";
 import { summarizeLedger } from "../analytics/ledger";
 import { listLedger } from "./ledger";
-import type { WidgetStyle } from "../widget/style";
+import { quoteSize, type WidgetStyle } from "../widget/style";
 import { addDays, fmtMinute, minuteOfDay, parseHHMM, todayKey, weekdayIndex } from "../analytics/time";
 import { QUOTES } from "../content/quotes";
 
@@ -52,6 +52,8 @@ export type WidgetFeed = {
   date: string;
   streak: number;
   mission: string;
+  /** Exact quote sizes per widget size, so the script never needs updating for new size options. */
+  sizes: { small: number; medium: number; large: number };
   /** Only when chosen for the footer. */
   funded?: number;
   payouts?: number;
@@ -91,6 +93,7 @@ export async function widgetFeed(now = new Date()): Promise<WidgetFeed> {
   const ledger = money ? summarizeLedger(await listLedger()) : null;
   return {
     style,
+    sizes: { small: quoteSize("small", style.size), medium: quoteSize("medium", style.size), large: quoteSize("large", style.size) },
     kind: line.kind,
     words: line.words,
     by: line.by,

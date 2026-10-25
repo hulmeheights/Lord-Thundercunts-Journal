@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import { newWidgetLink, revokeWidgetLink, saveWidgetStyle, widgetPreviewLine } from "@/lib/actions/settings";
-import { ACCENTS, CORNERS, FONTS, FOOTER, KINDS, LOCKS, THEMES, TOPS, quoteLines, quoteSize, type FooterItem, type Kind, type WidgetStyle } from "@/lib/widget/style";
+import { ACCENTS, CORNERS, FONTS, FOOTER, KINDS, LOCKS, SIZE_SCALE, THEMES, TOPS, quoteLines, quoteSize, type FooterItem, type Kind, type WidgetStyle } from "@/lib/widget/style";
 import { Button } from "@/components/ui/Button";
 import { Toggle } from "@/components/ui/Toggle";
 import { Seg } from "@/components/m/Seg";
@@ -42,8 +42,8 @@ const s = Object.assign({ theme: "night", accent: "gold", font: "serif", size: "
 const th = THEMES[s.theme] || THEMES.night;
 const ink = new Color(th.ink), dim = new Color(th.dim), accent = new Color(ACCENTS[s.accent] || ACCENTS.gold);
 const fam = config.widgetFamily || "medium";
-const scale = s.size === "s" ? 0.87 : s.size === "l" ? 1.15 : 1;
-const qsize = Math.round((fam === "small" ? 13 : fam === "large" ? 19 : 15) * scale);
+const scale = ${JSON.stringify(SIZE_SCALE)}[s.size] || 1;
+const qsize = d && d.sizes ? d.sizes[fam === "small" ? "small" : fam === "large" ? "large" : "medium"] : Math.round((fam === "small" ? 13 : fam === "large" ? 19 : 15) * scale);
 const qlines = fam === "small" ? 5 : fam === "large" ? 10 : 4;
 function qfont(n) {
   if (s.font === "sans") return Font.systemFont(n);
@@ -362,7 +362,7 @@ export function Widget({ active, lastUsed, initial, preview }: { active: boolean
         </div>
         <div>
           <span className={label}>Text size</span>
-          <Seg value={s.size} onChange={(v) => set("size", v)} options={[{ value: "s", label: "Small" }, { value: "m", label: "Medium" }, { value: "l", label: "Large" }]} />
+          <Seg value={s.size} onChange={(v) => set("size", v)} options={[{ value: "s", label: "Small" }, { value: "m", label: "Medium" }, { value: "ml", label: "Medium+" }, { value: "l", label: "Large" }]} />
         </div>
         <div>
           <span className={label}>Alignment</span>
