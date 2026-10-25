@@ -52,18 +52,19 @@ test("the two-week 14:30–16:00 goal keeps counting through the clock change", 
   assert.match(late.detail!, /outside 13:30–15:00/);
 });
 
-test("one heads-up on 31 October: back to 14:30–16:00 from 1 November", () => {
-  const today = windowFor({ ...base, followMarket: true }, "2026-10-31", LDN).shift;
-  const next = windowFor({ ...base, followMarket: true }, "2026-11-01", LDN);
-  const r = clockChange({ day: "2026-10-31", minute: 10 * 60 + 15, today, next })!;
-  assert.equal(r.title, "Back to 14:30–16:00 from 1 Nov");
-  assert.match(r.body, /From Sunday 1 November you trade 14:30–16:00 again/);
-  assert.equal(r.key, "2026-10-31");
-  // Not on other days, and not outside 10:00–11:00.
-  const t30 = windowFor({ ...base, followMarket: true }, "2026-10-30", LDN).shift;
-  assert.equal(clockChange({ day: "2026-10-30", minute: 10 * 60 + 15, today: t30, next: windowFor({ ...base, followMarket: true }, "2026-10-31", LDN) }), null);
-  assert.equal(clockChange({ day: "2026-10-31", minute: 9 * 60, today, next }), null);
-  // And next March, the day before the US moves first.
-  const m = clockChange({ day: "2026-03-07", minute: 10 * 60 + 30, today: 0, next: windowFor({ ...base, followMarket: true }, "2026-03-08", LDN) })!;
-  assert.match(m.title, /moves to 13:30–15:00/);
+test("one heads-up on the Sunday evening before the first trading day at the new time", () => {
+  const r0 = { ...base, followMarket: true };
+  const shiftOf = (d: string) => windowFor(r0, d, LDN).shift;
+  const at = (day: string, minute: number, lastTradingDay: string) => clockChange({ day, minute, before: shiftOf(lastTradingDay), next: windowFor(r0, new Date(Date.parse(`${day}T12:00:00Z`) + 86_400_000).toISOString().slice(0, 10), LDN) });
+  // Sunday 1 Nov, 18:15: tomorrow (Mon 2 Nov) is back to 14:30–16:00; Friday 30 Oct was 13:30–15:00.
+  const r = at("2026-11-01", 18 * 60 + 15, "2026-10-30")!;
+  assert.equal(r.title, "Tomorrow: back to 14:30–16:00");
+  assert.match(r.body, /From Monday 2 November you trade 14:30–16:00 again/);
+  // Not on Saturday 31 Oct (tomorrow is Sunday, no session), not on Monday, not outside 18:00–19:00.
+  assert.equal(at("2026-10-31", 18 * 60 + 15, "2026-10-30"), null);
+  assert.equal(at("2026-11-02", 18 * 60 + 15, "2026-11-02"), null);
+  assert.equal(at("2026-11-01", 10 * 60, "2026-10-30"), null);
+  // March: Sunday 8 Mar the window moves to 13:30–15:00; Sunday 29 Mar it moves back.
+  assert.match(at("2026-03-08", 18 * 60 + 30, "2026-03-06")!.title, /Tomorrow: your window is 13:30–15:00/);
+  assert.match(at("2026-03-29", 18 * 60 + 30, "2026-03-27")!.title, /Tomorrow: back to 14:30–16:00/);
 });

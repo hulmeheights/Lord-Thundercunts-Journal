@@ -271,23 +271,24 @@ export function lineOf(kind: "prayer" | "quote" | "thankful" | "manifest", k: nu
 }
 
 /**
- * The day before New York's open moves on your clock (the UK and US change
- * their clocks on different Sundays): one heads-up, mid-morning, with the
- * window you'll trade from tomorrow.
+ * The evening before the first trading day New York's open sits at a new time
+ * on your clock (the UK and US change their clocks on different Sundays, so
+ * this usually lands on the Sunday): one heads-up with tomorrow's window.
+ * `before` is the shift on the last trading day, `next` the window for tomorrow.
  */
-export function clockChange(i: { day: string; minute: number; today: number; next: { start: number | null; end: number | null; shift: number } }): Reminder | null {
-  if (i.next.shift === i.today || i.next.start === null || i.minute < 10 * 60 || i.minute >= 11 * 60) return null;
+export function clockChange(i: { day: string; minute: number; before: number; next: { start: number | null; end: number | null; shift: number } }): Reminder | null {
+  const tomorrow = new Date(Date.parse(`${i.day}T12:00:00Z`) + 86_400_000);
+  const nextIsTradingDay = tomorrow.getUTCDay() >= 1 && tomorrow.getUTCDay() <= 5;
+  if (!nextIsTradingDay || i.next.shift === i.before || i.next.start === null || i.minute < 18 * 60 || i.minute >= 19 * 60) return null;
   const win = `${fmtMinute(i.next.start)}${i.next.end !== null ? `–${fmtMinute(i.next.end)}` : ""}`;
   const back = i.next.shift === 0;
-  const t = new Date(Date.parse(`${i.day}T12:00:00Z`) + 86_400_000);
-  const when = t.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" });
-  const short = t.toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
+  const when = tomorrow.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" });
   return {
     kind: "clock",
     key: i.day,
-    title: back ? `Back to ${win} from ${short}` : `Your window moves to ${win} from ${short}`,
+    title: back ? `Tomorrow: back to ${win}` : `Tomorrow: your window is ${win}`,
     body: back
-      ? `The US changes its clocks tonight, so New York's open is back at your usual time. From ${when} you trade ${win} again.`
+      ? `The US has changed its clocks, so New York's open is back at your usual time. From ${when} you trade ${win} again.`
       : `The UK and US change their clocks on different weekends, so New York opens an hour ${i.next.shift < 0 ? "earlier" : "later"} on your clock until they line up again. From ${when} your window is ${win}.`,
     url: "/",
   };

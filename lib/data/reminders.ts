@@ -8,7 +8,7 @@ import { missionDays, missionState } from "../analytics/mission";
 import { checkGoal } from "../analytics/goalcheck";
 import { evaluateRules } from "../analytics/rules";
 import { capsuleReady, clockChange, morning, weekendLift, checkin, evening, goalNews, preSession, quiet, ruleAlerts, weekly, windowClosed, type GoalEvent, type Reminder, type RuleBreak } from "../analytics/notify";
-import { addDays, dayKey, fmtMinute, minuteOfDay, windowFor } from "../analytics/time";
+import { addDays, dayKey, fmtMinute, minuteOfDay, weekdayIndex, windowFor } from "../analytics/time";
 import { claimDaily, pushAll, subscriptionCount } from "../push";
 import { QUOTES } from "../content/quotes";
 
@@ -67,8 +67,11 @@ export async function sendDueReminders(now = new Date()): Promise<{ sent: string
   if (n.morning) add(morning({ day, minute, quotes: QUOTES }));
   if (n.morning) add(weekendLift({ day, minute, quotes: QUOTES }));
   if (settings.rules.followMarket && settings.rules.sessionStart) {
-    const next = windowFor(settings.rules, addDays(day, 1), tz);
-    add(clockChange({ day, minute, today: shift, next }));
+    // Compare tomorrow with the last trading day, so a Sunday change is announced on the Sunday evening.
+    let last = day;
+    while (weekdayIndex(last) >= 5) last = addDays(last, -1);
+    const before = windowFor(settings.rules, last, tz).shift;
+    add(clockChange({ day, minute, before, next: windowFor(settings.rules, addDays(day, 1), tz) }));
   }
   if (n.checkin) add(checkin({ day, minute, sessionStart, sessionEnd, plan: entry.plan, goals: live, shift }));
   const pre = settings.ritual.filter((r) => r.group === "pre");
