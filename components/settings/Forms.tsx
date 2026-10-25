@@ -86,16 +86,16 @@ export function RulesForm({ initial, windowNote }: { initial: TradingRules; wind
           </span>
         </SRow>
         <SRow
-          name="Window follows New York"
+          name="Move my window when UK and US clocks differ"
           hint={
             <>
-              The UK and US change their clocks on different weekends, so for a few weeks a year New York opens an hour earlier on your clock. On, your window moves with it
-              (14:30 becomes 13:30 those weeks) for goals, alerts, reminders and the widget.
+              Your times stay in your own time. The UK and US change their clocks on different weekends, so for a few weeks a year New York&apos;s 09:30 open lands an hour
+              earlier on your clock. On, your window moves by that hour on those weeks only (14:30–16:00 becomes 13:30–15:00) for goals, alerts, reminders and the widget.
               {windowNote && r.followMarket && <span className="mt-1 block text-gold">◆ {windowNote}</span>}
             </>
           }
         >
-          <Toggle checked={r.followMarket === true} onChange={(v) => set({ followMarket: v })} label="Window follows New York" />
+          <Toggle checked={r.followMarket === true} onChange={(v) => set({ followMarket: v })} label="Move my window when UK and US clocks differ" />
         </SRow>
       </div>
       <div>
