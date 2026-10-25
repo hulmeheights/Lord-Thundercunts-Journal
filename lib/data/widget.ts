@@ -5,7 +5,10 @@ import { getSettings } from "./settings";
 import { listTrades } from "./trades";
 import { listGoals } from "./goals";
 import { missionDays, missionState } from "../analytics/mission";
-import { uplift } from "../analytics/notify";
+import { widgetLine } from "../analytics/notify";
+import { summarizeLedger } from "../analytics/ledger";
+import { listLedger } from "./ledger";
+import type { WidgetStyle } from "../widget/style";
 import { addDays, fmtMinute, minuteOfDay, parseHHMM, todayKey, weekdayIndex } from "../analytics/time";
 import { QUOTES } from "../content/quotes";
 
@@ -39,11 +42,30 @@ export async function checkWidgetToken(token: string): Promise<boolean> {
   return rows.length > 0;
 }
 
-export type WidgetFeed = { title: string; body: string; window: string | null; status: string; streak: number; mission: string; updated: string };
+export type WidgetFeed = {
+  style: WidgetStyle;
+  kind: string;
+  words: string;
+  by: string;
+  window: string | null;
+  status: string;
+  date: string;
+  streak: number;
+  mission: string;
+  /** Only when chosen for the footer. */
+  funded?: number;
+  payouts?: number;
+  paidOut?: number;
+  updated: string;
+  /** Kept so older scripts still draw something. */
+  title: string;
+  body: string;
+};
 
-/** What the widget shows: today's positive line, your window, your streak. No money, no accounts. */
+/** What the widget shows. Money only appears if you chose it for the footer. */
 export async function widgetFeed(now = new Date()): Promise<WidgetFeed> {
   const settings = await getSettings();
+  const style = settings.widget;
   const tz = settings.profile.timezone;
   const day = todayKey(tz);
   const minute = minuteOfDay(now.toISOString(), tz);
@@ -61,14 +83,33 @@ export async function widgetFeed(now = new Date()): Promise<WidgetFeed> {
     else if (end !== null && minute < end) status = `Window open · until ${fmtMinute(end)}`;
     else status = "Window closed · platform off";
   }
-  const line = uplift({ day, quotes: QUOTES, slot: "morning" });
+  const raw = widgetLine(day, style.kinds, QUOTES);
+  // Widgets are small: just the name, not the book ("Mark Douglas · Trading in the Zone" → "Mark Douglas").
+  const line = { ...raw, by: raw.kind === "quote" ? raw.by.split(" · ")[0]! : raw.by };
+  const money = style.footer.some((f) => f === "funded" || f === "payouts" || f === "paidOut");
+  const ledger = money ? summarizeLedger(await listLedger()) : null;
   return {
-    title: line.title,
-    body: line.body,
+    style,
+    kind: line.kind,
+    words: line.words,
+    by: line.by,
     window: start !== null && end !== null ? `${fmtMinute(start)}–${fmtMinute(end)}` : null,
     status,
+    date: new Date(`${day}T12:00:00Z`).toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" }),
     streak,
     mission: settings.goals.mission,
+    ...(style.footer.includes("funded") && ledger ? { funded: ledger.liveFunded } : {}),
+    ...(style.footer.includes("payouts") && ledger ? { payouts: ledger.payouts } : {}),
+    ...(style.footer.includes("paidOut") && ledger ? { paidOut: Math.round(ledger.paidOut) } : {}),
     updated: now.toISOString(),
+    title: line.kind === "quote" ? "Thought for the day" : line.by,
+    body: raw.kind === "quote" ? `“${raw.words}”\n— ${raw.by}` : raw.words,
   };
+}
+
+/** Exactly what the widget will show today for a mix of kinds, for the preview. */
+export async function previewLine(kinds: WidgetStyle["kinds"]) {
+  const settings = await getSettings();
+  const raw = widgetLine(todayKey(settings.profile.timezone), kinds, QUOTES);
+  return { ...raw, by: raw.kind === "quote" ? raw.by.split(" · ")[0]! : raw.by };
 }

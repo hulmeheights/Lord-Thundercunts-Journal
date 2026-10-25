@@ -16,7 +16,9 @@ import { Appearance } from "@/components/settings/Appearance";
 import { Notifications } from "@/components/settings/Notifications";
 import { recentPushes } from "@/lib/push";
 import { Widget } from "@/components/settings/Widget";
-import { widgetStatus } from "@/lib/data/widget";
+import { widgetFeed, widgetStatus } from "@/lib/data/widget";
+import { listLedger } from "@/lib/data/ledger";
+import { summarizeLedger } from "@/lib/analytics/ledger";
 import { Dot, PageHead, Section } from "@/components/m";
 import { SectionIndex } from "@/components/m/SectionIndex";
 
@@ -38,7 +40,7 @@ function noticeFrom(sp: Record<string, string | string[] | undefined>): ConnectN
 
 export default async function SettingsPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const session = await requireSession();
-  const [settings, connections, accounts, passkeys, sessions, counts, sp, jar, pushes, widget] = await Promise.all([
+  const [settings, connections, accounts, passkeys, sessions, counts, sp, jar, pushes, widget, feed, ledger] = await Promise.all([
     getSettings(),
     listConnections(),
     listBrokerAccounts(),
@@ -49,6 +51,8 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
     cookies(),
     recentPushes(),
     widgetStatus(),
+    widgetFeed(),
+    listLedger(),
   ]);
   const prefs = parseUiPrefs(jar.get(UI_COOKIE)?.value);
   const nightly = env.cronSecret.length >= 16;
@@ -128,7 +132,15 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
       </Section>
 
       <Section id="widget" n={7} label="Widget" lead={<>On your <em>Lock Screen</em>, all day.</>}>
-        <Widget active={widget.active} lastUsed={widget.lastUsedAt ? stamp(widget.lastUsedAt, settings.profile.timezone) : null} />
+        <Widget
+          active={widget.active}
+          lastUsed={widget.lastUsedAt ? stamp(widget.lastUsedAt, settings.profile.timezone) : null}
+          initial={settings.widget}
+          preview={(() => {
+            const l = summarizeLedger(ledger);
+            return { line: { kind: feed.kind, words: feed.words, by: feed.by }, status: feed.status, date: feed.date, window: feed.window, streak: feed.streak, mission: feed.mission, funded: l.liveFunded, payouts: l.payouts, paidOut: Math.round(l.paidOut) };
+          })()}
+        />
       </Section>
 
       <Section id="security" n={8} label="Security" lead={<>No one gets in but <em>you</em>.</>}>

@@ -213,7 +213,7 @@ export function upliftIndex(day: string, slot: "morning" | "weekend"): number {
 }
 
 const gcd = (a: number, b: number): number => (b ? gcd(b, a % b) : a);
-function walk<T>(list: readonly T[], k: number): T {
+export function walk<T>(list: readonly T[], k: number): T {
   const n = list.length;
   let stride = Math.max(1, Math.round(n * 0.382));
   while (gcd(stride, n) !== 1) stride++;
@@ -248,4 +248,23 @@ export function morning(i: Draw & { minute: number }): Reminder | null {
 export function weekendLift(i: Draw & { minute: number }): Reminder | null {
   if (weekdayIndex(i.day) < 5 || i.minute < 15 * 60 || i.minute >= 16 * 60) return null;
   return { kind: "uplift", key: i.day, url: "/", ...uplift({ ...i, slot: "weekend" }) };
+}
+
+/**
+ * The widget's line for a day, from only the kinds chosen in Settings. Kinds
+ * take turns day by day and each list is walked in full before repeating.
+ */
+export function widgetLine(day: string, kinds: readonly ("prayer" | "quote" | "thankful" | "manifest")[], quotes: readonly { text: string; cite: string }[]) {
+  const d = Math.max(0, Math.round((Date.parse(`${day}T00:00:00Z`) - Date.parse("2026-01-01T00:00:00Z")) / 86_400_000));
+  const list = kinds.length ? kinds : (["prayer", "quote", "thankful", "manifest"] as const);
+  return lineOf(list[d % list.length]!, Math.floor(d / list.length), quotes);
+}
+
+export function lineOf(kind: "prayer" | "quote" | "thankful" | "manifest", k: number, quotes: readonly { text: string; cite: string }[]) {
+  if (kind === "quote" && quotes.length) {
+    const q = walk(quotes, k);
+    return { kind, words: q.text, by: q.cite };
+  }
+  const u = walk(kind === "thankful" ? THANKFUL : kind === "manifest" ? MANIFEST : PRAYERS, k);
+  return { kind, words: u.body, by: u.title };
 }

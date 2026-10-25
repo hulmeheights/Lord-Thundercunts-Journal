@@ -1,3 +1,4 @@
+import type { WidgetStyle } from "./widget/style";
 /** Shared, client-safe domain types. */
 
 /** Platform family a connection talks to. */
@@ -127,6 +128,8 @@ export type Settings = {
   ai: { enabled: boolean };
   /** Which pushes go to your phone. */
   notify: NotifySettings;
+  /** How the phone widget looks. */
+  widget: WidgetStyle;
   observer: {
     name: string | null;
     pronoun: "they" | "he" | "she";

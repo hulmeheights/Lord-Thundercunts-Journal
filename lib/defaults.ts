@@ -1,3 +1,4 @@
+import { DEFAULT_WIDGET } from "./widget/style";
 import type { Settings } from "./types";
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -20,6 +21,7 @@ export const DEFAULT_SETTINGS: Settings = {
   },
   plan: { monthlyTarget: 25000, batch: 5, overrides: {} },
   goals: { mission: "Payouts paying the bills", missionStart: null },
+  widget: DEFAULT_WIDGET,
   notify: { morning: true, checkin: true, preSession: true, close: true, evening: true, weekly: true, capsules: true, goals: true, ruleAlerts: true },
   prop: {
     enabled: false,

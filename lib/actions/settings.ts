@@ -130,6 +130,23 @@ export async function newWidgetLink() {
   return { token: await createWidgetToken() };
 }
 
+export async function saveWidgetStyle(v: unknown) {
+  await guard();
+  const { WidgetStyle } = await import("../widget/style");
+  const parsed = WidgetStyle.safeParse(v);
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Check the widget settings." };
+  await saveSetting("widget", parsed.data);
+  return { ok: true };
+}
+
+export async function widgetPreviewLine(kinds: unknown) {
+  await guard();
+  const { WidgetStyle } = await import("../widget/style");
+  const { previewLine } = await import("../data/widget");
+  const k = WidgetStyle.shape.kinds.safeParse(kinds);
+  return previewLine(k.success ? k.data : ["prayer", "quote", "thankful", "manifest"]);
+}
+
 export async function revokeWidgetLink() {
   await guard();
   const { revokeWidgetTokens } = await import("../data/widget");
