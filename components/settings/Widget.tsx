@@ -26,15 +26,20 @@ function t(stack, s, font, color, lines) {
   const x = stack.addText(s); x.font = font; x.textColor = color; if (lines) x.lineLimit = lines; return x;
 }
 
+// A quote arrives as “text”\n— author; everything else as a title (Pray, Thankful…) and a body.
+const isQuote = d && d.title === "Thought for the day";
+const words = d ? (isQuote ? d.body.split("\n")[0] : d.body) : "";
+const by = d ? (isQuote ? (d.body.split("\n")[1] || "").replace(/^— /, "") : d.title) : "";
+
 if (!d || d.error) {
   t(w, "◆ Thunder", Font.semiboldSystemFont(12), gold);
   t(w, "Open Settings → Widget in the journal to make a new key.", Font.systemFont(11), dim, 3);
 } else if (fam === "accessoryInline") {
   t(w, "◆ " + d.status + (d.streak ? " · " + d.streak + " clean" : ""), Font.systemFont(12), ink, 1);
 } else if (fam === "accessoryRectangular") {
-  t(w, "◆ " + d.status, Font.semiboldSystemFont(12), ink, 1);
-  t(w, d.body, Font.systemFont(11), ink, 2);
-  t(w, d.title, Font.systemFont(10), dim, 1);
+  // The Lock Screen tints everything one colour and gives ~3 short lines, so: the words only, large and clear.
+  w.addAccessoryWidgetBackground = true;
+  t(w, words, Font.semiboldSystemFont(14), ink, 3).minimumScaleFactor = 0.7;
 } else if (fam === "accessoryCircular") {
   w.addSpacer();
   const n = t(w, String(d.streak), Font.semiboldRoundedSystemFont(20), ink, 1); n.centerAlignText();
@@ -49,9 +54,9 @@ if (!d || d.error) {
   t(top, d.status.toUpperCase(), Font.mediumMonospacedSystemFont(9), dim, 1);
   w.addSpacer(fam === "small" ? 8 : 10);
   const big = fam === "large";
-  t(w, d.body, new Font("Georgia", fam === "small" ? 13 : big ? 19 : 15), ink, fam === "small" ? 5 : big ? 10 : 4);
+  t(w, words, new Font("Georgia", fam === "small" ? 13 : big ? 19 : 15), ink, fam === "small" ? 5 : big ? 10 : 4);
   w.addSpacer(6);
-  t(w, d.title, Font.italicSystemFont(fam === "small" ? 10 : 11), gold, 1);
+  t(w, "— " + by, Font.italicSystemFont(fam === "small" ? 10 : 11), gold, 1);
   w.addSpacer();
   const foot = w.addStack();
   t(foot, (d.window ? d.window + "  ·  " : "") + d.streak + " clean in a row", Font.mediumMonospacedSystemFont(9), dim, 1);
