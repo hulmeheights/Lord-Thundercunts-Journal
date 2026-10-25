@@ -14,6 +14,7 @@ import { Security } from "@/components/settings/Security";
 import { DataControls } from "@/components/settings/DataControls";
 import { Appearance } from "@/components/settings/Appearance";
 import { Notifications } from "@/components/settings/Notifications";
+import { fmtMinute, todayKey, windowFor } from "@/lib/analytics/time";
 import { recentPushes } from "@/lib/push";
 import { Widget } from "@/components/settings/Widget";
 import { widgetFeed, widgetStatus } from "@/lib/data/widget";
@@ -107,7 +108,13 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
         <p className="reveal -mt-8 mb-12 max-w-[56ch] font-mono text-[11.5px] leading-[1.9] text-ink-3">
           Checked automatically against every synced trade. Guardian, the report card, the Observer and the Rule Lab all read them.
         </p>
-        <RulesForm initial={settings.rules} />
+        <RulesForm
+          initial={settings.rules}
+          windowNote={(() => {
+            const w = windowFor({ ...settings.rules, followMarket: true }, todayKey(settings.profile.timezone), settings.profile.timezone);
+            return w.shift && w.start !== null && w.end !== null ? `This week it's ${fmtMinute(w.start)}–${fmtMinute(w.end)} on your clock.` : null;
+          })()}
+        />
       </Section>
 
       <Section id="ritual" n={3} label="Daily ritual" lead={<>The checklist, <em>your</em> way.</>}>

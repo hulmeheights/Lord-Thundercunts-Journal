@@ -1,6 +1,6 @@
 import type { Trade, TradingRules } from "../types";
 import { sortByEntry } from "./stats";
-import { dayKey, fmtMinute, minuteOfDay, parseHHMM } from "./time";
+import { dayKey, fmtMinute, marketShift, minuteOfDay, parseHHMM } from "./time";
 
 export type RuleId =
   | "maxTrades"
@@ -112,11 +112,15 @@ export function evaluateRules(trades: Trade[], rules: TradingRules, tz: string):
     }
 
     if (startMin !== null && endMin !== null) {
+      // Following New York: on the weeks the clocks are out of step the window moves with the open.
+      const sh = rules.followMarket ? marketShift(day, tz) : 0;
+      const a = startMin + sh;
+      const b = endMin + sh;
       const outside = dayTrades.filter((t) => {
         const m = minuteOfDay(t.entryTime, tz);
-        return startMin <= endMin ? m < startMin || m >= endMin : m < startMin && m >= endMin;
+        return a <= b ? m < a || m >= b : m < a && m >= b;
       });
-      add("session", outside, `Entered outside ${fmtMinute(startMin)}–${fmtMinute(endMin)}`);
+      add("session", outside, `Entered outside ${fmtMinute(a)}–${fmtMinute(b)}`);
     }
 
     if (rules.cooldownMinutesAfterLoss && rules.cooldownMinutesAfterLoss > 0) {

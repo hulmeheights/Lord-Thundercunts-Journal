@@ -59,7 +59,7 @@ function NumRow({ label, hint, value, onChange, prefix }: { label: string; hint?
   );
 }
 
-export function RulesForm({ initial }: { initial: TradingRules }) {
+export function RulesForm({ initial, windowNote }: { initial: TradingRules; windowNote?: string | null }) {
   const [r, setR] = useState(initial);
   const s = useSaver(saveRules);
   const set = (p: Partial<TradingRules>) => {
@@ -84,6 +84,18 @@ export function RulesForm({ initial }: { initial: TradingRules }) {
             <span className="font-mono text-ink-4">→</span>
             <input type="time" aria-label="Window closes" value={r.sessionEnd ?? ""} onChange={(e) => set({ sessionEnd: e.target.value || null })} className={`${numInput} w-[92px] text-left`} />
           </span>
+        </SRow>
+        <SRow
+          name="Window follows New York"
+          hint={
+            <>
+              The UK and US change their clocks on different weekends, so for a few weeks a year New York opens an hour earlier on your clock. On, your window moves with it
+              (14:30 becomes 13:30 those weeks) for goals, alerts, reminders and the widget.
+              {windowNote && r.followMarket && <span className="mt-1 block text-gold">◆ {windowNote}</span>}
+            </>
+          }
+        >
+          <Toggle checked={r.followMarket === true} onChange={(v) => set({ followMarket: v })} label="Window follows New York" />
         </SRow>
       </div>
       <div>

@@ -165,3 +165,25 @@ export function zonedToUtc(day: string, minute: number, tz: string): Date {
   if (off2 !== off) t = guess - off2;
   return new Date(t);
 }
+
+/**
+ * How many minutes the New York open has moved on your clock today, compared
+ * with a normal day. The UK and the US change their clocks on different
+ * Sundays, so for a few weeks a year (late March, late October) New York's
+ * 09:30 lands an hour earlier in London: 13:30 instead of 14:30. Returns
+ * -60 on those days and 0 the rest of the year (always 0 if you live in New York).
+ */
+export function marketShift(day: string, tz: string, market = "America/New_York"): number {
+  const at = (d: string) => Date.parse(`${d}T12:00:00Z`);
+  const gap = (d: string) => (tzOffsetMs(at(d), tz) - tzOffsetMs(at(d), market)) / 60_000;
+  // Mid-January: both sides on standard time, the "normal" gap.
+  return Math.round(gap(day) - gap(`${day.slice(0, 4)}-01-15`));
+}
+
+/** Your trading window for a day in your own clock's minutes, moved with New York when the rules say so. */
+export function windowFor(rules: { sessionStart: string | null; sessionEnd: string | null; followMarket?: boolean }, day: string, tz: string): { start: number | null; end: number | null; shift: number } {
+  const shift = rules.followMarket ? marketShift(day, tz) : 0;
+  const s = parseHHMM(rules.sessionStart);
+  const e = parseHHMM(rules.sessionEnd);
+  return { start: s === null ? null : s + shift, end: e === null ? null : e + shift, shift };
+}

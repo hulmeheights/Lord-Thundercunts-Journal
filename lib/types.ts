@@ -74,6 +74,8 @@ export type TradingRules = {
   cooldownMinutesAfterLoss: number | null;
   sessionStart: string | null; // "HH:MM" in profile timezone
   sessionEnd: string | null;
+  /** The window is set in your time but follows the New York open when the clocks are out of step. */
+  followMarket?: boolean;
   defaultRisk: number | null;
   custom: { id: string; label: string }[];
 };

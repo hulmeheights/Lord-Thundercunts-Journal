@@ -31,6 +31,7 @@ const Rules = z.object({
   cooldownMinutesAfterLoss: num(600),
   sessionStart: hhmm,
   sessionEnd: hhmm,
+  followMarket: z.boolean().optional(),
   defaultRisk: num(10_000_000),
   custom: z.array(z.object({ id: z.string().min(1).max(40), label: z.string().min(1).max(160) })).max(20),
 });

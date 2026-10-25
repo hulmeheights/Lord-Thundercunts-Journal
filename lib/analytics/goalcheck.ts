@@ -15,7 +15,7 @@ import { detectTilt } from "./tilt";
 import { addDays, dayKey, daysBetween, fmtMinute, parseHHMM } from "./time";
 
 export type GoalRule =
-  | { type: "window"; start: string; end: string }
+  | { type: "window"; start: string; end: string; /** Moves with the New York open; unset follows your trading rules. */ followMarket?: boolean }
   | { type: "maxTrades"; n: number }
   | { type: "maxDayLoss"; amount: number }
   | { type: "stopAfterLosses"; n: number }
@@ -90,10 +90,13 @@ export function describeMeasure(m: GoalMeasure): string {
 }
 
 /** The rules engine settings for the rules it can check. */
-function engineRules(rules: GoalRule[]): TradingRules {
+function engineRules(rules: GoalRule[], yours?: TradingRules): TradingRules {
   const r: TradingRules = { maxTradesPerDay: null, maxDailyLoss: null, stopAfterConsecutiveLosses: null, maxContracts: null, maxLossPerTrade: null, cooldownMinutesAfterLoss: null, sessionStart: null, sessionEnd: null, defaultRisk: null, custom: [] };
   for (const x of rules) {
-    if (x.type === "window") [r.sessionStart, r.sessionEnd] = [x.start, x.end];
+    if (x.type === "window") {
+      [r.sessionStart, r.sessionEnd] = [x.start, x.end];
+      r.followMarket = x.followMarket ?? yours?.followMarket ?? false;
+    }
     if (x.type === "maxTrades") r.maxTradesPerDay = x.n;
     if (x.type === "stopAfterLosses") r.stopAfterConsecutiveLosses = x.n;
     if (x.type === "maxLossPerTrade") r.maxLossPerTrade = x.amount;
@@ -117,10 +120,10 @@ export function judgeDays(trades: Trade[], rules: GoalRule[], yours: TradingRule
     net.set(d, (net.get(d) ?? 0) + t.netPnl);
   }
 
-  for (const v of evaluateRules(inRange, engineRules(rules), tz).violations) {
+  for (const v of evaluateRules(inRange, engineRules(rules, yours), tz).violations) {
     if (v.rule === "session") {
-      const w = rules.find((r) => r.type === "window") as Extract<GoalRule, { type: "window" }>;
-      add(v.day, `${plural(v.tradeIds.length, "entry", "entries")} outside ${w.start}–${w.end}`);
+      // The detail carries the window as it was that day (moved with New York if it follows the open).
+      add(v.day, `${plural(v.tradeIds.length, "entry", "entries")} outside ${v.detail.replace(/^Entered outside /, "")}`);
     } else add(v.day, v.detail.charAt(0).toLowerCase() + v.detail.slice(1));
   }
   const dayLoss = rules.find((r) => r.type === "maxDayLoss") as Extract<GoalRule, { type: "maxDayLoss" }> | undefined;

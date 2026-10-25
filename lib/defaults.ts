@@ -12,6 +12,7 @@ export const DEFAULT_SETTINGS: Settings = {
     cooldownMinutesAfterLoss: 5,
     sessionStart: "09:30",
     sessionEnd: "16:00",
+    followMarket: true,
     defaultRisk: null,
     custom: [
       { id: "aplus", label: "Only took A+ setups from my plan" },

@@ -11,7 +11,7 @@ import type { MissionDay } from "./mission";
 import { MANIFEST, PRAYERS, THANKFUL, type Uplift } from "../content/uplift";
 
 
-export type NotifyKind = "morning" | "uplift" | "checkin" | "pre" | "close" | "evening" | "weekly" | "capsule" | "goal" | "rule";
+export type NotifyKind = "clock" | "morning" | "uplift" | "checkin" | "pre" | "close" | "evening" | "weekly" | "capsule" | "goal" | "rule";
 export type Reminder = { kind: NotifyKind; /** What it's claimed under: once per this key. */ key: string; title: string; body: string; url: string };
 
 /** No pushes overnight, whatever is due. */
@@ -26,7 +26,7 @@ const weekday = (day: string) => weekdayIndex(day) < 5;
 export type LiveGoal = { title: string; headline: string };
 
 /** 12:00 on trading days: the window, the plan, the goals in play. */
-export function checkin(i: { day: string; minute: number; sessionStart: number | null; sessionEnd: number | null; plan: string | null; goals: LiveGoal[] }): Reminder | null {
+export function checkin(i: { day: string; minute: number; sessionStart: number | null; sessionEnd: number | null; plan: string | null; goals: LiveGoal[]; shift?: number }): Reminder | null {
   if (!weekday(i.day) || i.minute < 12 * 60 || i.minute >= 13 * 60) return null;
   const open = i.sessionStart;
   if (open !== null && i.minute >= open) return null;
@@ -35,6 +35,7 @@ export function checkin(i: { day: string; minute: number; sessionStart: number |
       ? `Your window is ${fmtMinute(open)}${i.sessionEnd !== null ? `–${fmtMinute(i.sessionEnd)}` : ""}. No orders before ${fmtMinute(open)}: platform closed until then.`
       : "Set your trading window in Settings so I can hold you to it.",
   ];
+  if (i.shift) lines.push(`An hour ${i.shift < 0 ? "earlier" : "later"} than usual: the US hasn't changed its clocks yet.`);
   lines.push(i.plan?.trim() ? `Plan: ${clip(i.plan.trim().replace(/\s+/g, " "), 80)}` : "No plan written yet. Write it now, before the screen does it for you.");
   if (i.goals.length) lines.push(i.goals.slice(0, 2).map((g) => `${clip(g.title, 40)}: ${g.headline}`).join(" · "));
   return { kind: "checkin", key: i.day, title: "12:00 check-in", body: lines.join("\n"), url: `/journal/${i.day}` };
@@ -267,4 +268,27 @@ export function lineOf(kind: "prayer" | "quote" | "thankful" | "manifest", k: nu
   }
   const u = walk(kind === "thankful" ? THANKFUL : kind === "manifest" ? MANIFEST : PRAYERS, k);
   return { kind, words: u.body, by: u.title };
+}
+
+/**
+ * The day before New York's open moves on your clock (the UK and US change
+ * their clocks on different Sundays): one heads-up, mid-morning, with the
+ * window you'll trade from tomorrow.
+ */
+export function clockChange(i: { day: string; minute: number; today: number; next: { start: number | null; end: number | null; shift: number } }): Reminder | null {
+  if (i.next.shift === i.today || i.next.start === null || i.minute < 10 * 60 || i.minute >= 11 * 60) return null;
+  const win = `${fmtMinute(i.next.start)}${i.next.end !== null ? `–${fmtMinute(i.next.end)}` : ""}`;
+  const back = i.next.shift === 0;
+  const t = new Date(Date.parse(`${i.day}T12:00:00Z`) + 86_400_000);
+  const when = t.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" });
+  const short = t.toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
+  return {
+    kind: "clock",
+    key: i.day,
+    title: back ? `Back to ${win} from ${short}` : `Your window moves to ${win} from ${short}`,
+    body: back
+      ? `The US changes its clocks tonight, so New York's open is back at your usual time. From ${when} you trade ${win} again.`
+      : `The UK and US change their clocks on different weekends, so New York opens an hour ${i.next.shift < 0 ? "earlier" : "later"} on your clock until they line up again. From ${when} your window is ${win}.`,
+    url: "/",
+  };
 }

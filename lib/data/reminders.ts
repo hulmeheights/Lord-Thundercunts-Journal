@@ -7,8 +7,8 @@ import { listLedger } from "./ledger";
 import { missionDays, missionState } from "../analytics/mission";
 import { checkGoal } from "../analytics/goalcheck";
 import { evaluateRules } from "../analytics/rules";
-import { capsuleReady, morning, weekendLift, checkin, evening, goalNews, preSession, quiet, ruleAlerts, weekly, windowClosed, type GoalEvent, type Reminder, type RuleBreak } from "../analytics/notify";
-import { addDays, dayKey, fmtMinute, minuteOfDay, parseHHMM } from "../analytics/time";
+import { capsuleReady, clockChange, morning, weekendLift, checkin, evening, goalNews, preSession, quiet, ruleAlerts, weekly, windowClosed, type GoalEvent, type Reminder, type RuleBreak } from "../analytics/notify";
+import { addDays, dayKey, fmtMinute, minuteOfDay, windowFor } from "../analytics/time";
 import { claimDaily, pushAll, subscriptionCount } from "../push";
 import { QUOTES } from "../content/quotes";
 
@@ -29,8 +29,8 @@ export async function sendDueReminders(now = new Date()): Promise<{ sent: string
   const from = [missionStart, addDays(day, -7), ...goals.filter((g) => g.measure).map(startOf)].sort()[0]!;
   const trades = await listTrades({ since: new Date(`${addDays(from, -1)}T00:00:00Z`) });
   const days = missionDays(trades, settings.rules, tz, missionStart < addDays(day, -7) ? missionStart : addDays(day, -7), day);
-  const sessionStart = parseHHMM(settings.rules.sessionStart);
-  const sessionEnd = parseHHMM(settings.rules.sessionEnd);
+  // Today's window on your clock, moved with New York on the weeks the clocks are out of step.
+  const { start: sessionStart, end: sessionEnd, shift } = windowFor(settings.rules, day, tz);
 
   // Measured goals: where each stands, and whether it has just been reached or broken.
   const ctx = { trades, ledger, rules: settings.rules, tz, today: day };
@@ -66,7 +66,11 @@ export async function sendDueReminders(now = new Date()): Promise<{ sent: string
   if (n.capsules) add(capsuleReady({ minute, capsules: (await dueCapsules(day)).filter((c) => !c.openedAt) }));
   if (n.morning) add(morning({ day, minute, quotes: QUOTES }));
   if (n.morning) add(weekendLift({ day, minute, quotes: QUOTES }));
-  if (n.checkin) add(checkin({ day, minute, sessionStart, sessionEnd, plan: entry.plan, goals: live }));
+  if (settings.rules.followMarket && settings.rules.sessionStart) {
+    const next = windowFor(settings.rules, addDays(day, 1), tz);
+    add(clockChange({ day, minute, today: shift, next }));
+  }
+  if (n.checkin) add(checkin({ day, minute, sessionStart, sessionEnd, plan: entry.plan, goals: live, shift }));
   const pre = settings.ritual.filter((r) => r.group === "pre");
   const prep = { plan: !!entry.plan?.trim(), readiness: entry.readiness !== null, ritualDone: pre.filter((r) => entry.checklist[r.id]).length, ritualTotal: pre.length };
   if (n.preSession) add(preSession({ day, minute, sessionStart, streak: streak(addDays(day, -1)), mission: settings.goals.mission, prep }));

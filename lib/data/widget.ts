@@ -9,7 +9,7 @@ import { widgetLine } from "../analytics/notify";
 import { summarizeLedger } from "../analytics/ledger";
 import { listLedger } from "./ledger";
 import { quoteSize, type WidgetStyle } from "../widget/style";
-import { addDays, fmtMinute, minuteOfDay, parseHHMM, todayKey, weekdayIndex } from "../analytics/time";
+import { addDays, fmtMinute, minuteOfDay, todayKey, weekdayIndex, windowFor } from "../analytics/time";
 import { QUOTES } from "../content/quotes";
 
 /** A new widget key, replacing any old one. Shown once; only its hash is kept. */
@@ -71,8 +71,7 @@ export async function widgetFeed(now = new Date()): Promise<WidgetFeed> {
   const tz = settings.profile.timezone;
   const day = todayKey(tz);
   const minute = minuteOfDay(now.toISOString(), tz);
-  const start = parseHHMM(settings.rules.sessionStart);
-  const end = parseHHMM(settings.rules.sessionEnd);
+  const { start, end } = windowFor(settings.rules, day, tz);
   const goals = await listGoals();
   const missionStart = settings.goals.missionStart ?? goals.reduce((m, g) => (g.createdAt.slice(0, 10) < m ? g.createdAt.slice(0, 10) : m), addDays(day, -30));
   const trades = await listTrades({ since: new Date(`${addDays(missionStart, -1)}T00:00:00Z`) });
