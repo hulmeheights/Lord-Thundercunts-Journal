@@ -15,17 +15,47 @@ const num = "field num h-9 w-20 px-2 py-0 text-center";
 // Built by hand so the server and the phone print exactly the same text.
 const day = (d: string) => `${WEEKDAYS[weekdayIndex(d)]} ${Number(d.slice(8, 10))} ${MONTHS[Number(d.slice(5, 7)) - 1]!.slice(0, 3)}`;
 
-function RuleCard({ r, set, remove, accounts, today }: { r: InactivityRule; set: (r: InactivityRule) => void; remove: () => void; accounts: WatchedAccount[]; today: string }) {
+function RuleCard({
+  r,
+  set,
+  remove,
+  accounts,
+  today,
+  startOpen,
+}: {
+  r: InactivityRule;
+  set: (r: InactivityRule) => void;
+  remove: () => void;
+  accounts: WatchedAccount[];
+  today: string;
+  startOpen: boolean;
+}) {
+  const [open, setOpen] = useState(startOpen);
   const { held, risky } = atRisk({ ...r, enabled: true }, accounts, today);
   const n = (v: string, min: number, max: number) => Math.max(min, Math.min(max, Math.round(Number(v) || min)));
+  const state = held < r.minAccounts ? `switches on at ${r.minAccounts}` : risky.length ? `${risky.length} running short` : "all fine";
+  if (!open)
+    return (
+      <div className={cn("flex items-center gap-4 border-b border-line py-4", !r.enabled && "opacity-60")}>
+        <button type="button" onClick={() => setOpen(true)} className="min-w-0 flex-1 text-left" aria-label={`Edit the ${r.firm || "new"} rule`}>
+          <span className="block font-mono text-[12px] text-ink">{r.firm || "Unnamed firm"}</span>
+          <span className="mt-1 block font-mono text-[10.5px] leading-[1.7] text-ink-4">
+            {r.days} {r.unit === "trading" ? "trading days" : "days"} · warn at {r.warnBefore} left · {describeSend(r)} · {held} held, {state}
+          </span>
+        </button>
+        <Toggle checked={r.enabled} onChange={(v) => set({ ...r, enabled: v })} label={`Watch ${r.firm || "this firm"}`} />
+        <button type="button" onClick={() => setOpen(true)} className="shrink-0 font-mono text-[10px] tracking-[0.2em] text-ink-4 uppercase hover:text-ink">
+          Edit
+        </button>
+      </div>
+    );
   return (
     <div className={cn("border-b border-line py-5", !r.enabled && "opacity-60")}>
       <div className="flex flex-wrap items-center gap-4">
         <input className="field h-9 w-48" value={r.firm} maxLength={40} list="ltj-firms" aria-label="Firm" placeholder="Firm, e.g. Tradeify" onChange={(e) => set({ ...r, firm: e.target.value })} />
         <Toggle checked={r.enabled} onChange={(v) => set({ ...r, enabled: v })} label={`Watch ${r.firm || "this firm"}`} />
         <span className="font-mono text-[10.5px] text-ink-4">
-          {held} {held === 1 ? "account" : "accounts"} at this firm
-          {held < r.minAccounts ? ` · switches on at ${r.minAccounts}` : risky.length ? ` · ${risky.length} running short` : " · all fine"}
+          {held} {held === 1 ? "account" : "accounts"} at this firm · {state}
         </span>
         <span className="ml-auto">
           <RemoveX onClick={remove} label={`Delete the ${r.firm} rule`} />
@@ -36,7 +66,14 @@ function RuleCard({ r, set, remove, accounts, today }: { r: InactivityRule; set:
           <span className={label}>Closed after</span>
           <div className="flex items-center gap-3">
             <input className={num} inputMode="numeric" value={r.days} aria-label="Days" onChange={(e) => set({ ...r, days: n(e.target.value, 1, 365) })} />
-            <Seg value={r.unit} onChange={(v) => set({ ...r, unit: v })} options={[{ value: "calendar", label: "Days" }, { value: "trading", label: "Trading days" }]} />
+            <Seg
+              value={r.unit}
+              onChange={(v) => set({ ...r, unit: v })}
+              options={[
+                { value: "calendar", label: "Days" },
+                { value: "trading", label: "Trading days" },
+              ]}
+            />
           </div>
         </div>
         <div>
@@ -53,19 +90,41 @@ function RuleCard({ r, set, remove, accounts, today }: { r: InactivityRule; set:
         <div className="sm:col-span-2">
           <span className={label}>Send it</span>
           <div className="flex flex-wrap items-center gap-3">
-            <Seg value={r.sendAt} onChange={(v) => set({ ...r, sendAt: v })} options={[{ value: "checkin", label: "With the 12:00 check-in" }, { value: "pre", label: "Before my window" }, { value: "time", label: "At a time" }]} />
-            {r.sendAt === "time" && <input type="time" className="field num h-9 w-28 px-2 py-0" value={r.time} aria-label="Send time" onChange={(e) => e.target.value && set({ ...r, time: e.target.value })} />}
+            <Seg
+              value={r.sendAt}
+              onChange={(v) => set({ ...r, sendAt: v })}
+              options={[
+                { value: "checkin", label: "With the 12:00 check-in" },
+                { value: "pre", label: "Before my window" },
+                { value: "time", label: "At a time" },
+              ]}
+            />
+            {r.sendAt === "time" && (
+              <input type="time" className="field num h-9 w-28 px-2 py-0" value={r.time} aria-label="Send time" onChange={(e) => e.target.value && set({ ...r, time: e.target.value })} />
+            )}
           </div>
         </div>
         <div>
           <span className={label}>Repeat</span>
-          <Seg value={r.repeat} onChange={(v) => set({ ...r, repeat: v })} options={[{ value: "daily", label: "Daily until I trade" }, { value: "once", label: "Once" }]} />
+          <Seg
+            value={r.repeat}
+            onChange={(v) => set({ ...r, repeat: v })}
+            options={[
+              { value: "daily", label: "Daily until I trade" },
+              { value: "once", label: "Once" },
+            ]}
+          />
         </div>
       </div>
       <p className="mt-3 font-mono text-[10.5px] leading-[1.8] text-ink-4">
         {r.firm || "This firm"} closes an account after {r.days} {r.unit === "trading" ? "trading days" : "days"} without a trade. You&apos;ll hear {describeSend(r)} once one is within {r.warnBefore}{" "}
         {r.warnBefore === 1 ? "day" : "days"} of that, {r.repeat === "daily" ? "every day until it trades" : "once per quiet spell"}, while you hold {r.minAccounts}+ accounts there.
       </p>
+      <div className="mt-4">
+        <Button variant="secondary" onClick={() => setOpen(false)} disabled={!r.firm.trim()}>
+          Done
+        </Button>
+      </div>
     </div>
   );
 }
@@ -73,6 +132,9 @@ function RuleCard({ r, set, remove, accounts, today }: { r: InactivityRule; set:
 /** Per-firm inactivity rules and the accounts they watch. */
 export function Inactivity({ initial, accounts: seen, today }: { initial: InactivitySettings; accounts: WatchedAccount[]; today: string }) {
   const [s, setS] = useState<InactivitySettings>(initial);
+  // Saved rules start folded to one line; new ones open to edit.
+  const [initialIds] = useState(() => new Set(initial.rules.map((r) => r.id)));
+  const [adding, setAdding] = useState(false);
   const [status, setStatus] = useState("");
   const first = useRef(true);
   useEffect(() => {
@@ -128,9 +190,19 @@ export function Inactivity({ initial, accounts: seen, today }: { initial: Inacti
         ))}
       </datalist>
       <Sub aside={<span className={cn("font-mono text-[10px]", status === "Saved" ? "text-pos" : "text-ink-4")}>{status || "Changes save as you go"}</span>}>Inactivity · a rule per firm</Sub>
-      {s.rules.length === 0 && <p className="py-5 font-mono text-[11.5px] leading-[1.8] text-ink-3">No rules yet. Add one for each firm that closes quiet accounts, with that firm&apos;s own numbers.</p>}
+      {s.rules.length === 0 && (
+        <p className="py-5 font-mono text-[11.5px] leading-[1.8] text-ink-3">No rules yet. Add one for each firm that closes quiet accounts, with that firm&apos;s own numbers.</p>
+      )}
       {s.rules.map((r, i) => (
-        <RuleCard key={r.id} r={r} set={(x) => setRule(i, x)} remove={() => setS((x) => ({ ...x, rules: x.rules.filter((_, j) => j !== i) }))} accounts={accounts} today={today} />
+        <RuleCard
+          key={r.id}
+          r={r}
+          startOpen={!initialIds.has(r.id)}
+          set={(x) => setRule(i, x)}
+          remove={() => setS((x) => ({ ...x, rules: x.rules.filter((_, j) => j !== i) }))}
+          accounts={accounts}
+          today={today}
+        />
       ))}
       <div className="mt-4 flex flex-wrap gap-3">
         {untracked.slice(0, 4).map((f) => (
@@ -154,7 +226,10 @@ export function Inactivity({ initial, accounts: seen, today }: { initial: Inacti
               const idle = idleDays(a.lastTrade ?? a.since, today, rule?.unit ?? "calendar");
               const left = rule ? rule.days - idle : null;
               return (
-                <li key={a.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-2 border-b border-line py-3 font-mono text-[11.5px] sm:grid-cols-[minmax(0,1fr)_11rem_auto_auto]">
+                <li
+                  key={a.id}
+                  className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-2 border-b border-line py-3 font-mono text-[11.5px] sm:grid-cols-[minmax(0,1fr)_11rem_auto_auto]"
+                >
                   <span className="break-all text-ink" title={a.id}>
                     {a.name}
                   </span>
@@ -168,7 +243,12 @@ export function Inactivity({ initial, accounts: seen, today }: { initial: Inacti
                     maxLength={40}
                     placeholder="Which firm?"
                     aria-label={`Firm for ${a.name}`}
-                    onChange={(e) => setS((x) => ({ ...x, firmOf: { ...x.firmOf, [a.id]: e.target.value } }))}
+                    onChange={(e) =>
+                      setS((x) => ({
+                        ...x,
+                        firmOf: { ...x.firmOf, [a.id]: e.target.value },
+                      }))
+                    }
                   />
                   <span className={cn("text-right text-[10.5px]", left !== null && rule && left <= rule.warnBefore ? "text-gold" : "text-ink-4")}>
                     {a.lastTrade ? `last trade ${day(a.lastTrade)}` : `started ${day(a.since)}`}
@@ -179,23 +259,41 @@ export function Inactivity({ initial, accounts: seen, today }: { initial: Inacti
             })}
           </ul>
         )}
-        <div className="mt-5 flex flex-wrap items-end gap-3">
-          <label className="min-w-0 flex-1 basis-40">
-            <span className={label}>Add an account</span>
-            <input className="field h-9 w-full" value={add.name} maxLength={80} placeholder="Name, e.g. TDFY1636638" onChange={(e) => setAdd({ ...add, name: e.target.value })} onKeyDown={(e) => e.key === "Enter" && addAccount()} />
-          </label>
-          <label className="w-36">
-            <span className={label}>Firm</span>
-            <input className="field h-9 w-full" list="ltj-firms" value={add.firm} maxLength={40} placeholder="Tradeify" onChange={(e) => setAdd({ ...add, firm: e.target.value })} />
-          </label>
-          <label className="w-40">
-            <span className={label}>Bought on</span>
-            <input type="date" className="field num h-9 w-full px-2 py-0" value={add.since} max={today} onChange={(e) => e.target.value && setAdd({ ...add, since: e.target.value })} />
-          </label>
-          <Button variant="secondary" onClick={addAccount}>
-            + Add account
-          </Button>
-        </div>
+        {!adding ? (
+          <div className="mt-5">
+            <Button variant="secondary" onClick={() => setAdding(true)}>
+              + Add an account
+            </Button>
+          </div>
+        ) : (
+          <div className="mt-5 flex flex-wrap items-end gap-3">
+            <label className="min-w-0 flex-1 basis-40">
+              <span className={label}>Add an account</span>
+              <input
+                className="field h-9 w-full"
+                value={add.name}
+                maxLength={80}
+                placeholder="Name, e.g. TDFY1636638"
+                onChange={(e) => setAdd({ ...add, name: e.target.value })}
+                onKeyDown={(e) => e.key === "Enter" && addAccount()}
+              />
+            </label>
+            <label className="w-36">
+              <span className={label}>Firm</span>
+              <input className="field h-9 w-full" list="ltj-firms" value={add.firm} maxLength={40} placeholder="Tradeify" onChange={(e) => setAdd({ ...add, firm: e.target.value })} />
+            </label>
+            <label className="w-40">
+              <span className={label}>Bought on</span>
+              <input type="date" className="field num h-9 w-full px-2 py-0" value={add.since} max={today} onChange={(e) => e.target.value && setAdd({ ...add, since: e.target.value })} />
+            </label>
+            <Button variant="secondary" onClick={addAccount}>
+              + Add account
+            </Button>
+            <button type="button" onClick={() => setAdding(false)} className="h-10 font-mono text-[10px] tracking-[0.2em] text-ink-4 uppercase hover:text-ink">
+              Done
+            </button>
+          </div>
+        )}
         {addNote && <p className="mt-2 font-mono text-[10.5px] text-ink-3">{addNote}</p>}
         {removed.length > 0 && (
           <details className="mt-5">
@@ -213,7 +311,8 @@ export function Inactivity({ initial, accounts: seen, today }: { initial: Inacti
           </details>
         )}
         <p className="mt-3 font-mono text-[10.5px] leading-[1.8] text-ink-4">
-          × only takes an account off this list; its trades and stats stay. Each account counts from its own last trade, or the day you bought it if it hasn&apos;t traded. Imported trades count once imported, synced ones about hourly.
+          × only takes an account off this list; its trades and stats stay. Each account counts from its own last trade, or the day you bought it if it hasn&apos;t traded. Imported trades count once
+          imported, synced ones about hourly.
         </p>
       </div>
     </div>
