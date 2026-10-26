@@ -1,10 +1,11 @@
 import "server-only";
+import { missionDaysWithGoals } from "../analytics/missionGoals";
 import { getSettings } from "./settings";
 import { listTrades } from "./trades";
 import { dueCapsules, getJournalDay } from "./journal";
 import { listGoals, setGoalDone } from "./goals";
 import { listLedger } from "./ledger";
-import { missionDays, missionState } from "../analytics/mission";
+import { missionState } from "../analytics/mission";
 import { checkGoal } from "../analytics/goalcheck";
 import { evaluateRules } from "../analytics/rules";
 import { capsuleReady, clockChange, morning, weekendLift, checkin, evening, goalNews, preSession, quiet, ruleAlerts, weekly, windowClosed, type GoalEvent, type Reminder, type RuleBreak } from "../analytics/notify";
@@ -28,7 +29,7 @@ export async function sendDueReminders(now = new Date()): Promise<{ sent: string
   const missionStart = settings.goals.missionStart ?? goals.reduce((m, g) => (g.createdAt.slice(0, 10) < m ? g.createdAt.slice(0, 10) : m), addDays(day, -30));
   const from = [missionStart, addDays(day, -7), ...goals.filter((g) => g.measure).map(startOf)].sort()[0]!;
   const trades = await listTrades({ since: new Date(`${addDays(from, -1)}T00:00:00Z`) });
-  const days = missionDays(trades, settings.rules, tz, missionStart < addDays(day, -7) ? missionStart : addDays(day, -7), day, settings.goals.counts);
+  const days = missionDaysWithGoals(trades, settings.rules, tz, missionStart < addDays(day, -7) ? missionStart : addDays(day, -7), day, settings.goals.counts, goals);
   // Today's window on your clock, moved with New York on the weeks the clocks are out of step.
   const { start: sessionStart, end: sessionEnd, shift } = windowFor(settings.rules, day, tz);
 

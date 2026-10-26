@@ -1,10 +1,11 @@
 import "server-only";
+import { missionDaysWithGoals } from "../analytics/missionGoals";
 import { db } from "../db";
 import { randomToken, sha256 } from "../crypto";
 import { getSettings } from "./settings";
 import { listTrades } from "./trades";
 import { listGoals } from "./goals";
-import { missionDays, missionState } from "../analytics/mission";
+import { missionState } from "../analytics/mission";
 import { widgetLine } from "../analytics/notify";
 import { summarizeLedger } from "../analytics/ledger";
 import { listLedger } from "./ledger";
@@ -75,7 +76,7 @@ export async function widgetFeed(now = new Date()): Promise<WidgetFeed> {
   const goals = await listGoals();
   const missionStart = settings.goals.missionStart ?? goals.reduce((m, g) => (g.createdAt.slice(0, 10) < m ? g.createdAt.slice(0, 10) : m), addDays(day, -30));
   const trades = await listTrades({ since: new Date(`${addDays(missionStart, -1)}T00:00:00Z`) });
-  const streak = missionState(missionDays(trades, settings.rules, tz, missionStart, day, settings.goals.counts), 0, 0).streak;
+  const streak = missionState(missionDaysWithGoals(trades, settings.rules, tz, missionStart, day, settings.goals.counts, goals), 0, 0).streak;
 
   const span = (m: number) => (m >= 60 ? `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, "0")}m` : `${m}m`);
   let status = "Rest day";

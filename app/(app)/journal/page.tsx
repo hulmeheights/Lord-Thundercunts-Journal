@@ -1,4 +1,5 @@
 import { getSettings } from "@/lib/data/settings";
+import { missionDaysWithGoals } from "@/lib/analytics/missionGoals";
 import { listTrades } from "@/lib/data/trades";
 import { journaledDays, listCapsules, listJournalDays, pendingCapsuleCount } from "@/lib/data/journal";
 import { listLedger } from "@/lib/data/ledger";
@@ -6,7 +7,7 @@ import { capsuleStatus, evaluateCapsule } from "@/lib/analytics/capsule";
 import { CapsuleList, type CapsuleView } from "@/components/journal/CapsuleList";
 import { Goals } from "@/components/journal/Goals";
 import { listGoals, setGoalDone } from "@/lib/data/goals";
-import { missionDays, missionState } from "@/lib/analytics/mission";
+import { missionState } from "@/lib/analytics/mission";
 import { checkGoal, type GoalProgress } from "@/lib/analytics/goalcheck";
 import { photoCounts } from "@/lib/data/photos";
 import { addDays, addMonths, endOfMonth, longDate, monthLabel, startOfMonth, todayKey } from "@/lib/analytics/time";
@@ -48,7 +49,7 @@ export default async function JournalPage({ searchParams }: { searchParams: Prom
   const missionStart = settings.goals.missionStart ?? goals.reduce((m, g) => (g.createdAt.slice(0, 10) < m ? g.createdAt.slice(0, 10) : m), today);
   // The loaded trades only cover the year on screen, which may not be this one.
   const missionTrades = missionStart < yStart || today > yEnd ? await listTrades({ since: new Date(addDays(missionStart, -1)) }) : trades;
-  const mDays = missionDays(missionTrades, settings.rules, tz, missionStart, today, settings.goals.counts);
+  const mDays = missionDaysWithGoals(missionTrades, settings.rules, tz, missionStart, today, settings.goals.counts, goals);
   // Trading goals that check themselves: rules kept, numbers reached, rates hit.
   const startOf = (g: (typeof goals)[number]) => g.startedOn ?? g.createdAt.slice(0, 10);
   const goalFrom = goals.reduce((m, g) => (g.measure && startOf(g) < m ? startOf(g) : m), missionStart);

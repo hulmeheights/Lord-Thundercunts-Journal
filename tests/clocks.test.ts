@@ -91,3 +91,23 @@ test("the mission can count only the window", async () => {
   assert.equal(missionDays(t, rules, LDN, "2026-10-27", "2026-10-27", ["session"])[0]!.kind, "burn");
   assert.equal(missionDays([trade("2026-10-27T15:10:00Z", 100)], rules, LDN, "2026-10-27", "2026-10-27", ["session"])[0]!.kind, "leak");
 });
+
+test("while a goal runs, the mission judges its days by the goal's rules only", async () => {
+  const { missionDaysWithGoals } = await import("../lib/analytics/missionGoals");
+  const rules = { ...base, maxTradesPerDay: 1, stopAfterConsecutiveLosses: 1, followMarket: true };
+  const goal = {
+    kind: "trading" as const, startedOn: "2026-10-26", createdAt: "2026-10-26T09:00:00Z", completedAt: null, targetDay: null,
+    measure: { kind: "days" as const, rules: [{ type: "window" as const, start: "14:30", end: "16:00" }], span: "weeks" as const, n: 2 },
+  };
+  // Monday 26 Oct: three trades inside this week's 13:30–15:00, one a loss followed by more trades
+  // (breaks the trade limit and the stop-after-losses rule, but not the goal).
+  const t = [trade("2026-10-26T13:35:00Z", -300), trade("2026-10-26T13:50:00Z", 200), trade("2026-10-26T14:20:00Z", 150), trade("2026-10-23T12:00:00Z", 50)];
+  const days = missionDaysWithGoals(t, rules, LDN, "2026-10-23", "2026-10-27", undefined, [goal]);
+  const by = Object.fromEntries(days.map((d) => [d.day, d]));
+  assert.equal(by["2026-10-26"]!.kind, "burn"); // the goal says clean
+  assert.equal(by["2026-10-27"]!.kind, "hold");
+  assert.equal(by["2026-10-23"]!.kind, "leak"); // before the goal: your mission rules apply (12:00 is outside the window)
+  // A trade after this week's 15:00 close still leaks while the goal runs.
+  const late = missionDaysWithGoals([trade("2026-10-27T15:20:00Z", 100)], rules, LDN, "2026-10-26", "2026-10-27", undefined, [goal]);
+  assert.equal(late.find((d) => d.day === "2026-10-27")!.kind, "leak");
+});
