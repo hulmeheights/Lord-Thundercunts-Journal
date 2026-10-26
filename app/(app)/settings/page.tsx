@@ -17,6 +17,8 @@ import { Notifications } from "@/components/settings/Notifications";
 import { fmtMinute, todayKey, windowFor } from "@/lib/analytics/time";
 import { recentPushes } from "@/lib/push";
 import { Widget } from "@/components/settings/Widget";
+import { Inactivity } from "@/components/settings/Inactivity";
+import { watchedAccounts } from "@/lib/data/inactivity";
 import { widgetFeed, widgetStatus } from "@/lib/data/widget";
 import { listLedger } from "@/lib/data/ledger";
 import { summarizeLedger } from "@/lib/analytics/ledger";
@@ -41,7 +43,7 @@ function noticeFrom(sp: Record<string, string | string[] | undefined>): ConnectN
 
 export default async function SettingsPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const session = await requireSession();
-  const [settings, connections, accounts, passkeys, sessions, counts, sp, jar, pushes, widget, feed, ledger] = await Promise.all([
+  const [settings, connections, accounts, passkeys, sessions, counts, sp, jar, pushes, widget, feed, ledger, watched] = await Promise.all([
     getSettings(),
     listConnections(),
     listBrokerAccounts(),
@@ -54,6 +56,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
     widgetStatus(),
     widgetFeed(),
     listLedger(),
+    watchedAccounts(),
   ]);
   const prefs = parseUiPrefs(jar.get(UI_COOKIE)?.value);
   const nightly = env.cronSecret.length >= 16;
@@ -136,6 +139,9 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
           timezone={settings.profile.timezone}
           recent={pushes.map((r) => ({ kind: r.kind, at: stamp(r.sentAt, settings.profile.timezone) }))}
         />
+        <div className="mt-14">
+          <Inactivity initial={settings.inactivity} accounts={watched} today={todayKey(settings.profile.timezone)} />
+        </div>
       </Section>
 
       <Section id="widget" n={7} label="Widget" lead={<>On your <em>Lock Screen</em>, all day.</>}>

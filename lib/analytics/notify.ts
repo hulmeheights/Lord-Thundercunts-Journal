@@ -11,7 +11,7 @@ import type { MissionDay } from "./mission";
 import { MANIFEST, PRAYERS, THANKFUL, type Uplift } from "../content/uplift";
 
 
-export type NotifyKind = "clock" | "morning" | "uplift" | "checkin" | "pre" | "close" | "evening" | "weekly" | "capsule" | "goal" | "rule";
+export type NotifyKind = "inactive" | "clock" | "morning" | "uplift" | "checkin" | "pre" | "close" | "evening" | "weekly" | "capsule" | "goal" | "rule";
 export type Reminder = { kind: NotifyKind; /** What it's claimed under: once per this key. */ key: string; title: string; body: string; url: string };
 
 /** No pushes overnight, whatever is due. */

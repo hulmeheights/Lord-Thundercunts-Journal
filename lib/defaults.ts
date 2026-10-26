@@ -1,4 +1,5 @@
 import { DEFAULT_WIDGET } from "./widget/style";
+import { DEFAULT_INACTIVITY } from "./analytics/inactivity";
 import type { Settings } from "./types";
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -23,6 +24,7 @@ export const DEFAULT_SETTINGS: Settings = {
   plan: { monthlyTarget: 25000, batch: 5, overrides: {} },
   goals: { mission: "Payouts paying the bills", missionStart: null, counts: ["session", "maxTrades", "maxDailyLoss", "stopAfterLosses"] },
   widget: DEFAULT_WIDGET,
+  inactivity: DEFAULT_INACTIVITY,
   notify: { morning: true, checkin: true, preSession: true, close: true, evening: true, weekly: true, capsules: true, goals: true, ruleAlerts: true },
   prop: {
     enabled: false,

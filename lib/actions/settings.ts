@@ -131,6 +131,15 @@ export async function newWidgetLink() {
   return { token: await createWidgetToken() };
 }
 
+export async function saveInactivity(v: unknown) {
+  await guard();
+  const { InactivitySettings } = await import("../analytics/inactivity");
+  const parsed = InactivitySettings.safeParse(v);
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Check the rules." };
+  await saveSetting("inactivity", parsed.data);
+  return { ok: true };
+}
+
 export async function saveWidgetStyle(v: unknown) {
   await guard();
   const { WidgetStyle } = await import("../widget/style");

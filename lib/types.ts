@@ -1,4 +1,5 @@
 import type { WidgetStyle } from "./widget/style";
+import type { InactivitySettings } from "./analytics/inactivity";
 /** Shared, client-safe domain types. */
 
 /** Platform family a connection talks to. */
@@ -137,6 +138,8 @@ export type Settings = {
   notify: NotifySettings;
   /** How the phone widget looks. */
   widget: WidgetStyle;
+  /** Per-firm inactivity rules, and firms set by hand for accounts. */
+  inactivity: InactivitySettings;
   observer: {
     name: string | null;
     pronoun: "they" | "he" | "she";

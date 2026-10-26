@@ -12,6 +12,8 @@ import { capsuleReady, clockChange, morning, weekendLift, checkin, evening, goal
 import { addDays, dayKey, fmtMinute, minuteOfDay, weekdayIndex, windowFor } from "../analytics/time";
 import { claimDaily, pushAll, subscriptionCount } from "../push";
 import { QUOTES } from "../content/quotes";
+import { inactivityReminder } from "../analytics/inactivity";
+import { watchedAccounts } from "./inactivity";
 
 /** Called by the cron about once an hour: sends whatever is due right now, each reminder once. */
 export async function sendDueReminders(now = new Date()): Promise<{ sent: string[] }> {
@@ -62,6 +64,11 @@ export async function sendDueReminders(now = new Date()): Promise<{ sent: string
       breaks.push({ rule: v.rule, firstEntry: first ? fmtMinute(minuteOfDay(first.entryTime, tz)) : "", detail: v.detail });
     }
     add(ruleAlerts({ day, minute, breaks }));
+  }
+  // Inactivity first after rule alerts: a closed account is the costliest thing to miss.
+  if (settings.inactivity.rules.some((r) => r.enabled)) {
+    const accounts = await watchedAccounts();
+    for (const rule of settings.inactivity.rules) add(inactivityReminder({ rule, accounts, today: day, minute, sessionStart }));
   }
   if (n.goals) add(goalNews({ day, minute, events, due: goals.filter((g) => !g.completedAt && g.targetDay).map((g) => ({ id: g.id, title: g.title, targetDay: g.targetDay!, headline: live.find((l) => l.title === g.title)?.headline ?? null })) }));
   if (n.capsules) add(capsuleReady({ minute, capsules: (await dueCapsules(day)).filter((c) => !c.openedAt) }));

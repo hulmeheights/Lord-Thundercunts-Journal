@@ -41,6 +41,7 @@ async function call(method: "GET" | "POST" | "DELETE", body?: unknown) {
 
 /** Push notifications to this phone or computer: a nudge before the session, and a recap after. */
 const KIND_LABEL: Record<string, string> = {
+  inactive: "Inactivity warning",
   clock: "Clock-change heads-up",
   morning: "9:00 positive",
   uplift: "Weekend 15:00 positive",
