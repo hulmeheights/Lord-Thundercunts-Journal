@@ -75,7 +75,7 @@ export async function widgetFeed(now = new Date()): Promise<WidgetFeed> {
   const goals = await listGoals();
   const missionStart = settings.goals.missionStart ?? goals.reduce((m, g) => (g.createdAt.slice(0, 10) < m ? g.createdAt.slice(0, 10) : m), addDays(day, -30));
   const trades = await listTrades({ since: new Date(`${addDays(missionStart, -1)}T00:00:00Z`) });
-  const streak = missionState(missionDays(trades, settings.rules, tz, missionStart, day), 0, 0).streak;
+  const streak = missionState(missionDays(trades, settings.rules, tz, missionStart, day, settings.goals.counts), 0, 0).streak;
 
   const span = (m: number) => (m >= 60 ? `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, "0")}m` : `${m}m`);
   let status = "Rest day";

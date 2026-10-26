@@ -125,7 +125,18 @@ export async function setMission(name: string) {
   const mission = z.string().transform(clean).pipe(z.string().min(1).max(80)).parse(name);
   const settings = await getSettings();
   const missionStart = settings.goals.missionStart ?? todayKey(settings.profile.timezone);
-  await saveSetting("goals", { mission, missionStart });
+  await saveSetting("goals", { ...settings.goals, mission, missionStart });
+  done();
+  return { ok: true };
+}
+
+/** Which rules make a day clean for the mission. */
+export async function setMissionCounts(counts: unknown) {
+  await assertSession();
+  const v = z.array(z.enum(["session", "maxTrades", "maxDailyLoss", "stopAfterLosses"])).min(1, "Keep at least one rule").max(4).safeParse(counts);
+  if (!v.success) return { error: v.error.issues[0]?.message ?? "Check the rules." };
+  const settings = await getSettings();
+  await saveSetting("goals", { ...settings.goals, counts: [...new Set(v.data)] });
   done();
   return { ok: true };
 }

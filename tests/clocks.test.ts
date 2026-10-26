@@ -82,3 +82,12 @@ test("copied accounts are judged one account at a time", async () => {
   const v = evaluateRules(breach, rules, LDN).violations.map((x) => x.rule).sort();
   assert.ok(v.includes("maxTrades") && v.includes("stopAfterLosses"));
 });
+
+test("the mission can count only the window", async () => {
+  const { missionDays } = await import("../lib/analytics/mission");
+  const rules = { ...base, maxTradesPerDay: 1, followMarket: true };
+  const t = [trade("2026-10-27T13:40:00Z", 100), trade("2026-10-27T14:10:00Z", 100)]; // two trades, limit 1
+  assert.equal(missionDays(t, rules, LDN, "2026-10-27", "2026-10-27")[0]!.kind, "leak");
+  assert.equal(missionDays(t, rules, LDN, "2026-10-27", "2026-10-27", ["session"])[0]!.kind, "burn");
+  assert.equal(missionDays([trade("2026-10-27T15:10:00Z", 100)], rules, LDN, "2026-10-27", "2026-10-27", ["session"])[0]!.kind, "leak");
+});

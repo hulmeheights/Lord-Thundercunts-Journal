@@ -13,7 +13,7 @@ export type DayKind = "burn" | "hold" | "leak";
 export type MissionDay = { day: string; kind: DayKind; net: number; trades: number; reasons: string[] };
 
 /** The rules that decide a clean day: when you trade, and when you stop. */
-const DISCIPLINE: RuleId[] = ["session", "maxTrades", "maxDailyLoss", "stopAfterLosses"];
+export const DISCIPLINE: RuleId[] = ["session", "maxTrades", "maxDailyLoss", "stopAfterLosses"];
 const REASON: Partial<Record<RuleId, string>> = {
   session: "outside your window",
   maxTrades: "over your trade limit",
@@ -23,7 +23,8 @@ const REASON: Partial<Record<RuleId, string>> = {
 
 export const FUEL = { burn: 3, hold: 1, leak: -2, step: 1, goal: 5 } as const;
 
-export function missionDays(trades: Trade[], rules: TradingRules, tz: string, from: string, today: string): MissionDay[] {
+/** `counts` picks which rules decide a clean day (all four unless you chose otherwise). */
+export function missionDays(trades: Trade[], rules: TradingRules, tz: string, from: string, today: string, counts: readonly RuleId[] = DISCIPLINE): MissionDay[] {
   const inRange = trades.filter((t) => {
     const d = dayKey(t.entryTime, tz);
     return d >= from && d <= today;
@@ -39,7 +40,7 @@ export function missionDays(trades: Trade[], rules: TradingRules, tz: string, fr
   }
   const reasons = new Map<string, Set<string>>();
   for (const v of report.violations) {
-    if (!DISCIPLINE.includes(v.rule)) continue;
+    if (!DISCIPLINE.includes(v.rule) || !counts.includes(v.rule)) continue;
     const set = reasons.get(v.day) ?? new Set<string>();
     set.add(REASON[v.rule]!);
     reasons.set(v.day, set);

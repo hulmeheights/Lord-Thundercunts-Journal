@@ -21,7 +21,7 @@ export const DEFAULT_SETTINGS: Settings = {
     ],
   },
   plan: { monthlyTarget: 25000, batch: 5, overrides: {} },
-  goals: { mission: "Payouts paying the bills", missionStart: null },
+  goals: { mission: "Payouts paying the bills", missionStart: null, counts: ["session", "maxTrades", "maxDailyLoss", "stopAfterLosses"] },
   widget: DEFAULT_WIDGET,
   notify: { morning: true, checkin: true, preSession: true, close: true, evening: true, weekly: true, capsules: true, goals: true, ruleAlerts: true },
   prop: {

@@ -48,7 +48,7 @@ export default async function JournalPage({ searchParams }: { searchParams: Prom
   const missionStart = settings.goals.missionStart ?? goals.reduce((m, g) => (g.createdAt.slice(0, 10) < m ? g.createdAt.slice(0, 10) : m), today);
   // The loaded trades only cover the year on screen, which may not be this one.
   const missionTrades = missionStart < yStart || today > yEnd ? await listTrades({ since: new Date(addDays(missionStart, -1)) }) : trades;
-  const mDays = missionDays(missionTrades, settings.rules, tz, missionStart, today);
+  const mDays = missionDays(missionTrades, settings.rules, tz, missionStart, today, settings.goals.counts);
   // Trading goals that check themselves: rules kept, numbers reached, rates hit.
   const startOf = (g: (typeof goals)[number]) => g.startedOn ?? g.createdAt.slice(0, 10);
   const goalFrom = goals.reduce((m, g) => (g.measure && startOf(g) < m ? startOf(g) : m), missionStart);
@@ -201,7 +201,7 @@ export default async function JournalPage({ searchParams }: { searchParams: Prom
       </Section>
 
       <Section id="goals" n={4} label="Goals" lead={<>The <em>mission</em>, flown by your discipline.</>}>
-        <Goals goals={goals} today={today} mission={mission} progress={progress} autoReached={autoReached} defaults={{ start: settings.rules.sessionStart, end: settings.rules.sessionEnd }} />
+        <Goals goals={goals} today={today} mission={mission} progress={progress} autoReached={autoReached} defaults={{ start: settings.rules.sessionStart, end: settings.rules.sessionEnd }} counts={settings.goals.counts} />
       </Section>
 
       <Section id="capsules" n={5} label="Time capsule">

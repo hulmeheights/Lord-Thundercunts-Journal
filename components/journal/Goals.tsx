@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { addGoal, addStep, claimReward, deleteGoal, deleteStep, markGoal, restartGoal, setMission } from "@/lib/actions/goals";
+import { addGoal, addStep, claimReward, deleteGoal, deleteStep, markGoal, restartGoal, setMission, setMissionCounts } from "@/lib/actions/goals";
 import type { Goal } from "@/lib/data/goals";
 import type { MissionDay } from "@/lib/analytics/mission";
 import { describeMeasure, type GoalMeasure, type GoalProgress, type GoalRule, type GoalSpan, type RateMetric, type TotalMetric } from "@/lib/analytics/goalcheck";
@@ -367,6 +367,46 @@ function GoalCard({ g, today, onReached, progress }: { g: Goal; today: string; o
 }
 
 /** The mission: your goals as worlds to pass, flown by the discipline your trades show. */
+type CountRule = "session" | "maxTrades" | "maxDailyLoss" | "stopAfterLosses";
+const COUNT_LABEL: Record<CountRule, string> = {
+  session: "Inside my window",
+  maxTrades: "Within my trade limit",
+  maxDailyLoss: "Within my daily loss limit",
+  stopAfterLosses: "Stopped after my losing streak",
+};
+
+/** Which of your trading rules decide a clean day (burn) versus a leak. */
+function CleanDayRules({ initial }: { initial: CountRule[] }) {
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const [on, setOn] = useState<CountRule[]>(initial);
+  const [pending, start] = useTransition();
+  const toggle = (k: CountRule, v: boolean) => {
+    const next = v ? [...on, k] : on.filter((x) => x !== k);
+    if (!next.length) return;
+    setOn(next);
+    start(async () => void (await setMissionCounts(next), router.refresh()));
+  };
+  return (
+    <div className="mt-5 text-center">
+      <button type="button" onClick={() => setOpen((o) => !o)} className="font-mono text-[9.5px] tracking-[0.24em] text-ink-4 uppercase hover:text-ink">
+        {open ? "▾" : "▸"} A clean day means: {on.length === 4 ? "all my rules" : on.map((k) => COUNT_LABEL[k].toLowerCase()).join(", ")}
+      </button>
+      {open && (
+        <div className="mx-auto mt-3 flex max-w-[26rem] flex-col items-start gap-2 border-t border-line pt-3 text-left">
+          {(Object.keys(COUNT_LABEL) as CountRule[]).map((k) => (
+            <label key={k} className={cn("flex cursor-pointer items-center gap-2 font-mono text-[11.5px]", on.includes(k) ? "text-ink" : "text-ink-4")}>
+              <input type="checkbox" className="accent-[var(--gold)]" disabled={pending || (on.length === 1 && on.includes(k))} checked={on.includes(k)} onChange={(e) => toggle(k, e.target.checked)} />
+              {COUNT_LABEL[k]}
+            </label>
+          ))}
+          <p className="font-mono text-[10px] leading-[1.7] text-ink-4">A day that breaks a ticked rule leaks fuel. The limits themselves are in Settings → Trading rules.</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function Goals({
   goals,
   today,
@@ -374,7 +414,9 @@ export function Goals({
   progress,
   autoReached = [],
   defaults,
+  counts = ["session", "maxTrades", "maxDailyLoss", "stopAfterLosses"],
 }: {
+  counts?: CountRule[];
   goals: Goal[];
   today: string;
   mission: MissionView;
@@ -441,6 +483,7 @@ export function Goals({
             </div>
           ))}
         </div>
+        <CleanDayRules initial={counts} />
 
         {freshGoal?.reward ? (
           <div aria-live="polite" className="mx-auto mt-6 max-w-[26rem] border border-gold/60 px-6 py-5 text-center">

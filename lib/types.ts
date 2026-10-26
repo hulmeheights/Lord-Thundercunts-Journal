@@ -121,7 +121,12 @@ export type Settings = {
   profile: { name: string; timezone: string };
   plan: PlanSettings;
   /** How the Journal draws your goals. */
-  goals: { mission: string; missionStart: string | null };
+  goals: {
+    mission: string;
+    missionStart: string | null;
+    /** Which rules decide a clean day for the mission (a leak is breaking one of these). */
+    counts?: ("session" | "maxTrades" | "maxDailyLoss" | "stopAfterLosses")[];
+  };
   rules: TradingRules;
   prop: PropSettings;
   ritual: RitualItem[];
