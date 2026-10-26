@@ -47,18 +47,26 @@ export type RuleReport = {
  */
 export function evaluateRules(trades: Trade[], rules: TradingRules, tz: string): RuleReport {
   const violations: Violation[] = [];
+  // Each account's day is judged on its own: a copier puts one trade on every account, and
+  // counting those copies together would invent extra trades, losing streaks and losses.
   const perDay = new Map<string, Trade[]>();
+  const perAccountDay = new Map<string, Trade[]>();
   for (const t of trades) {
     const d = dayKey(t.entryTime, tz);
     const list = perDay.get(d);
     if (list) list.push(t);
     else perDay.set(d, [t]);
+    const k = `${d}\u0000${t.accountId ?? t.source}`;
+    const acc = perAccountDay.get(k);
+    if (acc) acc.push(t);
+    else perAccountDay.set(k, [t]);
   }
 
   const startMin = parseHHMM(rules.sessionStart);
   const endMin = parseHHMM(rules.sessionEnd);
 
-  for (const [day, list] of perDay) {
+  for (const [key, list] of perAccountDay) {
+    const day = key.split("\u0000")[0]!;
     const dayTrades = sortByEntry(list);
     const add = (rule: RuleId, ts: Trade[], detail: string) => {
       if (!ts.length) return;

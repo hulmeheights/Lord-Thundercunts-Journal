@@ -68,3 +68,17 @@ test("one heads-up on the Sunday evening before the first trading day at the new
   assert.match(at("2026-03-08", 18 * 60 + 30, "2026-03-06")!.title, /Tomorrow: your window is 13:30–15:00/);
   assert.match(at("2026-03-29", 18 * 60 + 30, "2026-03-27")!.title, /Tomorrow: back to 14:30–16:00/);
 });
+
+test("copied accounts are judged one account at a time", async () => {
+  const { detectTilt } = await import("../lib/analytics/tilt");
+  const rules = { ...base, maxTradesPerDay: 2, stopAfterConsecutiveLosses: 2, maxDailyLoss: 500, followMarket: true };
+  // One losing trade, then one winner, copied onto three accounts at 13:40 and 14:10 this week.
+  const copy = (acc: string, iso: string, net: number) => ({ ...trade(iso, net), accountId: acc });
+  const day = ["A", "B", "C"].flatMap((acc) => [copy(acc, "2026-10-27T13:40:00Z", -300), copy(acc, "2026-10-27T14:10:00Z", 250)]);
+  assert.deepEqual(evaluateRules(day, rules, LDN).violations, []);
+  assert.equal(detectTilt(day, LDN).flaggedIds.size, 0);
+  // A real breach on one account is still caught: a third trade there after two losses.
+  const breach = [...day, copy("A", "2026-10-27T14:20:00Z", -300), copy("A", "2026-10-27T14:30:00Z", -300), copy("A", "2026-10-27T14:40:00Z", 100)];
+  const v = evaluateRules(breach, rules, LDN).violations.map((x) => x.rule).sort();
+  assert.ok(v.includes("maxTrades") && v.includes("stopAfterLosses"));
+});

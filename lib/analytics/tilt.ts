@@ -32,9 +32,10 @@ const QUICK_REENTRY_MIN = 5;
  * a losing streak. Each signal adds severity.
  */
 export function detectTilt(trades: Trade[], tz: string): TiltReport {
+  // Per account and day: copies of one trade on several accounts aren't a re-entry or a streak.
   const perDay = new Map<string, Trade[]>();
   for (const t of trades) {
-    const d = dayKey(t.entryTime, tz);
+    const d = `${dayKey(t.entryTime, tz)}\u0000${t.accountId ?? t.source}`;
     const list = perDay.get(d);
     if (list) list.push(t);
     else perDay.set(d, [t]);
@@ -45,7 +46,8 @@ export function detectTilt(trades: Trade[], tz: string): TiltReport {
   const afterWin: Trade[] = [];
   const reentryGaps: number[] = [];
 
-  for (const [day, list] of perDay) {
+  for (const [key, list] of perDay) {
+    const day = key.split("\u0000")[0]!;
     const ts = sortByEntry(list);
     let lossStreak = 0;
     for (let i = 0; i < ts.length; i++) {
@@ -88,8 +90,10 @@ export function detectTilt(trades: Trade[], tz: string): TiltReport {
   const median = counts.length ? counts[Math.floor(counts.length / 2)]! : 0;
   const overtradingDays = [...perDay.entries()]
     .filter(([, l]) => median > 0 && l.length >= Math.max(4, median * 2))
-    .map(([day, l]) => ({ day, trades: l.length, net: l.reduce((s, t) => s + t.netPnl, 0) }))
-    .sort((a, b) => a.day.localeCompare(b.day));
+    .map(([key, l]) => ({ day: key.split("\u0000")[0]!, trades: l.length, net: l.reduce((s, t) => s + t.netPnl, 0) }))
+    .sort((a, b) => a.day.localeCompare(b.day))
+    // One entry per day, even when several accounts overtraded the same day.
+    .filter((o, i, all) => i === 0 || all[i - 1]!.day !== o.day);
 
   const flagsByDay = new Map<string, { flags: number; net: number }>();
   for (const f of flags) {
