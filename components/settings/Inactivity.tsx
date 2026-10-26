@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { saveInactivity } from "@/lib/actions/settings";
-import { atRisk, describeSend, idleDays, newRule, sameFirm, type InactivityRule, type InactivitySettings, type WatchedAccount } from "@/lib/analytics/inactivity";
+import { atRisk, describeSend, findAccount, idleDays, importId, newRule, sameFirm, watchList, type InactivityRule, type InactivitySettings, type WatchedAccount } from "@/lib/analytics/inactivity";
 import { Button } from "@/components/ui/Button";
 import { Toggle } from "@/components/ui/Toggle";
 import { Seg } from "@/components/m/Seg";
@@ -88,8 +88,34 @@ export function Inactivity({ initial, accounts: seen, today }: { initial: Inacti
     return () => clearTimeout(t);
   }, [s]);
 
-  // Accounts with the firms as you've set them here (unsaved changes included).
-  const accounts = useMemo(() => seen.map((a) => ({ ...a, firm: s.firmOf[a.id] ?? a.firm })), [seen, s.firmOf]);
+  // The watch list as you've set it here (unsaved changes included).
+  const accounts = useMemo(() => watchList(seen, s), [seen, s]);
+  const removed = seen.filter((a) => s.hidden.includes(a.id));
+  const [add, setAdd] = useState({ name: "", firm: "", since: today });
+  const [addNote, setAddNote] = useState("");
+
+  const remove = (a: WatchedAccount) =>
+    setS((x) => ({
+      ...x,
+      manual: x.manual.filter((m) => m.id !== a.id && findAccount(m.name, [a]) === undefined),
+      hidden: seen.some((f) => f.id === a.id) ? [...new Set([...x.hidden, a.id])] : x.hidden,
+    }));
+  const restore = (id: string) => setS((x) => ({ ...x, hidden: x.hidden.filter((h) => h !== id) }));
+  const addAccount = () => {
+    const name = add.name.trim();
+    if (!name) return setAddNote("Type the account name as your firm shows it.");
+    const match = findAccount(name, seen);
+    const id = match?.id ?? importId(name);
+    setS((x) => ({
+      ...x,
+      hidden: x.hidden.filter((h) => h !== id),
+      firmOf: add.firm.trim() ? { ...x.firmOf, [id]: add.firm.trim() } : x.firmOf,
+      // A known account with trades needs nothing more; one without keeps your start date.
+      manual: match?.lastTrade ? x.manual : [...x.manual.filter((m) => m.id !== id), { id, name: match?.name ?? name, since: add.since }],
+    }));
+    setAddNote(match ? `Found ${match.name} in your trades: it's back on the list.` : `Added. Imports under ${name} will join it.`);
+    setAdd({ name: "", firm: add.firm, since: today });
+  };
   const firms = [...new Set([...accounts.map((a) => a.firm).filter(Boolean), ...s.rules.map((r) => r.firm)])].sort();
   const setRule = (i: number, r: InactivityRule) => setS((x) => ({ ...x, rules: x.rules.map((y, j) => (j === i ? r : y)) }));
   const untracked = firms.filter((f) => !s.rules.some((r) => sameFirm(r.firm, f)));
@@ -120,7 +146,7 @@ export function Inactivity({ initial, accounts: seen, today }: { initial: Inacti
       <div className="mt-10">
         <Sub>Your accounts · {accounts.length}</Sub>
         {accounts.length === 0 ? (
-          <p className="py-4 font-mono text-[11px] text-ink-3">No accounts yet. They appear here once a connection syncs or trades are imported.</p>
+          <p className="py-4 font-mono text-[11px] text-ink-3">No accounts on the list. Add one below, or they appear once a connection syncs or trades are imported.</p>
         ) : (
           <ul>
             {accounts.map((a) => {
@@ -128,9 +154,12 @@ export function Inactivity({ initial, accounts: seen, today }: { initial: Inacti
               const idle = idleDays(a.lastTrade ?? a.since, today, rule?.unit ?? "calendar");
               const left = rule ? rule.days - idle : null;
               return (
-                <li key={a.id} className="grid grid-cols-[minmax(0,1fr)_11rem_auto] items-center gap-x-4 gap-y-1 border-b border-line py-2.5 font-mono text-[11.5px]">
-                  <span className="truncate text-ink" title={a.id}>
+                <li key={a.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-2 border-b border-line py-3 font-mono text-[11.5px] sm:grid-cols-[minmax(0,1fr)_11rem_auto_auto]">
+                  <span className="break-all text-ink" title={a.id}>
                     {a.name}
+                  </span>
+                  <span className="justify-self-end sm:order-last">
+                    <RemoveX onClick={() => remove(a)} label={`Take ${a.name} off the list`} />
                   </span>
                   <input
                     className="field h-8 px-2 py-0 text-[11px]"
@@ -142,7 +171,7 @@ export function Inactivity({ initial, accounts: seen, today }: { initial: Inacti
                     onChange={(e) => setS((x) => ({ ...x, firmOf: { ...x.firmOf, [a.id]: e.target.value } }))}
                   />
                   <span className={cn("text-right text-[10.5px]", left !== null && rule && left <= rule.warnBefore ? "text-gold" : "text-ink-4")}>
-                    {a.lastTrade ? `last trade ${day(a.lastTrade)}` : "no trades yet"}
+                    {a.lastTrade ? `last trade ${day(a.lastTrade)}` : `started ${day(a.since)}`}
                     {left !== null && ` · ${left <= 0 ? "past the limit" : `${left} left`}`}
                   </span>
                 </li>
@@ -150,8 +179,41 @@ export function Inactivity({ initial, accounts: seen, today }: { initial: Inacti
             })}
           </ul>
         )}
+        <div className="mt-5 flex flex-wrap items-end gap-3">
+          <label className="min-w-0 flex-1 basis-40">
+            <span className={label}>Add an account</span>
+            <input className="field h-9 w-full" value={add.name} maxLength={80} placeholder="Name, e.g. TDFY1636638" onChange={(e) => setAdd({ ...add, name: e.target.value })} onKeyDown={(e) => e.key === "Enter" && addAccount()} />
+          </label>
+          <label className="w-36">
+            <span className={label}>Firm</span>
+            <input className="field h-9 w-full" list="ltj-firms" value={add.firm} maxLength={40} placeholder="Tradeify" onChange={(e) => setAdd({ ...add, firm: e.target.value })} />
+          </label>
+          <label className="w-40">
+            <span className={label}>Bought on</span>
+            <input type="date" className="field num h-9 w-full px-2 py-0" value={add.since} max={today} onChange={(e) => e.target.value && setAdd({ ...add, since: e.target.value })} />
+          </label>
+          <Button variant="secondary" onClick={addAccount}>
+            + Add account
+          </Button>
+        </div>
+        {addNote && <p className="mt-2 font-mono text-[10.5px] text-ink-3">{addNote}</p>}
+        {removed.length > 0 && (
+          <details className="mt-5">
+            <summary className="cursor-pointer font-mono text-[10.5px] text-ink-4">Removed · {removed.length} (trades and stats kept)</summary>
+            <ul className="mt-2">
+              {removed.map((a) => (
+                <li key={a.id} className="flex items-center justify-between gap-4 border-b border-line py-2 font-mono text-[11px] text-ink-3">
+                  <span className="break-all">{a.name}</span>
+                  <button type="button" className="shrink-0 text-ink-4 underline-offset-4 hover:text-ink hover:underline" onClick={() => restore(a.id)}>
+                    Put back
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </details>
+        )}
         <p className="mt-3 font-mono text-[10.5px] leading-[1.8] text-ink-4">
-          Firms come from each connection&apos;s name; change any here. Last trades come from synced trades, about hourly, so an account traded in the last hour may show its previous day.
+          × only takes an account off this list; its trades and stats stay. Each account counts from its own last trade, or the day you bought it if it hasn&apos;t traded. Imported trades count once imported, synced ones about hourly.
         </p>
       </div>
     </div>

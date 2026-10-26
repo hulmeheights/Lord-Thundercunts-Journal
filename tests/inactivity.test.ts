@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { atRisk, idleDays, inactivityReminder, newRule, type WatchedAccount } from "../lib/analytics/inactivity";
+import { atRisk, findAccount, idleDays, importId, inactivityReminder, newRule, watchList, type WatchedAccount } from "../lib/analytics/inactivity";
 
 const acct = (n: number, firm: string, lastTrade: string | null): WatchedAccount => ({ id: `c:${n}`, name: `${firm} ${n}`, firm, lastTrade, since: "2026-10-01" });
 const tradeify = (last: (string | null)[]) => last.map((d, i) => acct(i + 1, "Tradeify", d));
@@ -36,4 +36,21 @@ test("the push: firm, days left, which accounts, at the chosen time", () => {
   assert.equal(o.key, `${own.id}:2026-11-03`);
   // Disabled rules stay quiet.
   assert.equal(inactivityReminder({ rule: { ...rule, enabled: false }, accounts: five, today: "2026-11-08", minute: 12 * 60 + 20, sessionStart: 870 }), null);
+});
+
+test("watch list: remove, add by hand, and imports join the hand-added account", () => {
+  const found: WatchedAccount[] = [
+    { id: "import:lms01", name: "LMS01", firm: "", lastTrade: "2026-10-23", since: "2026-10-01" },
+    { id: "import:lmx02", name: "LMX02", firm: "", lastTrade: "2026-10-26", since: "2026-10-01" },
+  ];
+  const base = { rules: [], firmOf: {}, hidden: ["import:lms01"], manual: [{ id: importId("TDFY1636638"), name: "TDFY1636638", since: "2026-10-27" }] };
+  const list = watchList(found, base);
+  assert.deepEqual(list.map((a) => [a.name, a.lastTrade, a.since]), [["LMX02", "2026-10-26", "2026-10-01"], ["TDFY1636638", null, "2026-10-27"]]);
+  // Later an import brings that name's trades: one account, its firm kept, trades now count.
+  const s2 = { ...base, firmOf: { [importId("TDFY1636638")]: "Tradeify" } };
+  const later = watchList([...found, { id: "import:tdfy1636638", name: "TDFY1636638", firm: "", lastTrade: "2026-10-28", since: "2026-10-28" }], s2);
+  assert.equal(later.length, 2);
+  assert.deepEqual(later.find((a) => a.name === "TDFY1636638"), { id: "import:tdfy1636638", name: "TDFY1636638", firm: "Tradeify", lastTrade: "2026-10-28", since: "2026-10-28" });
+  // Typing a removed account's name finds it again.
+  assert.equal(findAccount("lms01", found)?.id, "import:lms01");
 });

@@ -18,7 +18,7 @@ import { fmtMinute, todayKey, windowFor } from "@/lib/analytics/time";
 import { recentPushes } from "@/lib/push";
 import { Widget } from "@/components/settings/Widget";
 import { Inactivity } from "@/components/settings/Inactivity";
-import { watchedAccounts } from "@/lib/data/inactivity";
+import { foundAccounts } from "@/lib/data/inactivity";
 import { widgetFeed, widgetStatus } from "@/lib/data/widget";
 import { listLedger } from "@/lib/data/ledger";
 import { summarizeLedger } from "@/lib/analytics/ledger";
@@ -56,7 +56,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
     widgetStatus(),
     widgetFeed(),
     listLedger(),
-    watchedAccounts(),
+    foundAccounts(),
   ]);
   const prefs = parseUiPrefs(jar.get(UI_COOKIE)?.value);
   const nightly = env.cronSecret.length >= 16;

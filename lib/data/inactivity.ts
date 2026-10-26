@@ -1,15 +1,15 @@
 import "server-only";
 import { db } from "../db";
 import { dayKey } from "../analytics/time";
-import type { WatchedAccount } from "../analytics/inactivity";
+import { watchList, type WatchedAccount } from "../analytics/inactivity";
 import { getSettings } from "./settings";
 
 /**
  * Every account the journal knows: synced broker accounts plus any account id
- * seen on a trade (imports). Its firm is the one you set, else its
- * connection's name; its last trade day is in your timezone.
+ * seen on a trade (imports). Its firm is its connection's name (yours are
+ * applied by watchList); its last trade day is in your timezone.
  */
-export async function watchedAccounts(): Promise<WatchedAccount[]> {
+export async function foundAccounts(): Promise<WatchedAccount[]> {
   const sql = await db();
   const settings = await getSettings();
   const tz = settings.profile.timezone;
@@ -24,14 +24,13 @@ export async function watchedAccounts(): Promise<WatchedAccount[]> {
   const label = new Map(conns.map((c) => [c.id, c.label]));
   const seen = new Map(last.map((r) => [r.account_id, r]));
   const out = new Map<string, WatchedAccount>();
-  const firmFor = (id: string, fallback: string) => settings.inactivity.firmOf[id] || fallback;
   for (const a of accounts) {
     if (!a.active) continue;
     const t = seen.get(a.id);
     out.set(a.id, {
       id: a.id,
       name: a.name,
-      firm: firmFor(a.id, label.get(a.provider) ?? (a.provider === "import" ? "" : a.provider)),
+      firm: label.get(a.provider) ?? (a.provider === "import" ? "" : a.provider),
       lastTrade: t ? dayKey(t.last, tz) : null,
       since: dayKey(t?.first ?? a.updated_at, tz),
     });
@@ -42,10 +41,16 @@ export async function watchedAccounts(): Promise<WatchedAccount[]> {
     out.set(r.account_id, {
       id: r.account_id,
       name: r.account_id.includes(":") ? r.account_id.split(":").slice(1).join(":") : r.account_id,
-      firm: firmFor(r.account_id, conn === "import" ? "" : (label.get(conn) ?? "")),
+      firm: conn === "import" ? "" : (label.get(conn) ?? ""),
       lastTrade: dayKey(r.last, tz),
       since: dayKey(r.first, tz),
     });
   }
   return [...out.values()].sort((a, b) => a.firm.localeCompare(b.firm) || a.name.localeCompare(b.name));
+}
+
+/** The accounts inactivity rules watch: found ones, plus hand-added, minus removed. */
+export async function watchedAccounts(): Promise<WatchedAccount[]> {
+  const [found, settings] = await Promise.all([foundAccounts(), getSettings()]);
+  return watchList(found, settings.inactivity);
 }

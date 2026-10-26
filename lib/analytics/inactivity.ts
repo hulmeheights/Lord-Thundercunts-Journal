@@ -26,14 +26,46 @@ export const InactivityRule = z.object({
 });
 export type InactivityRule = z.infer<typeof InactivityRule>;
 
+const Day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+
+/** An account you added by hand, e.g. one bought today with no trades yet. */
+export const ManualAccount = z.object({ id: z.string().max(200), name: z.string().trim().min(1, "Name the account").max(80), since: Day });
+export type ManualAccount = z.infer<typeof ManualAccount>;
+
 export const InactivitySettings = z.object({
   rules: z.array(InactivityRule).max(20),
   /** Account id → firm, for accounts whose firm you set by hand. */
   firmOf: z.record(z.string().max(200), z.string().trim().max(40)),
+  /** Accounts taken off the watch list. Only the list: their trades and stats stay. */
+  hidden: z.array(z.string().max(200)).max(500).default([]),
+  /** Accounts added by hand. */
+  manual: z.array(ManualAccount).max(100).default([]),
 });
 export type InactivitySettings = z.infer<typeof InactivitySettings>;
 
-export const DEFAULT_INACTIVITY: InactivitySettings = { rules: [], firmOf: {} };
+export const DEFAULT_INACTIVITY: InactivitySettings = { rules: [], firmOf: {}, hidden: [], manual: [] };
+
+/** The id an import gives an account name, so a name typed here and the same name in an export are one account. */
+export const importId = (name: string) => `import:${name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40) || "account"}`;
+const sameName = (a: string, b: string) => a.toLowerCase().replace(/[^a-z0-9]/g, "") === b.toLowerCase().replace(/[^a-z0-9]/g, "");
+
+/** The known account a typed name refers to, by import id or by name. */
+export const findAccount = (name: string, all: readonly WatchedAccount[]) => all.find((a) => a.id === importId(name) || sameName(a.name, name));
+
+/**
+ * The watch list: accounts the journal found, plus the ones you added, minus
+ * the ones you removed, with the firms you set. A hand-added account takes
+ * over as soon as its trades arrive (same name), keeping its firm.
+ */
+export function watchList(found: readonly WatchedAccount[], s: InactivitySettings): WatchedAccount[] {
+  const out: WatchedAccount[] = found.map((a) => {
+    const m = s.manual.find((x) => x.id === a.id || sameName(x.name, a.name));
+    return { ...a, firm: s.firmOf[a.id] || (m && s.firmOf[m.id]) || a.firm, since: m && !a.lastTrade ? m.since : a.since };
+  });
+  for (const m of s.manual) if (!findAccount(m.name, found)) out.push({ id: m.id, name: m.name, firm: s.firmOf[m.id] ?? "", lastTrade: null, since: m.since });
+  const hidden = new Set(s.hidden);
+  return out.filter((a) => !hidden.has(a.id));
+}
 
 export const newRule = (firm: string): InactivityRule => ({
   id: Math.random().toString(36).slice(2, 10).padEnd(4, "0"),
