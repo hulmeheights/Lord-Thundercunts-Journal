@@ -3,11 +3,13 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { assertSession } from "../auth/session";
-import { insertGoal, insertStep, removeGoal, removeStep, restartGoalFrom, setGoalDone, setRewardClaimed } from "../data/goals";
-import { describeMeasure, type GoalMeasure } from "../analytics/goalcheck";
+import { listGoals, insertGoal, insertStep, removeGoal, removeStep, restartGoalFrom, setGoalDone, setRewardClaimed } from "../data/goals";
+import { checkGoal, describeMeasure, type GoalMeasure } from "../analytics/goalcheck";
+import { listTrades } from "../data/trades";
+import { listLedger } from "../data/ledger";
 import { saveSetting } from "../data/settings";
 import { getSettings } from "../data/settings";
-import { todayKey } from "../analytics/time";
+import { addDays, todayKey } from "../analytics/time";
 
 const clean = (s: string) => s.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, "").trim();
 const Id = (prefix: string) => z.string().regex(new RegExp(`^${prefix}_[A-Za-z0-9_-]{1,40}$`));
@@ -106,8 +108,18 @@ export async function deleteStep(stepId: string) {
 /** A broken measured goal starts counting again from today. */
 export async function restartGoal(goalId: string) {
   await assertSession();
+  const id = Id("goal").parse(goalId);
   const settings = await getSettings();
-  await restartGoalFrom(Id("goal").parse(goalId), todayKey(settings.profile.timezone));
+  const tz = settings.profile.timezone;
+  const today = todayKey(tz);
+  // If today's own trades already broke it, a restart from today would be broken on day one: start tomorrow.
+  const goal = (await listGoals()).find((g) => g.id === id);
+  let from = today;
+  if (goal?.measure) {
+    const [trades, ledger] = await Promise.all([listTrades({ since: new Date(`${addDays(today, -1)}T00:00:00Z`) }), listLedger()]);
+    if (checkGoal(goal.measure, today, goal.targetDay, { trades, ledger, rules: settings.rules, tz, today }).status === "broken") from = addDays(today, 1);
+  }
+  await restartGoalFrom(id, from);
   done();
   return { ok: true };
 }

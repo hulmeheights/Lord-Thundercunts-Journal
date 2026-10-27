@@ -207,7 +207,7 @@ function MeasureEditor({ m, setM }: { m: MeasureForm; setM: (m: MeasureForm) => 
   );
 }
 
-function GoalProgressBlock({ g, p, onRestart, busy }: { g: Goal; p: GoalProgress; onRestart: () => void; busy: boolean }) {
+function GoalProgressBlock({ g, p, onRestart, busy, today }: { g: Goal; p: GoalProgress; onRestart: () => void; busy: boolean; today: string }) {
   const done = !!g.completedAt;
   const marks = p.marks.slice(-21);
   const tone = p.status === "broken" ? "text-neg" : p.status === "reached" || done ? "text-pos" : "text-gold";
@@ -232,7 +232,7 @@ function GoalProgressBlock({ g, p, onRestart, busy }: { g: Goal; p: GoalProgress
       {p.detail && <p className="mt-2 font-mono text-[10.5px] leading-[1.75] text-ink-3">{p.detail}</p>}
       {p.status === "broken" && !done && (
         <button type="button" disabled={busy} onClick={onRestart} className="mt-2 font-mono text-[9.5px] tracking-[0.26em] text-gold uppercase hover:text-ink disabled:opacity-40">
-          ↻ Start again from today
+          ↻ Start again {marks.some((d) => d.day === today && !d.ok) ? "from tomorrow" : "from today"}
         </button>
       )}
     </div>
@@ -275,7 +275,7 @@ function GoalCard({ g, today, onReached, progress }: { g: Goal; today: string; o
       </div>
       {g.why && <p className="mt-2 max-w-[60ch] font-mono text-[11.5px] leading-[1.85] text-ink-3" data-private>Why: {g.why}</p>}
       {rule && rule !== g.title && <p className="mt-1.5 font-mono text-[11px] leading-[1.75] text-ink-2">◇ {rule}</p>}
-      {progress && <GoalProgressBlock g={g} p={progress} busy={pending} onRestart={() => run(() => restartGoal(g.id))} />}
+      {progress && <GoalProgressBlock g={g} p={progress} today={today} busy={pending} onRestart={() => run(() => restartGoal(g.id))} />}
       {g.reward && (
         <p className={cn("mt-2 font-mono text-[11px] tracking-[0.06em]", done ? "text-pos" : "text-gold")} data-private>
           {done ? "◆ Earned: " : "◆ Earns: "}
