@@ -25,7 +25,7 @@ let seq = 0;
 const trade = (day: string, hhmm: string, net: number): Trade => ({
   id: `m${++seq}`, source: "import", accountId: null, symbol: "MNQZ6", root: "MNQ", direction: "long", qty: 3, maxPosition: 3,
   entryTime: `${day}T${hhmm}:00Z`, exitTime: `${day}T${hhmm}:00Z`, entryPrice: 1, exitPrice: 2, grossPnl: net, fees: 0, netPnl: net, pointValue: 2,
-  fillCount: 2, setups: [], tags: [], mistakes: [], emotion: null, rating: null, notes: null, plannedRisk: null, followedPlan: null, chartUrl: null,
+  fillCount: 2, setups: [], tags: [], mistakes: [], emotion: null, rating: null, grade: null, notes: null, plannedRisk: null, followedPlan: null, chartUrl: null,
 });
 const rules = { maxTradesPerDay: 3, maxDailyLoss: 1000, stopAfterConsecutiveLosses: 2, maxContracts: null, maxLossPerTrade: null, cooldownMinutesAfterLoss: null, sessionStart: "14:30", sessionEnd: "16:00", defaultRisk: 300, custom: [] } as unknown as TradingRules;
 

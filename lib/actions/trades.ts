@@ -9,6 +9,7 @@ import { pointValueFor, rootFromSymbol } from "../brokers/contracts";
 import { getSettings } from "../data/settings";
 import { zonedToUtc } from "../analytics/time";
 import type { Trade } from "../types";
+import { GRADES } from "../analytics/grades";
 
 const Patch = z
   .object({
@@ -17,6 +18,7 @@ const Patch = z
     mistakes: z.array(z.string().max(40)).max(20),
     emotion: z.string().max(40).nullable(),
     rating: z.number().int().min(1).max(5).nullable(),
+    grade: z.enum(GRADES).nullable(),
     notes: z.string().max(10_000).nullable(),
     plannedRisk: z.number().positive().max(1_000_000).nullable(),
     followedPlan: z.boolean().nullable(),
@@ -77,7 +79,7 @@ export async function addManualTrade(input: z.input<typeof Manual>): Promise<{ i
   if ("error" in core) return core;
   const t: Trade = {
     id: `manual:${randomUUID()}`, source: "manual", accountId: null, ...core, fillCount: 2, setups: v.setups, tags: [], mistakes: [],
-    emotion: null, rating: null, notes: null, plannedRisk: null, followedPlan: null, chartUrl: null,
+    emotion: null, rating: null, grade: null, notes: null, plannedRisk: null, followedPlan: null, chartUrl: null,
   };
   await insertTrades([t]);
   revalidatePath("/", "layout");

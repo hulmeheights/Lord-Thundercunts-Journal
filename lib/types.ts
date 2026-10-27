@@ -1,3 +1,4 @@
+import type { Grade } from "./analytics/grades";
 import type { WidgetStyle } from "./widget/style";
 import type { InactivitySettings } from "./analytics/inactivity";
 /** Shared, client-safe domain types. */
@@ -31,6 +32,8 @@ export type Trade = {
   mistakes: string[];
   emotion: string | null;
   rating: number | null;
+  /** How good the trade was as a trade, A+ to F (see analytics/grades). */
+  grade: Grade | null;
   notes: string | null;
   plannedRisk: number | null;
   followedPlan: boolean | null;

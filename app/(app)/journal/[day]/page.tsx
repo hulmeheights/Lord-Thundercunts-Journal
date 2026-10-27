@@ -11,6 +11,7 @@ import { fmtMoney, fmtPct, fmtPrice } from "@/lib/format";
 import { cn } from "@/lib/cn";
 import { aiConfigured } from "@/lib/env";
 import { DayEditor } from "@/components/journal/DayEditor";
+import { TradeGrade } from "@/components/trades/GradePicker";
 import { Photos } from "@/components/journal/Photos";
 import { Readiness } from "@/components/today/Readiness";
 import { Ritual } from "@/components/today/Ritual";
@@ -33,6 +34,7 @@ export default async function JournalDayPage({ params }: { params: Promise<{ day
   const reflections = await listReflections(day, basis.hash);
   const dayTrades = trades.filter((t) => dayKey(t.exitTime, tz) === day).sort((a, b) => a.entryTime.localeCompare(b.entryTime));
   const s = summarize(dayTrades);
+  const toGrade = dayTrades.filter((t) => !t.grade).length;
   const [weekday, date] = longDate(day).split(", ");
   const isToday = day === today;
 
@@ -74,7 +76,10 @@ export default async function JournalDayPage({ params }: { params: Promise<{ day
         <aside className="min-w-0 space-y-14 lg:pt-1">
           <Photos day={day} initial={photos} />
           <div className="reveal">
-            <div className="label mb-5">The tape</div>
+            <div className="label mb-5">
+              The tape
+              {dayTrades.length > 0 && <span className="ml-3 text-ink-4">· {toGrade ? `${toGrade} to grade` : "all graded"}</span>}
+            </div>
             {dayTrades.length === 0 ? (
               <p className="border-t border-line pt-5 font-mono text-[11.5px] leading-[1.9] text-ink-3">No trades this day. Sitting out is a position.</p>
             ) : (
@@ -83,20 +88,25 @@ export default async function JournalDayPage({ params }: { params: Promise<{ day
                   const win = t.netPnl > 0.004;
                   const loss = t.netPnl < -0.004;
                   return (
-                    <Link
-                      key={t.id}
-                      href={`/trades/${encodeURIComponent(t.id)}`}
-                      className="m-row grid grid-cols-[3rem_1fr_auto] items-baseline gap-3 border-b border-line py-3.5 font-mono"
-                    >
-                      <span className="num text-[10.5px] tracking-[0.06em] text-ink-4">{timeInTz(t.entryTime, tz)}</span>
-                      <span className="min-w-0 truncate text-[11.5px] tracking-[0.06em]">
-                        <span className="text-ink">{t.root}</span>{" "}
-                        <span className="text-ink-4 uppercase">
-                          {t.direction} ×{t.qty} · {fmtPrice(t.entryPrice)}
+                    <div key={t.id} className="border-b border-line">
+                      <Link
+                        href={`/trades/${encodeURIComponent(t.id)}`}
+                        className="m-row grid grid-cols-[3rem_1fr_auto] items-baseline gap-3 pt-3.5 pb-2 font-mono"
+                      >
+                        <span className="num text-[10.5px] tracking-[0.06em] text-ink-4">{timeInTz(t.entryTime, tz)}</span>
+                        <span className="min-w-0 truncate text-[11.5px] tracking-[0.06em]">
+                          <span className="text-ink">{t.root}</span>{" "}
+                          <span className="text-ink-4 uppercase">
+                            {t.direction} ×{t.qty} · {fmtPrice(t.entryPrice)}
+                          </span>
                         </span>
-                      </span>
-                      <span className={cn("num text-[12px]", win ? "text-pos" : loss ? "text-neg" : "text-ink-3")}>{fmtMoney(t.netPnl, { sign: true })}</span>
-                    </Link>
+                        <span className={cn("num text-[12px]", win ? "text-pos" : loss ? "text-neg" : "text-ink-3")}>{fmtMoney(t.netPnl, { sign: true })}</span>
+                      </Link>
+                      <div className="flex items-center justify-between gap-3 pb-3 pl-[3.75rem]">
+                        <span className="font-mono text-[9px] tracking-[0.24em] text-ink-4 uppercase">Grade</span>
+                        <TradeGrade id={t.id} initial={t.grade} label={`Grade the ${timeInTz(t.entryTime, tz)} trade`} />
+                      </div>
+                    </div>
                   );
                 })}
               </div>

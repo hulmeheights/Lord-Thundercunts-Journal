@@ -187,7 +187,7 @@ export async function rebuildTrades(source: string, accountIds: string[]): Promi
       delete from trades
       where account_id = ${accountId} and source = ${source}
         and not (id = any(${sql.array(ids)}::text[]))
-        and cardinality(setups) = 0 and notes is null and emotion is null and rating is null
+        and cardinality(setups) = 0 and notes is null and emotion is null and rating is null and grade is null
         and cardinality(tags) = 0 and cardinality(mistakes) = 0
     `;
   }

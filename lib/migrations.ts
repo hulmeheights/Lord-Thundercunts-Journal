@@ -419,4 +419,11 @@ export const MIGRATIONS: { version: number; sql: string }[] = [
       );
     `,
   },
+  {
+    version: 20,
+    sql: /* sql */ `
+      -- Your grade for each trade, A+ to F: the setup and the decision, not the P&L.
+      alter table trades add column if not exists grade text check (grade in ('A+', 'A', 'B', 'C', 'F'));
+    `,
+  },
 ];

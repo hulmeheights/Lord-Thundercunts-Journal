@@ -132,6 +132,7 @@ export function generateSample(today: string, settings: Settings): { trades: Tra
         mistakes,
         emotion: r() < 0.8 ? emotion : null,
         rating: win ? 4 + Math.floor(r() * 2) : 1 + Math.floor(r() * 3),
+        grade: mistakes.length === 0 ? (setup ? "A+" : "B") : mistakes.length > 1 ? "F" : "C",
         notes: r() < 0.35 ? pick(win ? NOTES_WIN : NOTES_LOSS) : null,
         plannedRisk: Math.round(risk),
         followedPlan: mistakes.length === 0,

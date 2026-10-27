@@ -1,13 +1,14 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { queryTrades, TradeQuery } from "../lib/analytics/query";
+import { gradeBreakdown } from "../lib/analytics/grades";
 import type { Trade, TradingRules } from "../lib/types";
 
 let seq = 0;
 const trade = (day: string, hhmm: string, net: number, setups: string[] = []): Trade => ({
   id: `q${++seq}`, source: "import", accountId: null, symbol: "MNQZ6", root: "MNQ", direction: "long", qty: 3, maxPosition: 3,
   entryTime: `${day}T${hhmm}:00Z`, exitTime: `${day}T${hhmm}:00Z`, entryPrice: 1, exitPrice: 2, grossPnl: net, fees: 0, netPnl: net, pointValue: 2,
-  fillCount: 2, setups, tags: [], mistakes: [], emotion: null, rating: null, notes: null, plannedRisk: null, followedPlan: null, chartUrl: null,
+  fillCount: 2, setups, tags: [], mistakes: [], emotion: null, rating: null, grade: null, notes: null, plannedRisk: null, followedPlan: null, chartUrl: null,
 });
 const rules = { maxTradesPerDay: null, maxDailyLoss: null, stopAfterConsecutiveLosses: null, maxContracts: null, maxLossPerTrade: null, cooldownMinutesAfterLoss: null, sessionStart: "14:30", sessionEnd: "16:00", defaultRisk: 300, custom: [] } as TradingRules;
 
@@ -38,4 +39,16 @@ test("filters by setup and rule breaks, and lists trades", () => {
   assert.deepEqual(broke.trades!.map((t) => t.entry), ["2026-10-22 16:05", "2026-10-20 14:12"]);
   const bySetup = queryTrades(log, TradeQuery.parse({ groupBy: "setup" }), rules, "UTC");
   assert.ok(bySetup.groups!.some((g) => g.key === "FVG" && g.trades === 1));
+});
+
+test("grades: filter and group by the grade you gave", () => {
+  const ts = [trade("2026-10-20", "14:35", 300), trade("2026-10-20", "14:50", -150), trade("2026-10-21", "14:40", -200)];
+  ts[0]!.grade = "A+";
+  ts[1]!.grade = "F";
+  const g = queryTrades(ts, TradeQuery.parse({ groupBy: "grade" }), rules, "UTC").groups!;
+  assert.deepEqual(g.map((x) => [x.key, x.trades, x.net]), [["A+", 1, 300], ["F", 1, -150], ["ungraded", 1, -200]]);
+  assert.equal(queryTrades(ts, TradeQuery.parse({ grades: ["F"] }), rules, "UTC").matched.net, -150);
+  const { rows, ungraded } = gradeBreakdown(ts);
+  assert.equal(ungraded, 1);
+  assert.deepEqual(rows.find((r) => r.grade === "A+"), { grade: "A+", trades: 1, wins: 1, winRate: 1, net: 300, avg: 300 });
 });

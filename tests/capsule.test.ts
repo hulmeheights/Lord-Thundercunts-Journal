@@ -8,7 +8,7 @@ let seq = 0;
 const trade = (d: string, net: number, hh = "14:30"): Trade => ({
   id: `c${++seq}`, source: "manual", accountId: null, symbol: "MNQZ6", root: "MNQ", direction: "long", qty: 1, maxPosition: 1,
   entryTime: `${d}T${hh}:00Z`, exitTime: `${d}T${hh}:00Z`, entryPrice: 1, exitPrice: 2, grossPnl: net, fees: 0, netPnl: net, pointValue: 2,
-  fillCount: 2, setups: [], tags: [], mistakes: [], emotion: null, rating: null, notes: null, plannedRisk: null, followedPlan: null, chartUrl: null,
+  fillCount: 2, setups: [], tags: [], mistakes: [], emotion: null, rating: null, grade: null, notes: null, plannedRisk: null, followedPlan: null, chartUrl: null,
 });
 const led = (day: string, kind: LedgerEntry["kind"], qty = 1, amount = 0): LedgerEntry => ({ id: `l${++seq}`, day, firm: "Lucid", account: null, kind, amount, qty, note: null, createdAt: null });
 const cap = (goals: Capsule["goals"], deliverOn = "2026-10-31"): Capsule => ({ id: "cap1", message: "Keep going", createdAt: "2026-10-01T09:00:00Z", deliverOn, openedAt: null, goals });

@@ -52,7 +52,7 @@ const day = (d: string, over: Partial<JournalDay> = {}): JournalDay => ({
 const trade = (d: string, net: number): Trade => ({
   id: `t${++seq}`, source: "manual", accountId: null, symbol: "MNQZ6", root: "MNQ", direction: "long", qty: 1, maxPosition: 1,
   entryTime: `${d}T14:30:00Z`, exitTime: `${d}T14:40:00Z`, entryPrice: 1, exitPrice: 2, grossPnl: net, fees: 0, netPnl: net, pointValue: 2,
-  fillCount: 2, setups: [], tags: [], mistakes: [], emotion: null, rating: null, notes: null, plannedRisk: null, followedPlan: null, chartUrl: null,
+  fillCount: 2, setups: [], tags: [], mistakes: [], emotion: null, rating: null, grade: null, notes: null, plannedRisk: null, followedPlan: null, chartUrl: null,
 });
 const R = (n: number) => ({ sleep: n, energy: n, focus: n, mood: n });
 

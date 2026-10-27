@@ -12,6 +12,8 @@ import { Seg } from "@/components/m/Seg";
 import { Choice } from "./Choice";
 import { ManualTradeForm } from "./ManualTradeForm";
 import { RATING_WORDS } from "./lib";
+import { GradePicker } from "./GradePicker";
+import { GRADE_HINT } from "@/lib/analytics/grades";
 
 type Patch = Parameters<typeof saveTradeJournal>[1];
 
@@ -123,6 +125,13 @@ export function TradeEditor({
               {s}
             </Choice>
           ))}
+        </div>
+      </Line>
+
+      <Line label="Grade" hint="Was it a trade you should take? A+ is your best play, F one you shouldn't have.">
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
+          <GradePicker value={t.grade} onChange={(g) => save({ grade: g })} label="Trade grade" />
+          <span className="font-mono text-[10.5px] leading-[1.7] text-ink-3">{t.grade ? GRADE_HINT[t.grade] : "Not graded"}</span>
         </div>
       </Line>
 

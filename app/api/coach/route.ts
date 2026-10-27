@@ -15,7 +15,7 @@ import { queryTrades, TradeQuery } from "@/lib/analytics/query";
 const ANALYZE: Anthropic.Beta.BetaTool = {
   name: "analyze_trades",
   description:
-    "Query the trader's full trade log (every synced or imported trade, all history) and get exact stats. Filter by date range, local entry time window, weekday, setup, symbol, side, win/loss or rule breaks; group by entry-time buckets of any size (e.g. 5, 10, 15 or 30 minutes), hour, weekday, day, week, month, setup, symbol, side, trade number of the day, hold time, rule-break or account; optionally list the individual trades. Each result has trades, net, winRate (%), avg, profitFactor, best, worst and netWithoutBest (net minus the single best trade, to spot one winner carrying a bucket). Call it whenever a question needs a breakdown, a time window or specific trades - several calls are fine.",
+    "Query the trader's full trade log (every synced or imported trade, all history) and get exact stats. Filter by date range, local entry time window, weekday, setup, symbol, side, win/loss, rule breaks or the grade the trader gave (A+ to F); group by entry-time buckets of any size (e.g. 5, 10, 15 or 30 minutes), hour, weekday, day, week, month, setup, symbol, side, trade number of the day, hold time, rule-break, account or grade; optionally list the individual trades. Each result has trades, net, winRate (%), avg, profitFactor, best, worst and netWithoutBest (net minus the single best trade, to spot one winner carrying a bucket). Call it whenever a question needs a breakdown, a time window or specific trades - several calls are fine.",
   input_schema: {
     type: "object",
     properties: {
@@ -29,9 +29,10 @@ const ANALYZE: Anthropic.Beta.BetaTool = {
       direction: { type: "string", enum: ["long", "short"] },
       outcome: { type: "string", enum: ["win", "loss"] },
       ruleBreaks: { type: "string", enum: ["only", "exclude"] },
+      grades: { type: "array", items: { type: "string", enum: ["A+", "A", "B", "C", "F", "ungraded"] }, description: "Only trades graded with one of these." },
       groupBy: {
         type: "string",
-        enum: ["none", "entryMinutes", "hour", "weekday", "day", "week", "month", "setup", "symbol", "direction", "tradeNumberOfDay", "holdTime", "ruleBreak", "account"],
+        enum: ["none", "entryMinutes", "hour", "weekday", "day", "week", "month", "setup", "symbol", "direction", "tradeNumberOfDay", "holdTime", "ruleBreak", "account", "grade"],
       },
       bucketMinutes: { type: "integer", description: "Bucket size in minutes for groupBy entryMinutes. Default 15." },
       listTrades: { type: "boolean", description: "Also return the matching trades, newest first (up to 80)." },

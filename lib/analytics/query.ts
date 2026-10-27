@@ -7,6 +7,7 @@
 import { z } from "zod";
 import type { Trade, TradingRules } from "../types";
 import { evaluateRules } from "./rules";
+import { GRADES } from "./grades";
 import { sortByEntry } from "./stats";
 import { dayKey, fmtMinute, holdMinutes, minuteOfDay, parseHHMM, startOfWeek, WEEKDAYS, weekdayIndex } from "./time";
 
@@ -24,8 +25,9 @@ export const TradeQuery = z.object({
   direction: z.enum(["long", "short"]).optional(),
   outcome: z.enum(["win", "loss"]).optional(),
   ruleBreaks: z.enum(["only", "exclude"]).optional().describe("Only rule-breaking trades, or only compliant ones."),
+  grades: z.array(z.enum([...GRADES, "ungraded"])).optional().describe("Only trades the trader graded with one of these (A+, A, B, C, F, or ungraded)."),
   groupBy: z
-    .enum(["none", "entryMinutes", "hour", "weekday", "day", "week", "month", "setup", "symbol", "direction", "tradeNumberOfDay", "holdTime", "ruleBreak", "account"])
+    .enum(["none", "entryMinutes", "hour", "weekday", "day", "week", "month", "setup", "symbol", "direction", "tradeNumberOfDay", "holdTime", "ruleBreak", "account", "grade"])
     .default("none"),
   bucketMinutes: z.number().int().min(1).max(120).optional().describe("Bucket size for groupBy entryMinutes, e.g. 15 for 14:30, 14:45, 15:00…"),
   listTrades: z.boolean().optional().describe("Also return the matching trades (newest first, up to 80)."),
@@ -36,7 +38,7 @@ export type QueryStats = { trades: number; net: number; winRate: number | null; 
 export type QueryResult = {
   matched: QueryStats;
   groups?: ({ key: string } & QueryStats)[];
-  trades?: { entry: string; exit: string; symbol: string; side: string; qty: number; net: number; holdMin: number; setups: string[]; mistakes: string[]; brokeRules: boolean }[];
+  trades?: { entry: string; exit: string; symbol: string; side: string; qty: number; net: number; holdMin: number; setups: string[]; mistakes: string[]; brokeRules: boolean; grade: string | null }[];
   note?: string;
 };
 
@@ -97,6 +99,7 @@ export function queryTrades(all: Trade[], q: TradeQuery, rules: TradingRules, tz
     if (q.outcome === "loss" && !(t.netPnl < 0)) return false;
     if (q.ruleBreaks === "only" && !breaks.has(t.id)) return false;
     if (q.ruleBreaks === "exclude" && breaks.has(t.id)) return false;
+    if (q.grades?.length && !q.grades.includes(t.grade ?? "ungraded")) return false;
     return true;
   });
 
@@ -122,6 +125,7 @@ export function queryTrades(all: Trade[], q: TradeQuery, rules: TradingRules, tz
         case "holdTime": return [HOLD.find(([max]) => holdMinutes(t.entryTime, t.exitTime) < max)![1]];
         case "ruleBreak": return [breaks.has(t.id) ? "broke a rule" : "within rules"];
         case "account": return [t.accountId ?? t.source];
+        case "grade": return [t.grade ?? "ungraded"];
         default: return ["all"];
       }
     };
@@ -144,6 +148,7 @@ export function queryTrades(all: Trade[], q: TradeQuery, rules: TradingRules, tz
         setups: t.setups,
         mistakes: t.mistakes,
         brokeRules: breaks.has(t.id),
+        grade: t.grade,
       }));
     if (ts.length > 80) out.note = `Showing the newest 80 of ${ts.length} trades; the stats cover all ${ts.length}.`;
   }

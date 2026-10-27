@@ -15,6 +15,7 @@ import { dailySeries, summarize } from "@/lib/analytics/stats";
 import { fmtMoney, fmtPct } from "@/lib/format";
 import { CalendarHeatmap, YearStrip, type CalendarDatum } from "@/components/charts/CalendarHeatmap";
 import { CapsuleWriter } from "@/components/journal/CapsuleWriter";
+import { GradeTable } from "@/components/journal/GradeTable";
 import { Cue, Empty, LinkBtn, Meta, Num, PageHead, Panel, Row, Rows, Section, Stat, Stats } from "@/components/m";
 
 export const metadata = { title: "Journal" };
@@ -153,6 +154,9 @@ export default async function JournalPage({ searchParams }: { searchParams: Prom
           <Stat value={writtenMonth} label="Pages written" sub={traded ? `${fmtPct(Math.min(1, writtenMonth / traded))} of sessions reviewed` : "—"} d={160} />
           <Stat value={best ? <Num value={best.net} compact /> : "—"} label="Best day" sub={best ? longDate(best.day) : "—"} d={240} />
         </Stats>
+        <div className="mt-[clamp(2.5rem,6vh,4rem)] max-w-3xl">
+          <GradeTable trades={monthTrades} caption={monthLabel(m)} />
+        </div>
       </Section>
 
       <Section id="year" n={2} label={`The year · ${year}`} lead={<>Every session you&apos;ve <em>lived</em> through.</>}>
