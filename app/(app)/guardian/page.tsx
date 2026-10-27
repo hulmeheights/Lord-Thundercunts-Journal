@@ -19,6 +19,7 @@ import { LedgerSection } from "@/components/guardian/Ledger";
 import { RoadSection } from "@/components/guardian/Road";
 import { MindSection } from "@/components/guardian/Mind";
 import { PlanSection, type PlanFirm } from "@/components/guardian/Plan";
+import { MyRule } from "@/components/guardian/MyRule";
 import { PropForm } from "@/components/guardian/PropForm";
 
 export const metadata = { title: "Guardian" };
@@ -93,6 +94,9 @@ export default async function GuardianPage() {
       >
         <PropForm initial={prop} accounts={accounts} />
       </Section>
+      <div className="mt-[clamp(3rem,8vh,5rem)] max-w-3xl">
+        <MyRule />
+      </div>
       <GuardianQuote line={closing} />
     </>
   );
