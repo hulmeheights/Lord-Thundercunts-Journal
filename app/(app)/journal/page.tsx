@@ -6,6 +6,8 @@ import { listLedger } from "@/lib/data/ledger";
 import { capsuleStatus, evaluateCapsule } from "@/lib/analytics/capsule";
 import { CapsuleList, type CapsuleView } from "@/components/journal/CapsuleList";
 import { Goals } from "@/components/journal/Goals";
+import { foundAccounts } from "@/lib/data/inactivity";
+import { watchList } from "@/lib/analytics/inactivity";
 import { listGoals, setGoalDone } from "@/lib/data/goals";
 import { missionState } from "@/lib/analytics/mission";
 import { checkGoal, type GoalProgress } from "@/lib/analytics/goalcheck";
@@ -61,7 +63,7 @@ export default async function JournalPage({ searchParams }: { searchParams: Prom
     if (!g.measure) continue;
     const p = checkGoal(g.measure, startOf(g), g.targetDay, { trades: goalTrades, ledger, rules: settings.rules, tz, today });
     progress[g.id] = p;
-    if (!g.completedAt && p.status === "reached") {
+    if (!g.completedAt && !g.failedAt && p.status === "reached") {
       await setGoalDone(g.id, true);
       g.completedAt = new Date().toISOString();
       autoReached.push(g.id);
@@ -96,6 +98,9 @@ export default async function JournalPage({ searchParams }: { searchParams: Prom
   const next = addMonths(m, 1).slice(0, 7);
   const isCurrent = m === startOfMonth(today);
   const wroteToday = journaled.includes(today);
+
+  // Accounts a goal can be limited to: your watch list, plus any named on an existing goal.
+  const accountList = watchList(await foundAccounts(), settings.inactivity).map((a) => ({ id: a.id, name: a.name }));
 
   return (
     <>
@@ -206,7 +211,7 @@ export default async function JournalPage({ searchParams }: { searchParams: Prom
       </Section>
 
       <Section id="goals" n={4} label="Goals" lead={<>The <em>mission</em>, flown by your discipline.</>}>
-        <Goals goals={goals} today={today} mission={mission} progress={progress} autoReached={autoReached} defaults={{ start: settings.rules.sessionStart, end: settings.rules.sessionEnd }} counts={settings.goals.counts} />
+        <Goals goals={goals} today={today} mission={mission} progress={progress} autoReached={autoReached} defaults={{ start: settings.rules.sessionStart, end: settings.rules.sessionEnd }} counts={settings.goals.counts} accounts={accountList} />
       </Section>
 
       <Section id="capsules" n={5} label="Time capsule">

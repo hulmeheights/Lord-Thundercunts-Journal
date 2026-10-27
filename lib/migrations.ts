@@ -426,4 +426,11 @@ export const MIGRATIONS: { version: number; sql: string }[] = [
       alter table trades add column if not exists grade text check (grade in ('A+', 'A', 'B', 'C', 'F'));
     `,
   },
+  {
+    version: 21,
+    sql: /* sql */ `
+      -- A goal you gave up on stays in your history, marked failed.
+      alter table goals add column if not exists failed_at timestamptz;
+    `,
+  },
 ];

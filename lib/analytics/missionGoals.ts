@@ -6,11 +6,11 @@
  */
 import type { Trade, TradingRules } from "../types";
 import type { RuleId } from "./rules";
-import { judgeDays, type GoalMeasure } from "./goalcheck";
+import { goalTrades, judgeDays, type GoalMeasure } from "./goalcheck";
 import { missionDays, type MissionDay } from "./mission";
 import { addDays, dayKey } from "./time";
 
-export type MissionGoal = { measure: GoalMeasure | null; startedOn: string | null; createdAt: string; completedAt: string | null; targetDay: string | null; kind: "trading" | "life" };
+export type MissionGoal = { measure: GoalMeasure | null; startedOn: string | null; createdAt: string; completedAt: string | null; failedAt?: string | null; targetDay: string | null; kind: "trading" | "life" };
 
 /** The days a goal is judging: from its start to its end (weeks / until), its date, or the day it was reached. */
 function covers(g: MissionGoal, tz: string): { from: string; to: string | null } | null {
@@ -18,8 +18,10 @@ function covers(g: MissionGoal, tz: string): { from: string; to: string | null }
   if (g.kind !== "trading" || !m || m.kind !== "days") return null;
   const from = g.startedOn ?? dayKey(g.createdAt, tz);
   let to: string | null = m.span === "weeks" ? addDays(from, m.n * 7 - 1) : m.span === "until" ? (m.until ?? null) : g.targetDay;
-  if (g.completedAt) {
-    const done = dayKey(g.completedAt, tz);
+  // A goal stops judging the mission once it's reached or you've marked it failed.
+  for (const at of [g.completedAt, g.failedAt]) {
+    if (!at) continue;
+    const done = dayKey(at, tz);
     to = to === null || done < to ? done : to;
   }
   return { from, to };
@@ -37,7 +39,7 @@ export function missionDaysWithGoals(trades: Trade[], rules: TradingRules, tz: s
     const b = c.to === null || c.to > today ? today : c.to;
     if (a > b) continue;
     for (let d = a; d <= b; d = addDays(d, 1)) covered.add(d);
-    for (const mark of judgeDays(trades, (g.measure as Extract<GoalMeasure, { kind: "days" }>).rules, rules, tz, a, b)) {
+    for (const mark of judgeDays(goalTrades(trades, g.measure!), (g.measure as Extract<GoalMeasure, { kind: "days" }>).rules, rules, tz, a, b)) {
       judged.set(mark.day, [...new Set([...(judged.get(mark.day) ?? []), ...mark.why])]);
     }
   }

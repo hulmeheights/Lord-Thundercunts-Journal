@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { assertSession } from "../auth/session";
-import { listGoals, insertGoal, insertStep, removeGoal, removeStep, restartGoalFrom, setGoalDone, setRewardClaimed } from "../data/goals";
+import { listGoals, insertGoal, insertStep, removeGoal, removeStep, restartGoalFrom, setGoalDone, setGoalFailed, setRewardClaimed } from "../data/goals";
 import { checkGoal, describeMeasure, type GoalMeasure } from "../analytics/goalcheck";
 import { listTrades } from "../data/trades";
 import { listLedger } from "../data/ledger";
@@ -30,6 +30,7 @@ const Rule = z.discriminatedUnion("type", [
   z.object({ type: z.literal("greenDay") }),
   z.object({ type: z.literal("myRules") }),
 ]);
+const Accounts = z.array(z.string().max(200)).max(50).optional();
 const Measure = z.discriminatedUnion("kind", [
   z
     .object({
@@ -38,10 +39,11 @@ const Measure = z.discriminatedUnion("kind", [
       span: z.enum(["weeks", "until", "inARow", "total"]),
       n: z.number().int().min(1).max(365),
       until: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+      accounts: Accounts,
     })
     .refine((m) => m.span !== "until" || !!m.until, "Pick the end date"),
-  z.object({ kind: z.literal("total"), metric: z.enum(["net", "paidOut", "payouts", "evalsPassed"]), target: Money }),
-  z.object({ kind: z.literal("rate"), metric: z.enum(["winRate", "greenDays"]), target: z.number().min(1).max(100), over: Count }),
+  z.object({ kind: z.literal("total"), metric: z.enum(["net", "paidOut", "payouts", "evalsPassed"]), target: Money, accounts: Accounts }),
+  z.object({ kind: z.literal("rate"), metric: z.enum(["winRate", "greenDays"]), target: z.number().min(1).max(100), over: Count, accounts: Accounts }),
 ]);
 
 export async function addGoal(input: {
@@ -120,6 +122,14 @@ export async function restartGoal(goalId: string) {
     if (checkGoal(goal.measure, today, goal.targetDay, { trades, ledger, rules: settings.rules, tz, today }).status === "broken") from = addDays(today, 1);
   }
   await restartGoalFrom(id, from);
+  done();
+  return { ok: true };
+}
+
+/** Mark a broken goal failed (it folds away, crossed out, in your history) or undo that. */
+export async function failGoal(goalId: string, failed: boolean) {
+  await assertSession();
+  await setGoalFailed(Id("goal").parse(goalId), z.boolean().parse(failed));
   done();
   return { ok: true };
 }

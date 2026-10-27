@@ -11,6 +11,8 @@ export type Goal = {
   targetDay: string | null;
   createdAt: string;
   completedAt: string | null;
+  /** Set when you mark a broken goal failed; it stays in your history, crossed out. */
+  failedAt: string | null;
   /** What you earn when it's reached. */
   reward: string | null;
   rewardClaimedAt: string | null;
@@ -23,7 +25,7 @@ export type Goal = {
   steps: GoalStep[];
 };
 
-type GoalRow = { id: string; title: string; why: string | null; target_day: string | null; created_at: Date; completed_at: Date | null; reward: string | null; reward_claimed_at: Date | null; kind: "trading" | "life"; auto_clean_days: number | null; measure: GoalMeasure | null; started_on: string | null };
+type GoalRow = { id: string; title: string; why: string | null; target_day: string | null; created_at: Date; completed_at: Date | null; failed_at: Date | null; reward: string | null; reward_claimed_at: Date | null; kind: "trading" | "life"; auto_clean_days: number | null; measure: GoalMeasure | null; started_on: string | null };
 type StepRow = { id: string; goal_id: string; day: string; text: string; created_at: Date };
 
 /** Every goal with its steps, oldest first, so the tree grows in the order you lived it. */
@@ -42,6 +44,7 @@ export async function listGoals(): Promise<Goal[]> {
     targetDay: g.target_day,
     createdAt: g.created_at.toISOString(),
     completedAt: g.completed_at?.toISOString() ?? null,
+    failedAt: g.failed_at?.toISOString() ?? null,
     reward: g.reward,
     rewardClaimedAt: g.reward_claimed_at?.toISOString() ?? null,
     kind: g.kind ?? "life",
@@ -65,12 +68,17 @@ export async function insertGoal(g: { title: string; why: string | null; targetD
 /** Start a measured goal over from a day: it counts again from there. */
 export async function restartGoalFrom(id: string, day: string): Promise<void> {
   const sql = await db();
-  await sql`update goals set started_on = ${day}, completed_at = null where id = ${id}`;
+  await sql`update goals set started_on = ${day}, completed_at = null, failed_at = null where id = ${id}`;
 }
 
 export async function insertStep(goalId: string, day: string, text: string): Promise<void> {
   const sql = await db();
   await sql`insert into goal_steps (id, goal_id, day, text) values (${`step_${randomToken(10)}`}, ${goalId}, ${day}, ${text})`;
+}
+
+export async function setGoalFailed(id: string, failed: boolean): Promise<void> {
+  const sql = await db();
+  await sql`update goals set failed_at = ${failed ? sql`coalesce(failed_at, now())` : null} where id = ${id} and completed_at is null`;
 }
 
 export async function setGoalDone(id: string, done: boolean): Promise<void> {

@@ -86,3 +86,15 @@ test("rules kept until an exact date", () => {
   assert.equal(checkGoal(m, "2026-10-26", null, ctx(t, "2026-11-01")).headline, "Day 7 of 13 · no breaks");
   assert.equal(checkGoal(m, "2026-10-26", null, ctx(t, "2026-11-08")).status, "reached");
 });
+
+test("a goal limited to one account ignores trades on the others", () => {
+  const main = (t: Trade) => ({ ...t, accountId: "import:main" });
+  const other = (t: Trade) => ({ ...t, accountId: "import:eval2" });
+  const trades = [main(trade("2026-10-26", "14:35", 200)), other(trade("2026-10-27", "13:05", -150)), main(trade("2026-10-28", "15:10", 90))];
+  // Every account: the early entry on the other eval breaks it.
+  assert.equal(checkGoal(windowTwoWeeks, "2026-10-26", null, ctx(trades, "2026-10-29")).status, "broken");
+  // Only the main account: still going, and the other account's day isn't judged at all.
+  const mainOnly = checkGoal({ ...windowTwoWeeks, accounts: ["import:main"] }, "2026-10-26", null, ctx(trades, "2026-10-29"));
+  assert.equal(mainOnly.status, "going");
+  assert.deepEqual(mainOnly.marks.map((m) => m.day), ["2026-10-26", "2026-10-28"]);
+});

@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { addGoal, addStep, claimReward, deleteGoal, deleteStep, markGoal, restartGoal, setMission, setMissionCounts } from "@/lib/actions/goals";
+import { addGoal, addStep, claimReward, deleteGoal, deleteStep, failGoal, markGoal, restartGoal, setMission, setMissionCounts } from "@/lib/actions/goals";
 import type { Goal } from "@/lib/data/goals";
 import type { MissionDay } from "@/lib/analytics/mission";
 import { describeMeasure, type GoalMeasure, type GoalProgress, type GoalRule, type GoalSpan, type RateMetric, type TotalMetric } from "@/lib/analytics/goalcheck";
@@ -34,6 +34,8 @@ type MeasureForm = {
   rate: RateMetric;
   rateTarget: string;
   over: string;
+  /** Account ids the goal is limited to; empty = every account. */
+  accounts: string[];
 };
 
 const RULE_KEYS: RuleKey[] = ["window", "maxTrades", "maxDayLoss", "stopAfterLosses", "maxLossPerTrade", "maxContracts", "cooldown", "noRevenge", "greenDay", "myRules"];
@@ -51,6 +53,7 @@ function emptyMeasure(d: { start: string | null; end: string | null }): MeasureF
     rate: "winRate",
     rateTarget: "55",
     over: "30",
+    accounts: [],
   };
 }
 
@@ -58,6 +61,13 @@ const num = (s: string) => Number(s.replace(/[,$%\s]/g, ""));
 const whole = (s: string) => Number.isInteger(num(s)) && num(s) >= 1;
 
 function buildMeasure(m: MeasureForm): { measure: GoalMeasure | null } | { error: string } {
+  const b = buildBase(m);
+  // Ledger totals (payouts, evals) aren't per account, so only trade-based goals take accounts.
+  const tradeBased = m.type === "rules" || m.type === "rate" || (m.type === "total" && m.total === "net");
+  return "measure" in b && b.measure && tradeBased && m.accounts.length ? { measure: { ...b.measure, accounts: m.accounts } } : b;
+}
+
+function buildBase(m: MeasureForm): { measure: GoalMeasure | null } | { error: string } {
   if (m.type === "manual") return { measure: null };
   if (m.type === "total") return num(m.target) > 0 ? { measure: { kind: "total", metric: m.total, target: num(m.target) } } : { error: "Set the number to reach." };
   if (m.type === "rate") {
@@ -99,6 +109,34 @@ function preview(m: MeasureForm): string {
 
 const small = "field num h-8 w-16 px-2 py-0 text-center";
 const label = "mb-3 block font-mono text-[9.5px] tracking-[0.24em] text-ink-4 uppercase";
+
+type AccountOpt = { id: string; name: string };
+
+/** Which accounts a goal watches: all of them, or just the ones you tick. */
+function AccountPicker({ m, setM, accounts }: { m: MeasureForm; setM: (m: MeasureForm) => void; accounts: AccountOpt[] }) {
+  if (!accounts.length || m.type === "manual" || (m.type === "total" && m.total !== "net")) return null;
+  const all = m.accounts.length === 0;
+  const toggle = (id: string) => setM({ ...m, accounts: m.accounts.includes(id) ? m.accounts.filter((x) => x !== id) : [...m.accounts, id] });
+  return (
+    <div>
+      <span className={label}>Which accounts count</span>
+      <div className="flex flex-wrap gap-2">
+        <button type="button" aria-pressed={all} onClick={() => setM({ ...m, accounts: [] })} className={cn(chip, all ? "border-gold/60 text-gold" : "border-line text-ink-3 hover:text-ink")}>
+          All accounts
+        </button>
+        {accounts.map((a) => (
+          <button key={a.id} type="button" aria-pressed={m.accounts.includes(a.id)} onClick={() => toggle(a.id)} className={cn(chip, m.accounts.includes(a.id) ? "border-gold/60 text-gold" : "border-line text-ink-3 hover:text-ink")}>
+            {a.name}
+          </button>
+        ))}
+      </div>
+      <p className="mt-2 font-mono text-[10.5px] leading-[1.8] text-ink-4">
+        {all ? "Every trade on every account counts towards this goal." : "Only trades on the ticked accounts count. Trades anywhere else can't break it."}
+      </p>
+    </div>
+  );
+}
+const chip = "inline-flex h-8 max-w-full items-center truncate rounded-[2px] border px-3 font-mono text-[10px] tracking-[0.08em] transition-colors duration-300";
 
 function MeasureEditor({ m, setM }: { m: MeasureForm; setM: (m: MeasureForm) => void }) {
   const v = (k: keyof MeasureForm["v"], w = small, mode: "numeric" | "decimal" = "numeric") => (
@@ -207,7 +245,7 @@ function MeasureEditor({ m, setM }: { m: MeasureForm; setM: (m: MeasureForm) => 
   );
 }
 
-function GoalProgressBlock({ g, p, onRestart, busy, today }: { g: Goal; p: GoalProgress; onRestart: () => void; busy: boolean; today: string }) {
+function GoalProgressBlock({ g, p, onRestart, onFail, busy, today }: { g: Goal; p: GoalProgress; onRestart: () => void; onFail: () => void; busy: boolean; today: string }) {
   const done = !!g.completedAt;
   const marks = p.marks.slice(-21);
   const tone = p.status === "broken" ? "text-neg" : p.status === "reached" || done ? "text-pos" : "text-gold";
@@ -231,15 +269,20 @@ function GoalProgressBlock({ g, p, onRestart, busy, today }: { g: Goal; p: GoalP
       )}
       {p.detail && <p className="mt-2 font-mono text-[10.5px] leading-[1.75] text-ink-3">{p.detail}</p>}
       {p.status === "broken" && !done && (
-        <button type="button" disabled={busy} onClick={onRestart} className="mt-2 font-mono text-[9.5px] tracking-[0.26em] text-gold uppercase hover:text-ink disabled:opacity-40">
-          ↻ Start again {marks.some((d) => d.day === today && !d.ok) ? "from tomorrow" : "from today"}
-        </button>
+        <div className="mt-2 flex flex-wrap gap-x-6 gap-y-2">
+          <button type="button" disabled={busy} onClick={onRestart} className="font-mono text-[9.5px] tracking-[0.26em] text-gold uppercase hover:text-ink disabled:opacity-40">
+            ↻ Start again {marks.some((d) => d.day === today && !d.ok) ? "from tomorrow" : "from today"}
+          </button>
+          <button type="button" disabled={busy} onClick={onFail} className="font-mono text-[9.5px] tracking-[0.26em] text-ink-4 uppercase hover:text-ink disabled:opacity-40">
+            ✕ Mark it failed
+          </button>
+        </div>
       )}
     </div>
   );
 }
 
-function GoalCard({ g, today, onReached, progress }: { g: Goal; today: string; onReached: (id: string) => void; progress: GoalProgress | null }) {
+function GoalCard({ g, today, onReached, progress, accounts = [] }: { g: Goal; today: string; onReached: (id: string) => void; progress: GoalProgress | null; accounts?: AccountOpt[] }) {
   const router = useRouter();
   const [step, setStep] = useState("");
   const [showAll, setShowAll] = useState(false);
@@ -275,7 +318,10 @@ function GoalCard({ g, today, onReached, progress }: { g: Goal; today: string; o
       </div>
       {g.why && <p className="mt-2 max-w-[60ch] font-mono text-[11.5px] leading-[1.85] text-ink-3" data-private>Why: {g.why}</p>}
       {rule && rule !== g.title && <p className="mt-1.5 font-mono text-[11px] leading-[1.75] text-ink-2">◇ {rule}</p>}
-      {progress && <GoalProgressBlock g={g} p={progress} today={today} busy={pending} onRestart={() => run(() => restartGoal(g.id))} />}
+      {g.measure?.accounts?.length ? (
+        <p className="mt-1 font-mono text-[10.5px] leading-[1.75] text-ink-4">Counts only: {g.measure.accounts.map((id) => accounts.find((a) => a.id === id)?.name ?? id.replace(/^[^:]*:/, "")).join(", ")}</p>
+      ) : null}
+      {progress && <GoalProgressBlock g={g} p={progress} today={today} busy={pending} onRestart={() => run(() => restartGoal(g.id))} onFail={() => run(() => failGoal(g.id, true))} />}
       {g.reward && (
         <p className={cn("mt-2 font-mono text-[11px] tracking-[0.06em]", done ? "text-pos" : "text-gold")} data-private>
           {done ? "◆ Earned: " : "◆ Earns: "}
@@ -407,6 +453,37 @@ function CleanDayRules({ initial }: { initial: CountRule[] }) {
   );
 }
 
+/** A goal you marked failed: one crossed-out line in your history, with an undo. */
+function FailedRow({ g, headline }: { g: Goal; headline: string | null }) {
+  const router = useRouter();
+  const [pending, start] = useTransition();
+  return (
+    <li className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-4 gap-y-1 border-b border-line py-3 font-mono text-[11px]">
+      <span className="min-w-0 text-ink-3 line-through decoration-neg/60">{g.title}</span>
+      <button
+        type="button"
+        disabled={pending}
+        onClick={() => start(async () => void (await failGoal(g.id, false), router.refresh()))}
+        className="text-[9.5px] tracking-[0.22em] text-ink-4 uppercase hover:text-ink disabled:opacity-40"
+      >
+        Undo
+      </button>
+      <span className="col-span-2 text-[10px] text-ink-4">
+        <span className="text-neg">✕ Failed {date(g.failedAt!)}</span>
+        {headline && ` · ${headline}`}
+        {g.reward && (
+          <>
+            {" · "}
+            <span className="line-through" data-private>
+              {g.reward}
+            </span>
+          </>
+        )}
+      </span>
+    </li>
+  );
+}
+
 export function Goals({
   goals,
   today,
@@ -415,7 +492,9 @@ export function Goals({
   autoReached = [],
   defaults,
   counts = ["session", "maxTrades", "maxDailyLoss", "stopAfterLosses"],
+  accounts = [],
 }: {
+  accounts?: AccountOpt[];
   counts?: CountRule[];
   goals: Goal[];
   today: string;
@@ -434,8 +513,11 @@ export function Goals({
   const [name, setName] = useState(mission.name);
   const [showReached, setShowReached] = useState(false);
   const [pending, start] = useTransition();
-  const open = goals.filter((g) => !g.completedAt);
-  const reached = goals.filter((g) => g.completedAt);
+  const live = goals.filter((g) => !g.failedAt);
+  const open = live.filter((g) => !g.completedAt);
+  const reached = live.filter((g) => g.completedAt);
+  const failed = goals.filter((g) => g.failedAt && !g.completedAt);
+  const [showFailed, setShowFailed] = useState(false);
   const freshGoal = fresh ? goals.find((g) => g.id === fresh) : null;
   const toClaim = reached.filter((g) => g.reward && !g.rewardClaimedAt);
   const waiting = open.filter((g) => g.reward);
@@ -469,13 +551,13 @@ export function Goals({
           )}
         </div>
 
-        <MissionScene stages={goals.map((g) => ({ id: g.id, done: !!g.completedAt }))} altitude={mission.altitude} streak={mission.streak} leaking={leaking} fresh={fresh} />
+        <MissionScene stages={live.map((g) => ({ id: g.id, done: !!g.completedAt }))} altitude={mission.altitude} streak={mission.streak} leaking={leaking} fresh={fresh} />
 
         <div className="mt-4 grid grid-cols-3 text-center">
           {[
             { v: mission.altitude.toLocaleString("en-US"), l: "Altitude" },
             { v: mission.streak, l: mission.streak === 1 ? "Clean day in a row" : "Clean days in a row" },
-            { v: `${reached.length} / ${goals.length}`, l: "Worlds passed" },
+            { v: `${reached.length} / ${live.length}`, l: "Worlds passed" },
           ].map((s) => (
             <div key={s.l}>
               <div className="num font-mono text-[clamp(1.3rem,2.2vw,1.7rem)] font-light">{s.v}</div>
@@ -602,7 +684,12 @@ export function Goals({
                 {form.kind === "trading" ? "Trading goals check themselves against your trades and the Guardian ledger." : "Life goals (a marathon, a debt paid off) are yours to mark reached."}
               </p>
             </div>
-            {form.kind === "trading" && <MeasureEditor m={m} setM={setM} />}
+            {form.kind === "trading" && (
+              <>
+                <MeasureEditor m={m} setM={setM} />
+                <AccountPicker m={m} setM={setM} accounts={accounts} />
+              </>
+            )}
             <Field label={form.kind === "trading" && m.type !== "manual" ? "Name it · optional" : "The goal"} hint={form.kind === "trading" && m.type !== "manual" ? `Leave blank to call it: ${preview(m)}` : undefined}>
               <input
                 className="field"
@@ -637,10 +724,25 @@ export function Goals({
 
         <div className="border-t border-line">
           {open.map((g) => (
-            <GoalCard key={g.id} g={g} today={today} onReached={setFresh} progress={progress[g.id] ?? null} />
+            <GoalCard key={g.id} g={g} today={today} onReached={setFresh} progress={progress[g.id] ?? null} accounts={accounts} />
           ))}
           {open.length === 0 && !adding && <p className="py-6 font-mono text-[11.5px] text-ink-3">No worlds ahead. Plot the next one.</p>}
         </div>
+
+        {failed.length > 0 && (
+          <div className="mt-8">
+            <button type="button" onClick={() => setShowFailed((x) => !x)} className="eyebrow hover:text-ink">
+              {showFailed ? "▾" : "▸"} Failed · {failed.length}
+            </button>
+            {showFailed && (
+              <ul className="mt-2 border-t border-line">
+                {[...failed].reverse().map((g) => (
+                  <FailedRow key={g.id} g={g} headline={progress[g.id]?.headline ?? null} />
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
 
         {reached.length > 0 && (
           <div className="mt-8">
@@ -650,7 +752,7 @@ export function Goals({
             {showReached && (
               <div className="mt-2 border-t border-line">
                 {[...reached].reverse().map((g) => (
-                  <GoalCard key={g.id} g={g} today={today} onReached={setFresh} progress={progress[g.id] ?? null} />
+                  <GoalCard key={g.id} g={g} today={today} onReached={setFresh} progress={progress[g.id] ?? null} accounts={accounts} />
                 ))}
               </div>
             )}

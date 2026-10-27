@@ -30,10 +30,17 @@ export type GoalSpan = "weeks" | "until" | "inARow" | "total";
 export type TotalMetric = "net" | "paidOut" | "payouts" | "evalsPassed";
 export type RateMetric = "winRate" | "greenDays";
 
-export type GoalMeasure =
+export type GoalMeasure = (
   | { kind: "days"; rules: GoalRule[]; span: GoalSpan; n: number; /** Last day, for span "until". */ until?: string }
   | { kind: "total"; metric: TotalMetric; target: number }
-  | { kind: "rate"; metric: RateMetric; target: number; over: number };
+  | { kind: "rate"; metric: RateMetric; target: number; over: number }
+) & {
+  /** Only trades on these accounts count; unset or empty = every account. */
+  accounts?: string[];
+};
+
+/** The trades a goal looks at: all of them, or only those on the accounts it names. */
+export const goalTrades = (trades: Trade[], m: GoalMeasure): Trade[] => (m.accounts?.length ? trades.filter((t) => t.accountId !== null && m.accounts!.includes(t.accountId)) : trades);
 
 export type GoalDayMark = { day: string; ok: boolean; why: string[] };
 
@@ -141,7 +148,8 @@ export function judgeDays(trades: Trade[], rules: GoalRule[], yours: TradingRule
 export type GoalContext = { trades: Trade[]; ledger: LedgerEntry[]; rules: TradingRules; tz: string; today: string };
 
 /** Where a measured goal stands today. `start` is the day it started (or was restarted). */
-export function checkGoal(m: GoalMeasure, start: string, byDay: string | null, ctx: GoalContext): GoalProgress {
+export function checkGoal(m: GoalMeasure, start: string, byDay: string | null, all: GoalContext): GoalProgress {
+  const ctx = { ...all, trades: goalTrades(all.trades, m) };
   const { today } = ctx;
   const late = byDay !== null && today > byDay;
   const base = { marks: [] as GoalDayMark[], reachedOn: null as string | null };
