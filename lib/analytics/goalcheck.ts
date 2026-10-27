@@ -37,10 +37,27 @@ export type GoalMeasure = (
 ) & {
   /** Only trades on these accounts count; unset or empty = every account. */
   accounts?: string[];
+  /** Accounts added after the goal started count from the day they were added (account id → day). */
+  joined?: Record<string, string>;
 };
 
-/** The trades a goal looks at: all of them, or only those on the accounts it names. */
-export const goalTrades = (trades: Trade[], m: GoalMeasure): Trade[] => (m.accounts?.length ? trades.filter((t) => t.accountId !== null && m.accounts!.includes(t.accountId)) : trades);
+/** The trades a goal looks at: all of them, or only those on the accounts it names (each from the day it joined). */
+export function goalTrades(trades: Trade[], m: GoalMeasure, tz: string): Trade[] {
+  if (!m.accounts?.length) return trades;
+  return trades.filter((t) => t.accountId !== null && m.accounts!.includes(t.accountId) && (!m.joined?.[t.accountId] || dayKey(t.entryTime, tz) >= m.joined[t.accountId]!));
+}
+
+/** A goal's accounts changed: new ones join from today; moving from every account to a few joins none (it narrows). */
+export function withAccounts(m: GoalMeasure, next: string[], today: string): GoalMeasure {
+  const { accounts: before = [], joined = {}, ...rest } = m;
+  if (!next.length) return rest as GoalMeasure;
+  const j: Record<string, string> = {};
+  for (const id of next) {
+    if (joined[id]) j[id] = joined[id]!;
+    else if (before.length && !before.includes(id)) j[id] = today;
+  }
+  return { ...rest, accounts: next, ...(Object.keys(j).length ? { joined: j } : {}) } as GoalMeasure;
+}
 
 export type GoalDayMark = { day: string; ok: boolean; why: string[] };
 
@@ -149,7 +166,7 @@ export type GoalContext = { trades: Trade[]; ledger: LedgerEntry[]; rules: Tradi
 
 /** Where a measured goal stands today. `start` is the day it started (or was restarted). */
 export function checkGoal(m: GoalMeasure, start: string, byDay: string | null, all: GoalContext): GoalProgress {
-  const ctx = { ...all, trades: goalTrades(all.trades, m) };
+  const ctx = { ...all, trades: goalTrades(all.trades, m, all.tz) };
   const { today } = ctx;
   const late = byDay !== null && today > byDay;
   const base = { marks: [] as GoalDayMark[], reachedOn: null as string | null };

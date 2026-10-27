@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { checkGoal, describeMeasure, legacyMeasure, type GoalMeasure } from "../lib/analytics/goalcheck";
+import { checkGoal, describeMeasure, legacyMeasure, withAccounts, type GoalMeasure } from "../lib/analytics/goalcheck";
 import type { LedgerEntry } from "../lib/analytics/ledger";
 import type { Trade, TradingRules } from "../lib/types";
 
@@ -97,4 +97,24 @@ test("a goal limited to one account ignores trades on the others", () => {
   const mainOnly = checkGoal({ ...windowTwoWeeks, accounts: ["import:main"] }, "2026-10-26", null, ctx(trades, "2026-10-29"));
   assert.equal(mainOnly.status, "going");
   assert.deepEqual(mainOnly.marks.map((m) => m.day), ["2026-10-26", "2026-10-28"]);
+});
+
+test("changing a running goal's accounts: narrowing is retroactive, an added account counts from the day it's added", () => {
+  const on = (id: string, t: Trade) => ({ ...t, accountId: id });
+  const trades = [on("a", trade("2026-10-26", "14:35", 200)), on("b", trade("2026-10-27", "13:05", -150)), on("funded", trade("2026-10-27", "13:10", 50)), on("funded", trade("2026-10-29", "14:40", 80))];
+  // Every account → just "a": the early entry on b no longer counts.
+  const narrowed = withAccounts(windowTwoWeeks, ["a"], "2026-10-28");
+  assert.deepEqual(narrowed.accounts, ["a"]);
+  assert.equal(narrowed.joined, undefined);
+  assert.equal(checkGoal(narrowed, "2026-10-26", null, ctx(trades, "2026-10-29")).status, "going");
+  // Then the funded account joins on the 28th: its early trade on the 27th is before it joined, so it can't break the goal.
+  const plusFunded = withAccounts(narrowed, ["a", "funded"], "2026-10-28");
+  assert.deepEqual(plusFunded.joined, { funded: "2026-10-28" });
+  const p = checkGoal(plusFunded, "2026-10-26", null, ctx(trades, "2026-10-29"));
+  assert.equal(p.status, "going");
+  assert.deepEqual(p.marks.map((m) => m.day), ["2026-10-26", "2026-10-29"]);
+  // Back to every account clears both lists.
+  const all = withAccounts(plusFunded, [], "2026-10-30");
+  assert.equal(all.accounts, undefined);
+  assert.equal(all.joined, undefined);
 });

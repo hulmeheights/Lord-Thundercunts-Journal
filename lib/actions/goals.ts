@@ -3,8 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { assertSession } from "../auth/session";
-import { listGoals, insertGoal, insertStep, removeGoal, removeStep, restartGoalFrom, setGoalDone, setGoalFailed, setRewardClaimed } from "../data/goals";
-import { checkGoal, describeMeasure, type GoalMeasure } from "../analytics/goalcheck";
+import { listGoals, insertGoal, insertStep, removeGoal, removeStep, restartGoalFrom, setGoalDone, setGoalFailed, updateGoalMeasure, setRewardClaimed } from "../data/goals";
+import { checkGoal, describeMeasure, withAccounts, type GoalMeasure } from "../analytics/goalcheck";
 import { listTrades } from "../data/trades";
 import { listLedger } from "../data/ledger";
 import { saveSetting } from "../data/settings";
@@ -31,6 +31,7 @@ const Rule = z.discriminatedUnion("type", [
   z.object({ type: z.literal("myRules") }),
 ]);
 const Accounts = z.array(z.string().max(200)).max(50).optional();
+const Joined = z.record(z.string().max(200), z.string().regex(/^\d{4}-\d{2}-\d{2}$/)).optional();
 const Measure = z.discriminatedUnion("kind", [
   z
     .object({
@@ -40,10 +41,11 @@ const Measure = z.discriminatedUnion("kind", [
       n: z.number().int().min(1).max(365),
       until: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
       accounts: Accounts,
+      joined: Joined,
     })
     .refine((m) => m.span !== "until" || !!m.until, "Pick the end date"),
-  z.object({ kind: z.literal("total"), metric: z.enum(["net", "paidOut", "payouts", "evalsPassed"]), target: Money, accounts: Accounts }),
-  z.object({ kind: z.literal("rate"), metric: z.enum(["winRate", "greenDays"]), target: z.number().min(1).max(100), over: Count, accounts: Accounts }),
+  z.object({ kind: z.literal("total"), metric: z.enum(["net", "paidOut", "payouts", "evalsPassed"]), target: Money, accounts: Accounts, joined: Joined }),
+  z.object({ kind: z.literal("rate"), metric: z.enum(["winRate", "greenDays"]), target: z.number().min(1).max(100), over: Count, accounts: Accounts, joined: Joined }),
 ]);
 
 export async function addGoal(input: {
@@ -122,6 +124,20 @@ export async function restartGoal(goalId: string) {
     if (checkGoal(goal.measure, today, goal.targetDay, { trades, ledger, rules: settings.rules, tz, today }).status === "broken") from = addDays(today, 1);
   }
   await restartGoalFrom(id, from);
+  done();
+  return { ok: true };
+}
+
+/** Change which accounts a running trading goal counts. Accounts you add count from today. */
+export async function setGoalAccounts(goalId: string, accounts: string[]) {
+  await assertSession();
+  const id = Id("goal").parse(goalId);
+  const next = [...new Set(z.array(z.string().max(200)).max(50).parse(accounts))];
+  const goal = (await listGoals()).find((g) => g.id === id);
+  if (!goal?.measure || goal.kind !== "trading") return { error: "Only trading goals that check themselves count accounts." };
+  if (goal.completedAt || goal.failedAt) return { error: "That goal is finished." };
+  const settings = await getSettings();
+  await updateGoalMeasure(id, withAccounts(goal.measure, next, todayKey(settings.profile.timezone)));
   done();
   return { ok: true };
 }

@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { addGoal, addStep, claimReward, deleteGoal, deleteStep, failGoal, markGoal, restartGoal, setMission, setMissionCounts } from "@/lib/actions/goals";
+import { addGoal, addStep, claimReward, deleteGoal, deleteStep, failGoal, markGoal, restartGoal, setGoalAccounts, setMission, setMissionCounts } from "@/lib/actions/goals";
 import type { Goal } from "@/lib/data/goals";
 import type { MissionDay } from "@/lib/analytics/mission";
 import { describeMeasure, type GoalMeasure, type GoalProgress, type GoalRule, type GoalSpan, type RateMetric, type TotalMetric } from "@/lib/analytics/goalcheck";
@@ -112,26 +112,40 @@ const label = "mb-3 block font-mono text-[9.5px] tracking-[0.24em] text-ink-4 up
 
 type AccountOpt = { id: string; name: string };
 
-/** Which accounts a goal watches: all of them, or just the ones you tick. */
+/** All accounts, or just the ones you tick. */
+function AccountChips({ value, onChange, accounts }: { value: string[]; onChange: (v: string[]) => void; accounts: AccountOpt[] }) {
+  const all = value.length === 0;
+  // Accounts named on the goal but no longer on your list still show, so you can untick them.
+  const opts = [...accounts, ...value.filter((id) => !accounts.some((a) => a.id === id)).map((id) => ({ id, name: id.replace(/^[^:]*:/, "") }))];
+  return (
+    <div className="flex flex-wrap gap-2">
+      <button type="button" aria-pressed={all} onClick={() => onChange([])} className={cn(chip, all ? "border-gold/60 text-gold" : "border-line text-ink-3 hover:text-ink")}>
+        All accounts
+      </button>
+      {opts.map((a) => (
+        <button
+          key={a.id}
+          type="button"
+          aria-pressed={value.includes(a.id)}
+          onClick={() => onChange(value.includes(a.id) ? value.filter((x) => x !== a.id) : [...value, a.id])}
+          className={cn(chip, value.includes(a.id) ? "border-gold/60 text-gold" : "border-line text-ink-3 hover:text-ink")}
+        >
+          {a.name}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** Which accounts a new goal watches. */
 function AccountPicker({ m, setM, accounts }: { m: MeasureForm; setM: (m: MeasureForm) => void; accounts: AccountOpt[] }) {
   if (!accounts.length || m.type === "manual" || (m.type === "total" && m.total !== "net")) return null;
-  const all = m.accounts.length === 0;
-  const toggle = (id: string) => setM({ ...m, accounts: m.accounts.includes(id) ? m.accounts.filter((x) => x !== id) : [...m.accounts, id] });
   return (
     <div>
       <span className={label}>Which accounts count</span>
-      <div className="flex flex-wrap gap-2">
-        <button type="button" aria-pressed={all} onClick={() => setM({ ...m, accounts: [] })} className={cn(chip, all ? "border-gold/60 text-gold" : "border-line text-ink-3 hover:text-ink")}>
-          All accounts
-        </button>
-        {accounts.map((a) => (
-          <button key={a.id} type="button" aria-pressed={m.accounts.includes(a.id)} onClick={() => toggle(a.id)} className={cn(chip, m.accounts.includes(a.id) ? "border-gold/60 text-gold" : "border-line text-ink-3 hover:text-ink")}>
-            {a.name}
-          </button>
-        ))}
-      </div>
+      <AccountChips value={m.accounts} onChange={(v) => setM({ ...m, accounts: v })} accounts={accounts} />
       <p className="mt-2 font-mono text-[10.5px] leading-[1.8] text-ink-4">
-        {all ? "Every trade on every account counts towards this goal." : "Only trades on the ticked accounts count. Trades anywhere else can't break it."}
+        {m.accounts.length === 0 ? "Every trade on every account counts towards this goal." : "Only trades on the ticked accounts count. Trades anywhere else can't break it."}
       </p>
     </div>
   );
@@ -294,6 +308,11 @@ function GoalCard({ g, today, onReached, progress, accounts = [] }: { g: Goal; t
   const steps = [...g.steps].reverse();
   const shown = showAll ? steps : steps.slice(0, 3);
   const run = (fn: () => Promise<unknown>) => start(async () => void (await fn(), router.refresh()));
+  const tradeBased = !!g.measure && (g.measure.kind !== "total" || g.measure.metric === "net");
+  const canEditAccounts = auto && tradeBased && !done && !g.failedAt && accounts.length > 0;
+  const [editAcc, setEditAcc] = useState(false);
+  const [acc, setAcc] = useState<string[]>(g.measure?.accounts ?? []);
+  const nameOf = (id: string) => accounts.find((a) => a.id === id)?.name ?? id.replace(/^[^:]*:/, "");
 
   return (
     <article className={cn("border-b border-line py-6", done && "opacity-85")}>
@@ -318,9 +337,51 @@ function GoalCard({ g, today, onReached, progress, accounts = [] }: { g: Goal; t
       </div>
       {g.why && <p className="mt-2 max-w-[60ch] font-mono text-[11.5px] leading-[1.85] text-ink-3" data-private>Why: {g.why}</p>}
       {rule && rule !== g.title && <p className="mt-1.5 font-mono text-[11px] leading-[1.75] text-ink-2">◇ {rule}</p>}
-      {g.measure?.accounts?.length ? (
-        <p className="mt-1 font-mono text-[10.5px] leading-[1.75] text-ink-4">Counts only: {g.measure.accounts.map((id) => accounts.find((a) => a.id === id)?.name ?? id.replace(/^[^:]*:/, "")).join(", ")}</p>
-      ) : null}
+      {auto && tradeBased && !editAcc && (
+        <p className="mt-1 font-mono text-[10.5px] leading-[1.75] text-ink-4">
+          {g.measure?.accounts?.length
+            ? `Counts only: ${g.measure.accounts.map((id) => `${nameOf(id)}${g.measure?.joined?.[id] ? ` (from ${short(g.measure.joined[id]!)})` : ""}`).join(", ")}`
+            : "Counts every account"}
+          {canEditAccounts && (
+            <button type="button" onClick={() => setEditAcc(true)} className="ml-3 text-[9.5px] tracking-[0.22em] text-ink-3 uppercase underline decoration-line-2 underline-offset-4 hover:text-ink">
+              Change
+            </button>
+          )}
+        </p>
+      )}
+      {editAcc && (
+        <div className="mt-3 border-l border-line-2 pl-4">
+          <AccountChips value={acc} onChange={setAcc} accounts={accounts} />
+          <p className="mt-2 font-mono text-[10.5px] leading-[1.8] text-ink-4">
+            An account you add counts from today. Taking one off drops its trades from this goal. All accounts counts everything again.
+          </p>
+          <div className="mt-2 flex gap-6">
+            <button
+              type="button"
+              disabled={pending}
+              onClick={() =>
+                run(async () => {
+                  await setGoalAccounts(g.id, acc);
+                  setEditAcc(false);
+                })
+              }
+              className="font-mono text-[9.5px] tracking-[0.26em] text-gold uppercase hover:text-ink disabled:opacity-40"
+            >
+              Save accounts
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setAcc(g.measure?.accounts ?? []);
+                setEditAcc(false);
+              }}
+              className="font-mono text-[9.5px] tracking-[0.26em] text-ink-4 uppercase hover:text-ink"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
       {progress && <GoalProgressBlock g={g} p={progress} today={today} busy={pending} onRestart={() => run(() => restartGoal(g.id))} onFail={() => run(() => failGoal(g.id, true))} />}
       {g.reward && (
         <p className={cn("mt-2 font-mono text-[11px] tracking-[0.06em]", done ? "text-pos" : "text-gold")} data-private>

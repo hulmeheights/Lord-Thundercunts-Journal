@@ -39,7 +39,7 @@ export function missionDaysWithGoals(trades: Trade[], rules: TradingRules, tz: s
     const b = c.to === null || c.to > today ? today : c.to;
     if (a > b) continue;
     for (let d = a; d <= b; d = addDays(d, 1)) covered.add(d);
-    for (const mark of judgeDays(goalTrades(trades, g.measure!), (g.measure as Extract<GoalMeasure, { kind: "days" }>).rules, rules, tz, a, b)) {
+    for (const mark of judgeDays(goalTrades(trades, g.measure!, tz), (g.measure as Extract<GoalMeasure, { kind: "days" }>).rules, rules, tz, a, b)) {
       judged.set(mark.day, [...new Set([...(judged.get(mark.day) ?? []), ...mark.why])]);
     }
   }

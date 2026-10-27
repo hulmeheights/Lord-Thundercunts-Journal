@@ -76,6 +76,11 @@ export async function insertStep(goalId: string, day: string, text: string): Pro
   await sql`insert into goal_steps (id, goal_id, day, text) values (${`step_${randomToken(10)}`}, ${goalId}, ${day}, ${text})`;
 }
 
+export async function updateGoalMeasure(id: string, m: GoalMeasure): Promise<void> {
+  const sql = await db();
+  await sql`update goals set measure = ${sql.json(m as never)} where id = ${id} and kind = 'trading'`;
+}
+
 export async function setGoalFailed(id: string, failed: boolean): Promise<void> {
   const sql = await db();
   await sql`update goals set failed_at = ${failed ? sql`coalesce(failed_at, now())` : null} where id = ${id} and completed_at is null`;
