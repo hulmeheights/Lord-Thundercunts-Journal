@@ -36,7 +36,11 @@ const FillItem = z.object({
   fees: z.number().min(0).max(1_000_000),
   account: z.string().max(120).nullable(),
 });
+const ImportId = z.string().regex(/^imp_[A-Za-z0-9_-]{6,40}$/);
 const Payload = z.object({
+  /** One id for every chunk of the same file, so the whole import can be undone. */
+  importId: ImportId.optional(),
+  fileName: z.string().max(200).nullish(),
   accountLabel: z.string().trim().min(1).max(80),
   pointValues: z.record(z.string().max(20), z.number().positive().max(10_000_000)).default({}),
   items: z.array(z.discriminatedUnion("kind", [TradeItem, FillItem])).min(1).max(1000),
@@ -83,6 +87,13 @@ export async function importChunk(input: z.input<typeof Payload>): Promise<Impor
   if (unknown.size) return { unknownRoots: [...unknown] };
 
   const sql = await db();
+  const importId = parsed.data.importId ?? null;
+  if (importId) {
+    await sql`
+      insert into imports (id, file_name, label) values (${importId}, ${parsed.data.fileName ?? null}, ${parsed.data.accountLabel})
+      on conflict (id) do nothing
+    `;
+  }
   for (const [id, name] of accounts) {
     await sql`
       insert into broker_accounts (id, provider, external_id, name, is_sim, balance, active)
@@ -112,7 +123,7 @@ export async function importChunk(input: z.input<typeof Payload>): Promise<Impor
     } else {
       fillRows.push({
         id, provider: "import", account_id: accountId, contract_id: symbol, symbol, side: it.side, qty: it.qty, price: it.price,
-        ts: new Date(it.time).toISOString(), fees: it.fees, broker_pnl: null, point_value: pv(root) ?? 1,
+        ts: new Date(it.time).toISOString(), fees: it.fees, broker_pnl: null, point_value: pv(root) ?? 1, import_id: importId,
       });
     }
   }
@@ -122,14 +133,49 @@ export async function importChunk(input: z.input<typeof Payload>): Promise<Impor
     const before = await sql<{ n: number }[]>`select count(*)::int as n from trades where id = any(${sql.array(trades.map((t) => t.id))}::text[])`;
     await insertTrades(trades);
     added += trades.length - (before[0]?.n ?? 0);
+    // Rows new to the journal belong to this import; ones already there keep their first import.
+    if (importId) await sql`update trades set import_id = ${importId} where id = any(${sql.array(trades.map((t) => t.id))}::text[]) and import_id is null`;
   }
   if (fillRows.length) {
     const res = await sql<{ id: string }[]>`insert into fills ${sql(fillRows as never[])} on conflict (id) do nothing returning id`;
     added += res.length;
     const touched = [...new Set(fillRows.map((f) => String(f.account_id)))];
     await rebuildTrades("import", touched);
+    if (importId) await sql`update trades set import_id = ${importId} where source = 'import' and account_id = any(${sql.array(touched)}::text[]) and import_id is null`;
   }
 
   revalidatePath("/", "layout");
   return { ok: true, added, duplicates: items.length - added };
+}
+
+/**
+ * Undo one import: its trades and fills leave the journal (notes on them too).
+ * Only the journal changes; nothing is sent to any broker or prop firm.
+ */
+export async function deleteImport(id: string): Promise<{ ok?: true; removed?: number; error?: string }> {
+  await assertSession();
+  const importId = ImportId.parse(id);
+  const sql = await db();
+  const accounts = (
+    await sql<{ account_id: string }[]>`
+      select distinct account_id from trades where import_id = ${importId} and account_id is not null
+      union select distinct account_id from fills where import_id = ${importId}
+    `
+  ).map((r) => r.account_id);
+  const gone = await sql`delete from trades where import_id = ${importId} and source = 'import' returning id`;
+  const fills = await sql`delete from fills where import_id = ${importId} and provider = 'import' returning account_id`;
+  // Trades built from this import's fills were tagged with it and are gone; rebuild what other fills still make.
+  if (fills.length) await rebuildTrades("import", [...new Set(fills.map((f) => String(f.account_id)))]);
+  await sql`delete from imports where id = ${importId}`;
+  // An imported account with nothing left goes too (only the journal's own record of it).
+  if (accounts.length) {
+    await sql`
+      delete from broker_accounts a
+      where a.provider = 'import' and a.id = any(${sql.array(accounts)}::text[])
+        and not exists (select 1 from trades t where t.account_id = a.id)
+        and not exists (select 1 from fills f where f.account_id = a.id)
+    `;
+  }
+  revalidatePath("/", "layout");
+  return { ok: true, removed: gone.length + fills.length };
 }

@@ -277,7 +277,7 @@ export function TradeEditor({
               Edit trade details
             </button>
           )}
-          {trade.source === "import" ? null : !confirmDelete ? (
+          {!confirmDelete ? (
             <button
               type="button"
               onClick={() => setConfirmDelete(true)}
@@ -287,7 +287,7 @@ export function TradeEditor({
             </button>
           ) : (
             <>
-              <span className="font-mono text-[11px] leading-[1.8] text-ink-3">Gone for good — notes and all.</span>
+              <span className="font-mono text-[11px] leading-[1.8] text-ink-3">{trade.source === "import" ? "Gone from the journal, notes and all. Importing the same file again brings it back." : "Gone for good — notes and all."}</span>
               <Btn
                 variant="secondary"
                 size="sm"

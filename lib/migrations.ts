@@ -433,4 +433,36 @@ export const MIGRATIONS: { version: number; sql: string }[] = [
       alter table goals add column if not exists failed_at timestamptz;
     `,
   },
+  {
+    version: 22,
+    sql: /* sql */ `
+      -- Each CSV import is remembered, so one can be undone later.
+      create table if not exists imports (
+        id text primary key,
+        created_at timestamptz not null default now(),
+        file_name text,
+        label text
+      );
+      alter table trades add column if not exists import_id text;
+      alter table fills add column if not exists import_id text;
+      create index if not exists trades_import_idx on trades (import_id);
+      create index if not exists fills_import_idx on fills (import_id);
+      -- Imports from before this was tracked: trades that landed within a few
+      -- minutes of each other came in the same import.
+      with t as (
+        select id, created_at,
+          case when lag(created_at) over (order by created_at) is null
+                 or created_at - lag(created_at) over (order by created_at) > interval '5 minutes' then 1 else 0 end as brk
+        from trades where source = 'import' and import_id is null
+      ),
+      g as (select id, created_at, sum(brk) over (order by created_at rows unbounded preceding) as grp from t),
+      ins as (
+        insert into imports (id, created_at, label)
+        select 'imp_old_' || grp, min(created_at), 'Earlier import' from g group by grp
+        on conflict (id) do nothing
+        returning id
+      )
+      update trades tr set import_id = 'imp_old_' || g.grp from g where tr.id = g.id;
+    `,
+  },
 ];

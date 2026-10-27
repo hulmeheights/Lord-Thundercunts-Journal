@@ -12,6 +12,9 @@ import { Connections, type ConnectNotice } from "@/components/settings/Connectio
 import { AiToggle, ProfileForm, RitualEditor, RulesForm, VocabEditor } from "@/components/settings/Forms";
 import { Security } from "@/components/settings/Security";
 import { DataControls } from "@/components/settings/DataControls";
+import { Imports } from "@/components/settings/Imports";
+import { listImports } from "@/lib/data/imports";
+import { Sub } from "@/components/settings/ui";
 import { Appearance } from "@/components/settings/Appearance";
 import { Notifications } from "@/components/settings/Notifications";
 import { fmtMinute, todayKey, windowFor } from "@/lib/analytics/time";
@@ -32,6 +35,8 @@ const SECTIONS = ["connections", "rules", "ritual", "tags", "appearance", "notif
 /** Dates are formatted here, once, so the server and the phone never disagree on the text. */
 const stamp = (iso: string, tz: string) =>
   new Date(iso).toLocaleString("en-GB", { timeZone: tz, weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+
+const day = (iso: string, tz: string) => new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: tz });
 
 function noticeFrom(sp: Record<string, string | string[] | undefined>): ConnectNotice {
   const k = sp.tradovate;
@@ -169,6 +174,20 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
       </Section>
 
       <Section id="data" n={11} label="Your data">
+        <div className="mb-12 max-w-3xl">
+          <Sub>Imports · newest first</Sub>
+          <Imports
+            items={(await listImports()).map((r) => ({
+              id: r.id,
+              when: stamp(r.createdAt, settings.profile.timezone),
+              range: r.first && r.last ? (day(r.first, settings.profile.timezone) === day(r.last, settings.profile.timezone) ? `trades on ${day(r.first, settings.profile.timezone)}` : `trades ${day(r.first, settings.profile.timezone)} – ${day(r.last, settings.profile.timezone)}`) : "",
+              fileName: r.fileName,
+              accounts: r.accounts,
+              trades: r.trades,
+              net: r.net,
+            }))}
+          />
+        </div>
         <DataControls sampleCount={counts.sample} />
       </Section>
     </>

@@ -122,7 +122,7 @@ export async function updateTradeCore(id: string, c: TradeCore): Promise<boolean
 
 export async function deleteTrade(id: string): Promise<void> {
   const sql = await db();
-  await sql`delete from trades where id = ${id} and source in ('manual', 'sample')`;
+  await sql`delete from trades where id = ${id} and source in ('manual', 'sample', 'import')`;
 }
 
 export async function tradeCounts(): Promise<{ total: number; sample: number }> {

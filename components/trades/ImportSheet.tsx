@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { parseCsv } from "@/lib/import/csv";
 import { autoMap, detectShape, MAPPABLE_FIELDS, mapRows, SHAPE_LABEL, type Field as MapField, type Mapping } from "@/lib/import/formats";
 import type { DateOrder } from "@/lib/import/values";
-import { importChunk } from "@/lib/actions/import";
+import { deleteImport, importChunk } from "@/lib/actions/import";
 import { feeResolver } from "@/lib/import/fees";
 import { fmtMoney, fmtPrice } from "@/lib/format";
 import { timeInTz, dayKey } from "@/lib/analytics/time";
@@ -52,7 +52,8 @@ export function ImportSheet({ tz, accounts, onDone }: { tz: string; accounts: st
   const [unknownRoots, setUnknownRoots] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState<string | null>(null);
-  const [result, setResult] = useState<{ added: number; duplicates: number } | null>(null);
+  const [result, setResult] = useState<{ added: number; duplicates: number; importId: string } | null>(null);
+  const [undo, setUndo] = useState<"idle" | "confirm" | "working" | "done">("idle");
   const [error, setError] = useState<string | null>(null);
   const [drag, setDrag] = useState(false);
 
@@ -92,12 +93,14 @@ export function ImportSheet({ tz, accounts, onDone }: { tz: string; accounts: st
     setError(null);
     let added = 0,
       duplicates = 0;
+    // One id for every chunk, so this whole file can be undone later.
+    const importId = `imp_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
     const pv: Record<string, number> = {};
     for (const [k, v] of Object.entries(pointValues)) if (Number(v) > 0) pv[k] = Number(v);
     try {
       for (let i = 0; i < preview.items.length; i += CHUNK) {
         setProgress(`Importing ${Math.min(i + CHUNK, preview.items.length)} of ${preview.items.length}`);
-        const res = await importChunk({ accountLabel: label, pointValues: pv, items: preview.items.slice(i, i + CHUNK) });
+        const res = await importChunk({ importId, fileName, accountLabel: label, pointValues: pv, items: preview.items.slice(i, i + CHUNK) });
         if (res.unknownRoots?.length) {
           setUnknownRoots(res.unknownRoots);
           setError(`Tell me the $ value of one point for: ${res.unknownRoots.join(", ")}.`);
@@ -110,7 +113,7 @@ export function ImportSheet({ tz, accounts, onDone }: { tz: string; accounts: st
         added += res.added ?? 0;
         duplicates += res.duplicates ?? 0;
       }
-      setResult({ added, duplicates });
+      setResult({ added, duplicates, importId });
       router.refresh();
     } catch {
       setError("Import failed — try again.");
@@ -144,9 +147,38 @@ export function ImportSheet({ tz, accounts, onDone }: { tz: string; accounts: st
             ? `${result.duplicates.toLocaleString("en-US")} already in your journal — skipped, never doubled.`
             : "Every fill paired, every fee counted. Nothing was doubled."}
         </p>
-        <Btn className="mt-10 w-full sm:w-auto" variant="primary" size="lg" onClick={onDone}>
-          Done
-        </Btn>
+        <div className="mt-10 flex flex-wrap items-center gap-x-8 gap-y-4">
+          <Btn className="w-full sm:w-auto" variant="primary" size="lg" onClick={onDone}>
+            Done
+          </Btn>
+          {result.added > 0 && undo === "idle" && (
+            <button type="button" onClick={() => setUndo("confirm")} className="font-mono text-[9.5px] tracking-[0.28em] text-ink-4 uppercase hover:text-ink">
+              Undo this import
+            </button>
+          )}
+          {undo === "confirm" && (
+            <span className="flex flex-wrap items-center gap-x-6 gap-y-2 font-mono text-[11px] text-ink-3">
+              Remove the {result.added} new rows?
+              <button
+                type="button"
+                onClick={async () => {
+                  setUndo("working");
+                  await deleteImport(result.importId);
+                  setUndo("done");
+                  router.refresh();
+                }}
+                className="text-[9.5px] tracking-[0.28em] text-neg uppercase hover:text-ink"
+              >
+                Yes, undo it
+              </button>
+              <button type="button" onClick={() => setUndo("idle")} className="text-[9.5px] tracking-[0.28em] text-ink-4 uppercase hover:text-ink">
+                Keep
+              </button>
+            </span>
+          )}
+          {undo === "working" && <span className="font-mono text-[11px] text-ink-3">Undoing…</span>}
+          {undo === "done" && <span className="font-mono text-[11px] text-ink-3">Undone. The tape is as it was before this file.</span>}
+        </div>
       </div>
     );
   }
