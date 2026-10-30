@@ -395,6 +395,8 @@ export function TradeList({
           <div ref={log}>
             {shown.map(([day, list]) => {
               const net = list.reduce((x, t) => x + t.netPnl, 0);
+              const won = list.filter((t) => t.netPnl > 0).length;
+              const lost = list.filter((t) => t.netPnl < 0).length;
               return (
                 <div key={day} className="t-rv mb-[clamp(2.6rem,6vh,4rem)]">
                   <div data-flip-id={`day-${day}`} className="flex items-baseline justify-between gap-4 border-b border-line-2 pb-3">
@@ -403,7 +405,7 @@ export function TradeList({
                         {dayLabel(day)}
                       </Link>
                       <span className="font-mono text-[9px] tracking-[0.26em] text-ink-4 uppercase">
-                        {spell(list.length)} trade{list.length === 1 ? "" : "s"}
+                        {spell(list.length)} trade{list.length === 1 ? "" : "s"} · <span className="text-pos">{won} won</span> · <span className="text-neg">{lost} lost</span>
                       </span>
                     </div>
                     <div className="flex items-center gap-6">

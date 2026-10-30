@@ -11,6 +11,7 @@ import { fmtMoney, fmtPct, fmtPrice } from "@/lib/format";
 import { cn } from "@/lib/cn";
 import { aiConfigured } from "@/lib/env";
 import { DayEditor } from "@/components/journal/DayEditor";
+import { foundAccounts } from "@/lib/data/inactivity";
 import { TradeGrade } from "@/components/trades/GradePicker";
 import { Photos } from "@/components/journal/Photos";
 import { Readiness } from "@/components/today/Readiness";
@@ -35,6 +36,17 @@ export default async function JournalDayPage({ params }: { params: Promise<{ day
   const dayTrades = trades.filter((t) => dayKey(t.exitTime, tz) === day).sort((a, b) => a.entryTime.localeCompare(b.entryTime));
   const s = summarize(dayTrades);
   const toGrade = dayTrades.filter((t) => !t.grade).length;
+  // Copied trades land on every account, so the count per account is the one that matches what you took.
+  const names = new Map((await foundAccounts()).map((a) => [a.id, a.name]));
+  const groups = new Map<string, typeof dayTrades>();
+  for (const t of dayTrades) groups.set(t.accountId ?? t.source, [...(groups.get(t.accountId ?? t.source) ?? []), t]);
+  const byAccount = [...groups].map(([id, ts]) => ({
+    id,
+    name: names.get(id) ?? id.replace(/^[^:]*:/, ""),
+    trades: ts.length,
+    won: ts.filter((t) => t.netPnl > 0).length,
+    lost: ts.filter((t) => t.netPnl < 0).length,
+  }));
   const [weekday, date] = longDate(day).split(", ");
   const isToday = day === today;
 
@@ -80,6 +92,20 @@ export default async function JournalDayPage({ params }: { params: Promise<{ day
               The tape
               {dayTrades.length > 0 && <span className="ml-3 text-ink-4">· {toGrade ? `${toGrade} to grade` : "all graded"}</span>}
             </div>
+            {dayTrades.length > 0 && (
+              <div className="mb-4 font-mono text-[11px] leading-[1.9]">
+                <div className="text-ink">
+                  {s.trades} {s.trades === 1 ? "trade" : "trades"} · <span className="text-pos">{s.wins} won</span> · <span className="text-neg">{s.losses} lost</span>
+                  {s.trades - s.wins - s.losses > 0 && <span className="text-ink-4"> · {s.trades - s.wins - s.losses} flat</span>}
+                </div>
+                {byAccount.length > 1 &&
+                  byAccount.map((a) => (
+                    <div key={a.id} className="text-[10.5px] text-ink-4">
+                      {a.name}: {a.trades} · {a.won} won · {a.lost} lost
+                    </div>
+                  ))}
+              </div>
+            )}
             {dayTrades.length === 0 ? (
               <p className="border-t border-line pt-5 font-mono text-[11.5px] leading-[1.9] text-ink-3">No trades this day. Sitting out is a position.</p>
             ) : (
