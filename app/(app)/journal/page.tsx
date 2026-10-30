@@ -81,7 +81,7 @@ export default async function JournalPage({ searchParams }: { searchParams: Prom
 
   const series = dailySeries(trades, tz);
   const data: Record<string, CalendarDatum> = {};
-  for (const d of series) data[d.day] = { net: d.net, trades: d.trades };
+  for (const d of series) data[d.day] = { net: d.net, trades: d.trades, wins: d.wins, losses: d.losses };
   for (const d of journaled) data[d] = { ...(data[d] ?? { net: 0, trades: 0 }), journaled: true };
 
   const monthTrades = trades.filter((t) => t.exitTime.slice(0, 7) === m.slice(0, 7));

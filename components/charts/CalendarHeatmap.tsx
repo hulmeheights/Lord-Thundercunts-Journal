@@ -3,7 +3,11 @@ import { cn } from "@/lib/cn";
 import { fmtMoney } from "@/lib/format";
 import { addDays, endOfMonth, weekdayIndex, WEEKDAYS } from "@/lib/analytics/time";
 
-export type CalendarDatum = { net: number; trades: number; journaled?: boolean };
+const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+// Built by hand so the server and the browser print the same text.
+const longLabel = (d: string) => `${WEEKDAYS[weekdayIndex(d)]} ${Number(d.slice(8, 10))} ${MON[Number(d.slice(5, 7)) - 1]}`;
+
+export type CalendarDatum = { net: number; trades: number; wins?: number; losses?: number; journaled?: boolean };
 
 /**
  * A month as hairline cells. Each traded day gets a thin vertical stem whose
@@ -106,7 +110,7 @@ export function YearStrip({ year, data, today, hrefFor }: { year: number; data: 
   const months = ["J", "F", "M", "A", "M", "J", "J", "A", "S", "O", "N", "D"];
   return (
     <div>
-      <div className="relative flex h-[120px] items-center gap-[1px] overflow-hidden" data-private role="img" aria-label={`P&L by day, ${year}`}>
+      <div className="relative flex h-[120px] items-center gap-[1px]" data-private role="img" aria-label={`P&L by day, ${year}`}>
         <i aria-hidden className="absolute inset-x-0 top-1/2 block h-px bg-line" />
         {days.map((d) => {
           const v = data[d];
@@ -124,15 +128,33 @@ export function YearStrip({ year, data, today, hrefFor }: { year: number; data: 
               {d === today && <i className="absolute top-0 left-0 block h-full w-full border-x border-gold/50" />}
             </span>
           );
+          // Hover a day for its numbers; the card opens towards the middle so it never runs off the edge.
+          const tip = v && (
+            <span
+              className={cn(
+                "pointer-events-none absolute -top-2 z-20 hidden -translate-y-full rounded-[2px] border border-line-2 bg-bg px-3 py-2 font-mono text-[10.5px] leading-[1.7] whitespace-nowrap text-ink-3 shadow-[0_8px_24px_rgba(0,0,0,0.45)] group-hover:block",
+                d.slice(5, 7) > "06" ? "right-0" : "left-0",
+              )}
+            >
+              <span className="block text-ink">{longLabel(d)}</span>
+              <span className={cn("block", v.net > 0 ? "text-pos" : v.net < 0 ? "text-neg" : "text-ink-3")}>{fmtMoney(v.net, { sign: true })}</span>
+              <span className="block">
+                {v.trades} {v.trades === 1 ? "trade" : "trades"}
+                {v.wins !== undefined && ` · ${v.wins} won · ${v.losses ?? 0} lost`}
+              </span>
+              {v.journaled && <span className="block text-gold">◆ written up</span>}
+            </span>
+          );
           return (
-            <span key={d} className={cn("h-full min-w-0 flex-1", d > today && "opacity-30")}>
+            <span key={d} className={cn("group relative h-full min-w-0 flex-1", d > today && "opacity-30")}>
               {hrefFor && v ? (
-                <Link href={hrefFor(d)} className="block h-full" title={`${d} · ${fmtMoney(v.net, { sign: true })}`}>
+                <Link href={hrefFor(d)} className="block h-full" aria-label={`${longLabel(d)}: ${fmtMoney(v.net, { sign: true })}, ${v.trades} trades`}>
                   {tick}
                 </Link>
               ) : (
                 tick
               )}
+              {tip}
             </span>
           );
         })}
