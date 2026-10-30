@@ -118,3 +118,18 @@ test("risk: a loss counts as what was risked unless you typed a risk", () => {
   assert.equal(riskFor({ plannedRisk: 300, netPnl: -248 }, 500), 300);
   assert.equal(rOf({ ...base, netPnl: -248 } as never, 500), -1);
 });
+
+test("R: each account's usual full loss is 1R, so a scratch is a sliver of R and a full stop is −1R", async () => {
+  const { summarize, usualRisks } = await import("../lib/analytics/stats");
+  const mk = (i: number, acct: string, net: number) =>
+    ({ id: `r${i}`, source: "import", accountId: acct, symbol: "MNQZ6", root: "MNQ", direction: "long", qty: 1, maxPosition: 1, entryTime: `2026-10-2${i % 7}T14:30:00Z`, exitTime: `2026-10-2${i % 7}T14:40:00Z`, entryPrice: 1, exitPrice: 2, grossPnl: net, fees: 0, netPnl: net, pointValue: 2, fillCount: 2, setups: [], tags: [], mistakes: [], emotion: null, rating: null, grade: null, notes: null, plannedRisk: null, followedPlan: null, chartUrl: null }) as never;
+  // A $300-risk account: full stops of $300, one $20 scratch, wins of $600.
+  const small = [mk(1, "a", -300), mk(2, "a", -300), mk(3, "a", -20), mk(4, "a", 600), mk(5, "a", 600)];
+  // The same trades copied at 2× on a heavy account.
+  const big = [mk(6, "b", -600), mk(7, "b", -600), mk(8, "b", -40), mk(9, "b", 1200), mk(10, "b", 1200)];
+  assert.deepEqual([...usualRisks([...small, ...big])], [["a", 300], ["b", 600]]);
+  // (−1 −1 −0.067 +2 +2) / 5 ≈ +0.39R on both accounts: the scratch no longer counts as a full −1R.
+  assert.equal(summarize([...small, ...big], 300).avgR!.toFixed(2), "0.39");
+  assert.equal(summarize([...small, ...big], 300).avgWinR, 2);
+  // Risk : reward is the average winner in R: 1 : 2.
+});

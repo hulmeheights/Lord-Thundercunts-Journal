@@ -17,7 +17,7 @@ import { chartImage, RATING_WORDS } from "./lib";
  * time, a prominent symbol, side, prices, hold, setup and net. Click to open
  * a preview of what you wrote; the arrow opens the trade itself.
  */
-export function TradeRow({ t, tz, open, onToggle, defaultRisk }: { t: Trade; tz: string; open: boolean; onToggle: () => void; defaultRisk: number | null }) {
+export function TradeRow({ t, tz, open, onToggle, defaultRisk, usual = null }: { t: Trade; tz: string; open: boolean; onToggle: () => void; defaultRisk: number | null; usual?: number | null }) {
   const href = `/trades/${encodeURIComponent(t.id)}`;
   const win = t.netPnl > 0.004;
   const loss = t.netPnl < -0.004;
@@ -115,15 +115,15 @@ export function TradeRow({ t, tz, open, onToggle, defaultRisk }: { t: Trade; tz:
 
       <div className={cn("grid transition-[grid-template-rows] duration-700 ease-[cubic-bezier(0.16,1,0.3,1)]", open ? "grid-rows-[1fr]" : "grid-rows-[0fr]")}>
         <div className={cn("min-h-0 overflow-hidden", open && "t-drawn")} inert={!open}>
-          {seen && <Preview t={t} tz={tz} href={href} defaultRisk={defaultRisk} />}
+          {seen && <Preview t={t} tz={tz} href={href} defaultRisk={defaultRisk} usual={usual} />}
         </div>
       </div>
     </div>
   );
 }
 
-function Preview({ t, tz, href, defaultRisk }: { t: Trade; tz: string; href: string; defaultRisk: number | null }) {
-  const r = rMultiple(t, defaultRisk);
+function Preview({ t, tz, href, defaultRisk, usual }: { t: Trade; tz: string; href: string; defaultRisk: number | null; usual: number | null }) {
+  const r = rMultiple(t, defaultRisk, usual);
   const img = chartImage(t.chartUrl);
   const facts: [string, React.ReactNode][] = [
     ["Felt", t.emotion ? <span className="text-ink">{t.emotion}</span> : <span className="text-ink-4">—</span>],

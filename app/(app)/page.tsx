@@ -305,6 +305,7 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
             profitFactor: s30.profitFactor,
             expectancy: s30.expectancy,
             avgR: s30.avgR,
+            payoff: s30.avgWinR ?? s30.payoff,
             bestSetup: best ? { name: best.label, expectancy: best.expectancy, trades: best.trades } : null,
             streak,
             thread,

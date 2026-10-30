@@ -34,11 +34,14 @@ export function TradeEditor({
   trade,
   vocab,
   defaultRisk,
+  usual = null,
   tz,
 }: {
   trade: Trade;
   vocab: { setups: string[]; mistakes: string[]; emotions: string[] };
   defaultRisk: number | null;
+  /** Your usual full loss on this trade's account (its 1R), when known. */
+  usual?: number | null;
   tz: string;
 }) {
   const editable = trade.source === "manual" || trade.source === "sample" || trade.source === "import";
@@ -78,8 +81,8 @@ export function TradeEditor({
   useEffect(grow, []);
 
   const toggleIn = (list: string[], v: string) => (list.includes(v) ? list.filter((x) => x !== v) : [...list, v]);
-  const risk = riskFor(t, defaultRisk);
-  const lossRisk = t.plannedRisk == null && t.netPnl < 0 ? risk : null;
+  const risk = riskFor(t, defaultRisk, usual);
+  const lossRisk = t.plannedRisk == null && usual == null && t.netPnl < 0 ? risk : null;
   const r = risk ? t.netPnl / risk : null;
   const shownRating = hoverRating ?? t.rating ?? 0;
 
@@ -187,11 +190,13 @@ export function TradeEditor({
       <Line
         label="Planned risk"
         hint={
-          lossRisk !== null
-            ? `Counted as $${fmtNum(lossRisk, 2)}: a loss shows what you risked. Type a number only if you risked more.`
-            : defaultRisk
-              ? `Defaults to $${defaultRisk} if left blank.`
-              : "What you were willing to lose."
+          t.plannedRisk == null && usual != null
+            ? `Counted as $${fmtNum(usual, 2)}, your usual full loss on this account. Type a number if this trade risked something else.`
+            : lossRisk !== null
+              ? `Counted as $${fmtNum(lossRisk, 2)}: a loss shows what you risked. Type a number only if you risked more.`
+              : defaultRisk
+                ? `Defaults to $${defaultRisk} if left blank.`
+                : "What you were willing to lose."
         }
       >
         <div className="flex flex-wrap items-end gap-x-8 gap-y-3">
@@ -203,7 +208,7 @@ export function TradeEditor({
               step="any"
               inputMode="decimal"
               defaultValue={t.plannedRisk ?? ""}
-              placeholder={lossRisk !== null ? String(lossRisk) : defaultRisk ? String(defaultRisk) : "150"}
+              placeholder={usual != null ? String(usual) : lossRisk !== null ? String(lossRisk) : defaultRisk ? String(defaultRisk) : "150"}
               onChange={(e) => save({ plannedRisk: e.target.value ? Math.max(0.01, Number(e.target.value)) : null }, 700)}
               className="num w-full bg-transparent py-2 text-[15px] text-ink outline-none placeholder:text-ink-4"
               aria-label="Planned risk in dollars"
@@ -269,11 +274,7 @@ export function TradeEditor({
       {editable && (
         <div className="mt-[clamp(3.5rem,9vh,5.5rem)] flex min-h-10 flex-wrap items-center gap-x-8 gap-y-4">
           {!editing && !confirmDelete && (
-            <button
-              type="button"
-              onClick={() => setEditing(true)}
-              className="m-link pb-1 font-mono text-[9.5px] tracking-[0.28em] text-ink-2 uppercase transition-colors duration-300 hover:text-ink"
-            >
+            <button type="button" onClick={() => setEditing(true)} className="m-link pb-1 font-mono text-[9.5px] tracking-[0.28em] text-ink-2 uppercase transition-colors duration-300 hover:text-ink">
               Edit trade details
             </button>
           )}
@@ -287,7 +288,9 @@ export function TradeEditor({
             </button>
           ) : (
             <>
-              <span className="font-mono text-[11px] leading-[1.8] text-ink-3">{trade.source === "import" ? "Gone from the journal, notes and all. Importing the same file again brings it back." : "Gone for good — notes and all."}</span>
+              <span className="font-mono text-[11px] leading-[1.8] text-ink-3">
+                {trade.source === "import" ? "Gone from the journal, notes and all. Importing the same file again brings it back." : "Gone for good — notes and all."}
+              </span>
               <Btn
                 variant="secondary"
                 size="sm"

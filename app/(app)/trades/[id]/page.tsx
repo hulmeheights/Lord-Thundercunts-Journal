@@ -5,7 +5,7 @@ import { getTrade, listTrades } from "@/lib/data/trades";
 import { addDays, dayKey, holdMinutes, timeInTz } from "@/lib/analytics/time";
 import { evaluateRules, RULE_LABELS } from "@/lib/analytics/rules";
 import { detectTilt } from "@/lib/analytics/tilt";
-import { riskFor, rMultiple, sortByEntry } from "@/lib/analytics/stats";
+import { riskFor, rMultiple, sortByEntry, usualRisks } from "@/lib/analytics/stats";
 import { fmtMoney, fmtNum, fmtPrice } from "@/lib/format";
 import { Cue, Label, Num, Rows, Stats } from "@/components/m";
 import { Lead, Row, Stat } from "@/components/trades/kit";
@@ -52,8 +52,11 @@ export default async function TradePage({ params }: { params: Promise<{ id: stri
   const pts = pointsFor(trade);
   const held = holdMinutes(trade.entryTime, trade.exitTime);
   const hp = holdParts(held);
-  const risk = riskFor(trade, settings.rules.defaultRisk);
-  const r = rMultiple(trade, settings.rules.defaultRisk);
+  // 1R is your usual full loss on this account over the last 60 days, unless you typed a risk.
+  const recent = (await listTrades({ since: new Date(Date.now() - 60 * 86_400_000) })).filter((t) => (t.accountId ?? t.source) === (trade.accountId ?? trade.source));
+  const usual = usualRisks(recent).get(trade.accountId ?? trade.source) ?? null;
+  const risk = riskFor(trade, settings.rules.defaultRisk, usual);
+  const r = rMultiple(trade, settings.rules.defaultRisk, usual);
   const flags = rules.length + (tilt ? 1 : 0);
   const n = { trade: 1, numbers: 2, rules: 3, journal: flags ? 4 : 3 };
   const inT = timeInTz(trade.entryTime, tz);
@@ -124,7 +127,7 @@ export default async function TradePage({ params }: { params: Promise<{ id: stri
             </>
           }
         >
-          <PriceTrace trade={trade} tz={tz} defaultRisk={settings.rules.defaultRisk} />
+          <PriceTrace trade={trade} tz={tz} defaultRisk={usual ?? settings.rules.defaultRisk} />
         </ChartFrame>
       </section>
 
@@ -189,7 +192,7 @@ export default async function TradePage({ params }: { params: Promise<{ id: stri
         <Lead className="mb-[clamp(2.5rem,7vh,4.5rem)]">
           What were you <em>thinking</em>?
         </Lead>
-        <TradeEditor trade={trade} vocab={settings.vocab} defaultRisk={settings.rules.defaultRisk} tz={settings.profile.timezone} />
+        <TradeEditor trade={trade} vocab={settings.vocab} defaultRisk={settings.rules.defaultRisk} usual={usual} tz={settings.profile.timezone} />
       </section>
 
       {/* the session, either side */}

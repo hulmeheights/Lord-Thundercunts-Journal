@@ -26,13 +26,15 @@ export type Summary = {
   avgHoldLoss: number;
   contracts: number;
   avgR: number | null;
+  /** The average winner in R: your reward for 1R risked. */
+  avgWinR: number | null;
 };
 
 const EMPTY: Summary = {
   trades: 0, wins: 0, losses: 0, scratches: 0, winRate: 0, gross: 0, fees: 0, net: 0,
   totalWon: 0, totalLost: 0, avgWin: 0, avgLoss: 0, payoff: 0, profitFactor: 0, expectancy: 0,
   largestWin: 0, largestLoss: 0, maxDrawdown: 0, longestWinStreak: 0, longestLossStreak: 0,
-  avgHoldWin: 0, avgHoldLoss: 0, contracts: 0, avgR: null,
+  avgHoldWin: 0, avgHoldLoss: 0, contracts: 0, avgR: null, avgWinR: null,
 };
 
 export function sortByExit(trades: Trade[]): Trade[] {
@@ -44,17 +46,37 @@ export function sortByEntry(trades: Trade[]): Trade[] {
 }
 
 /**
- * What was risked on a trade: what you typed; or, on a loss, the loss itself
- * (a $248 loss risked $248); or your default risk per trade.
+ * Your usual full loss on each account: the size most of your stop-outs come
+ * to there (the 75th percentile of its losses, from 3 losses up). Copied
+ * accounts trade different sizes, so each gets its own 1R. Keyed by account
+ * (or source, for trades without one).
  */
-export function riskFor(t: Pick<Trade, "plannedRisk" | "netPnl">, defaultRisk: number | null): number | null {
+export function usualRisks(trades: readonly Pick<Trade, "accountId" | "source" | "netPnl">[]): Map<string, number> {
+  const losses = new Map<string, number[]>();
+  for (const t of trades) if (t.netPnl < 0) losses.set(t.accountId ?? t.source, [...(losses.get(t.accountId ?? t.source) ?? []), -t.netPnl]);
+  const out = new Map<string, number>();
+  for (const [k, xs] of losses) {
+    if (xs.length < 3) continue;
+    xs.sort((a, b) => a - b);
+    out.set(k, Math.round(xs[Math.floor(0.75 * (xs.length - 1))]! * 100) / 100);
+  }
+  return out;
+}
+
+/**
+ * What was risked on a trade: what you typed; else your usual full loss on
+ * that account (so a $20 scratch is a small part of 1R, a full stop is −1R);
+ * else, on a loss, the loss itself; else your default risk per trade.
+ */
+export function riskFor(t: Pick<Trade, "plannedRisk" | "netPnl">, defaultRisk: number | null, usual?: number | null): number | null {
   if (t.plannedRisk != null && t.plannedRisk > 0) return t.plannedRisk;
+  if (usual != null && usual > 0) return usual;
   if (t.netPnl < 0) return Math.round(-t.netPnl * 100) / 100;
   return defaultRisk;
 }
 
-export function rMultiple(t: Trade, defaultRisk: number | null): number | null {
-  const risk = riskFor(t, defaultRisk);
+export function rMultiple(t: Trade, defaultRisk: number | null, usual?: number | null): number | null {
+  const risk = riskFor(t, defaultRisk, usual);
   if (!risk || risk <= 0) return null;
   return t.netPnl / risk;
 }
@@ -67,7 +89,8 @@ export function summarize(input: Trade[], defaultRisk: number | null = null): Su
   let cum = 0, peak = 0, maxDd = 0;
   let streakW = 0, streakL = 0, bestW = 0, bestL = 0;
   let holdW = 0, holdL = 0, contracts = 0;
-  let rSum = 0, rN = 0;
+  let rSum = 0, rN = 0, winR = 0, winRN = 0;
+  const usual = usualRisks(trades);
 
   for (const t of trades) {
     gross += t.grossPnl;
@@ -89,8 +112,8 @@ export function summarize(input: Trade[], defaultRisk: number | null = null): Su
     cum += t.netPnl;
     peak = Math.max(peak, cum);
     maxDd = Math.max(maxDd, peak - cum);
-    const r = rMultiple(t, defaultRisk);
-    if (r !== null) { rSum += r; rN++; }
+    const r = rMultiple(t, defaultRisk, usual.get(t.accountId ?? t.source));
+    if (r !== null) { rSum += r; rN++; if (r > 0) { winR += r; winRN++; } }
   }
 
   const avgWin = wins ? totalWon / wins : 0;
@@ -111,6 +134,7 @@ export function summarize(input: Trade[], defaultRisk: number | null = null): Su
     avgHoldLoss: losses ? holdL / losses : 0,
     contracts,
     avgR: rN ? rSum / rN : null,
+    avgWinR: winRN ? winR / winRN : null,
   };
 }
 

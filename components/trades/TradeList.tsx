@@ -6,7 +6,7 @@ import type { Trade } from "@/lib/types";
 import { cn } from "@/lib/cn";
 import { fmtMoney } from "@/lib/format";
 import { addDays, dayKey, holdMinutes, todayKey } from "@/lib/analytics/time";
-import { summarize } from "@/lib/analytics/stats";
+import { summarize, usualRisks } from "@/lib/analytics/stats";
 import { motionKit, prefersReducedMotion } from "@/lib/motion";
 import { Btn, Label, Num, Stats } from "@/components/m";
 import { Seg } from "@/components/m/Seg";
@@ -85,6 +85,7 @@ export function TradeList({
   const oldestFirst = useMemo(() => [...filtered].reverse(), [filtered]);
   const tickMax = useMemo(() => filtered.reduce((m, t) => Math.max(m, Math.abs(t.netPnl)), 1), [filtered]);
   const s = summarize(filtered, defaultRisk);
+  const usual = useMemo(() => usualRisks(trades), [trades]);
   const avgHold = filtered.length ? filtered.reduce((x, t) => x + holdMinutes(t.entryTime, t.exitTime), 0) / filtered.length : 0;
   const shown = groups.slice(0, pages * SESSIONS_PER_PAGE);
   const remaining = groups.length - shown.length;
@@ -414,7 +415,7 @@ export function TradeList({
                     </div>
                   </div>
                   {list.map((t) => (
-                    <TradeRow key={t.id} t={t} tz={tz} defaultRisk={defaultRisk} open={open === t.id} onToggle={() => setOpen((o) => (o === t.id ? null : t.id))} />
+                    <TradeRow key={t.id} t={t} tz={tz} defaultRisk={defaultRisk} usual={usual.get(t.accountId ?? t.source) ?? null} open={open === t.id} onToggle={() => setOpen((o) => (o === t.id ? null : t.id))} />
                   ))}
                 </div>
               );

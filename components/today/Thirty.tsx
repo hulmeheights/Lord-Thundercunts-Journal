@@ -14,6 +14,8 @@ export type ThirtyStats = {
   profitFactor: number;
   expectancy: number;
   avgR: number | null;
+  /** Reward for 1R risked: the average winner in R (else average win ÷ average loss). */
+  payoff: number;
   bestSetup: { name: string; expectancy: number; trades: number } | null;
   streak: number;
   thread: ThreadDay[];
@@ -81,19 +83,17 @@ export function Thirty({ s, today }: { s: ThirtyStats; today: string }) {
           label="Profit factor"
           sub={pf === null ? "No losing trades yet" : pf > 0 ? `${fmtMoney(pf, { cents: true })} won per $1 lost` : "Nothing won yet"}
         />
-        {s.avgR !== null ? (
+        {s.payoff > 0 && Number.isFinite(s.payoff) ? (
           <Stat
             d={160}
             value={
               <span className="whitespace-nowrap">
-                {s.avgR < -0.004 && "−"}
-                <Odometer value={Math.abs(s.avgR)} format="number" sign={false} decimals={2} tone={false} className={fig} />
-                <Unit>R</Unit>
+                1 : <Odometer value={s.payoff} format="number" sign={false} decimals={2} tone={false} className={fig} />
               </span>
             }
-            tone={s.avgR > 0.004 ? "pos" : s.avgR < -0.004 ? "neg" : null}
-            label="Average R"
-            sub="Against your planned risk"
+            tone={s.avgR !== null ? (s.avgR > 0.004 ? "pos" : s.avgR < -0.004 ? "neg" : null) : null}
+            label="Risk : reward"
+            sub={`Your average win for 1R risked${s.avgR !== null ? ` · ${s.avgR >= 0 ? "+" : "−"}${Math.abs(s.avgR).toFixed(2)}R a trade` : ""}`}
           />
         ) : (
           <Stat
