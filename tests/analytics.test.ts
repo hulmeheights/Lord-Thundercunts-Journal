@@ -133,3 +133,13 @@ test("R: each account's usual full loss is 1R, so a scratch is a sliver of R and
   assert.equal(summarize([...small, ...big], 300).avgWinR, 2);
   // Risk : reward is the average winner in R: 1 : 2.
 });
+
+test("R: a 1R you set for an account beats the worked-out one", async () => {
+  const { summarize } = await import("../lib/analytics/stats");
+  const mk = (i: number, net: number) =>
+    ({ id: `s${i}`, source: "import", accountId: "heavy", symbol: "MNQZ6", root: "MNQ", direction: "long", qty: 1, maxPosition: 1, entryTime: `2026-10-2${i}T14:30:00Z`, exitTime: `2026-10-2${i}T14:40:00Z`, entryPrice: 1, exitPrice: 2, grossPnl: net, fees: 0, netPnl: net, pointValue: 2, fillCount: 2, setups: [], tags: [], mistakes: [], emotion: null, rating: null, grade: null, notes: null, plannedRisk: null, followedPlan: null, chartUrl: null }) as never;
+  const ts = [mk(1, -400), mk(2, -400), mk(3, -400), mk(4, 1200)];
+  // Worked out: 1R = $400, so the win is +3R. Set by hand to $600: the losses are −0.67R and the win +2R.
+  assert.equal(summarize(ts, 300).avgWinR, 3);
+  assert.equal(summarize(ts, { defaultRisk: 300, accountRisk: { heavy: 600 } }).avgWinR, 2);
+});

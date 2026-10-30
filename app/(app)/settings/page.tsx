@@ -22,6 +22,10 @@ import { recentPushes } from "@/lib/push";
 import { Widget } from "@/components/settings/Widget";
 import { Inactivity } from "@/components/settings/Inactivity";
 import { foundAccounts } from "@/lib/data/inactivity";
+import { AccountRisk } from "@/components/settings/AccountRisk";
+import { usualRisks } from "@/lib/analytics/stats";
+import { watchList } from "@/lib/analytics/inactivity";
+import { listTrades } from "@/lib/data/trades";
 import { widgetFeed, widgetStatus } from "@/lib/data/widget";
 import { listLedger } from "@/lib/data/ledger";
 import { summarizeLedger } from "@/lib/analytics/ledger";
@@ -121,6 +125,13 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
           windowNote={(() => {
             const w = windowFor({ ...settings.rules, followMarket: true }, todayKey(settings.profile.timezone), settings.profile.timezone);
             return w.shift && w.start !== null && w.end !== null ? `This week it's ${fmtMinute(w.start)}–${fmtMinute(w.end)} on your clock.` : null;
+          })()}
+        />
+        <AccountRisk
+          initial={settings.rules.accountRisk ?? {}}
+          accounts={await (async () => {
+            const detected = usualRisks(await listTrades({ since: new Date(Date.now() - 60 * 86_400_000) }));
+            return watchList(watched, settings.inactivity).map((a) => ({ id: a.id, name: a.name, detected: detected.get(a.id) ?? null }));
           })()}
         />
       </Section>

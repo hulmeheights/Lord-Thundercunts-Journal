@@ -81,7 +81,19 @@ export function rMultiple(t: Trade, defaultRisk: number | null, usual?: number |
   return t.netPnl / risk;
 }
 
-export function summarize(input: Trade[], defaultRisk: number | null = null): Summary {
+/** What R is measured against: your default risk, plus 1R for any account you've set by hand. */
+export type RiskBasis = number | null | { defaultRisk: number | null; accountRisk?: Record<string, number> };
+export const riskBasis = (rules: { defaultRisk: number | null; accountRisk?: Record<string, number> }): RiskBasis => ({ defaultRisk: rules.defaultRisk, accountRisk: rules.accountRisk });
+
+/** Each account's 1R: the one you set, else its usual full loss. */
+export function accountRisks(trades: readonly Pick<Trade, "accountId" | "source" | "netPnl">[], basis: RiskBasis): Map<string, number> {
+  const out = usualRisks(trades);
+  if (basis && typeof basis === "object") for (const [k, v] of Object.entries(basis.accountRisk ?? {})) out.set(k, v);
+  return out;
+}
+
+export function summarize(input: Trade[], basis: RiskBasis = null): Summary {
+  const defaultRisk = basis && typeof basis === "object" ? basis.defaultRisk : basis;
   if (input.length === 0) return { ...EMPTY };
   const trades = sortByExit(input);
   let wins = 0, losses = 0, scratches = 0, gross = 0, fees = 0, net = 0;
@@ -90,7 +102,7 @@ export function summarize(input: Trade[], defaultRisk: number | null = null): Su
   let streakW = 0, streakL = 0, bestW = 0, bestL = 0;
   let holdW = 0, holdL = 0, contracts = 0;
   let rSum = 0, rN = 0, winR = 0, winRN = 0;
-  const usual = usualRisks(trades);
+  const usual = accountRisks(trades, basis);
 
   for (const t of trades) {
     gross += t.grossPnl;

@@ -17,6 +17,7 @@ export default async function TradesPage({ searchParams }: { searchParams: Promi
       accounts={accounts.map((a) => a.name)}
       openImport={sp.import === "1"}
       defaultRisk={settings.rules.defaultRisk}
+      accountRisk={settings.rules.accountRisk}
     />
   );
 }

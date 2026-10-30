@@ -33,6 +33,7 @@ const Rules = z.object({
   sessionEnd: hhmm,
   followMarket: z.boolean().optional(),
   defaultRisk: num(10_000_000),
+  accountRisk: z.record(z.string().max(200), z.number().positive().max(10_000_000)).optional(),
   custom: z.array(z.object({ id: z.string().min(1).max(40), label: z.string().min(1).max(160) })).max(20),
 });
 
@@ -75,7 +76,22 @@ async function guard() {
 
 export async function saveRules(v: z.input<typeof Rules>) {
   await guard();
-  await saveSetting("rules", Rules.parse(v));
+  // 1R per account has its own list, so the rules form never overwrites it.
+  const { getSettings } = await import("../data/settings");
+  await saveSetting("rules", { ...Rules.parse(v), accountRisk: (await getSettings()).rules.accountRisk });
+  revalidatePath("/", "layout");
+  return { ok: true };
+}
+
+/** 1R for each account you've set by hand; blank ones go back to being worked out. */
+export async function saveAccountRisk(v: Record<string, number | null>) {
+  await guard();
+  const parsed = z.record(z.string().max(200), z.number().positive().max(10_000_000).nullable()).safeParse(v);
+  if (!parsed.success) return { error: "Risk is a dollar amount above 0." };
+  const { getSettings } = await import("../data/settings");
+  const rules = (await getSettings()).rules;
+  const accountRisk = Object.fromEntries(Object.entries(parsed.data).filter((e): e is [string, number] => e[1] !== null));
+  await saveSetting("rules", { ...rules, accountRisk });
   revalidatePath("/", "layout");
   return { ok: true };
 }

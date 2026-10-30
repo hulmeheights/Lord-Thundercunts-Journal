@@ -6,7 +6,7 @@ import { cn } from "@/lib/cn";
 import { fmtHold, shortDate, todayKey, addDays, dayKey } from "@/lib/analytics/time";
 import { fmtMoney, fmtPct } from "@/lib/format";
 import {
-  byEmotion, byHoldTime, byHour, byMistake, bySetup, bySymbol, byTradeNumber, byWeekday, dailySeries, summarize, summarizeDays,
+  byEmotion, byHoldTime, byHour, byMistake, bySetup, bySymbol, byTradeNumber, byWeekday, dailySeries, riskBasis, summarize, summarizeDays,
   type Bucket,
 } from "@/lib/analytics/stats";
 import { evaluateRules } from "@/lib/analytics/rules";
@@ -89,7 +89,7 @@ export function InsightsView({
   }, [all, range, tz]);
 
   const m = useMemo(() => {
-    const s = summarize(trades, settings.rules.defaultRisk);
+    const s = summarize(trades, riskBasis(settings.rules));
     const days = dailySeries(trades, tz);
     const ds = summarizeDays(days);
     const rules = evaluateRules(trades, settings.rules, tz);

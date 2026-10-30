@@ -9,7 +9,7 @@ import type { LedgerSummary } from "./ledger";
 import type { MindSummary } from "./mind";
 import type { Road } from "./road";
 import { evaluateRules } from "./rules";
-import { byHour, summarize } from "./stats";
+import { byHour, riskBasis, summarize } from "./stats";
 import { detectTilt } from "./tilt";
 import { addDays, dayKey } from "./time";
 
@@ -24,7 +24,7 @@ export function insightsFacts(trades: Trade[], journals: JournalDay[], settings:
   const from = addDays(today, -90);
   const recent = trades.filter((t) => dayKey(t.exitTime, tz) >= from);
   const js = journals.filter((j) => j.day >= from);
-  const s = summarize(recent, settings.rules.defaultRisk);
+  const s = summarize(recent, riskBasis(settings.rules));
   const insights = generateInsights({ trades: recent, rules: evaluateRules(recent, settings.rules, tz), tilt: detectTilt(recent, tz), journals: js, tz });
   const hours = byHour(recent, tz).filter((b) => b.trades >= 5);
   const best = [...hours].sort((a, b) => b.net - a.net)[0];

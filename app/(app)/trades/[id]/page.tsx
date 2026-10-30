@@ -5,7 +5,7 @@ import { getTrade, listTrades } from "@/lib/data/trades";
 import { addDays, dayKey, holdMinutes, timeInTz } from "@/lib/analytics/time";
 import { evaluateRules, RULE_LABELS } from "@/lib/analytics/rules";
 import { detectTilt } from "@/lib/analytics/tilt";
-import { riskFor, rMultiple, sortByEntry, usualRisks } from "@/lib/analytics/stats";
+import { accountRisks, riskBasis, riskFor, rMultiple, sortByEntry } from "@/lib/analytics/stats";
 import { fmtMoney, fmtNum, fmtPrice } from "@/lib/format";
 import { Cue, Label, Num, Rows, Stats } from "@/components/m";
 import { Lead, Row, Stat } from "@/components/trades/kit";
@@ -54,7 +54,7 @@ export default async function TradePage({ params }: { params: Promise<{ id: stri
   const hp = holdParts(held);
   // 1R is your usual full loss on this account over the last 60 days, unless you typed a risk.
   const recent = (await listTrades({ since: new Date(Date.now() - 60 * 86_400_000) })).filter((t) => (t.accountId ?? t.source) === (trade.accountId ?? trade.source));
-  const usual = usualRisks(recent).get(trade.accountId ?? trade.source) ?? null;
+  const usual = accountRisks(recent, riskBasis(settings.rules)).get(trade.accountId ?? trade.source) ?? null;
   const risk = riskFor(trade, settings.rules.defaultRisk, usual);
   const r = rMultiple(trade, settings.rules.defaultRisk, usual);
   const flags = rules.length + (tilt ? 1 : 0);

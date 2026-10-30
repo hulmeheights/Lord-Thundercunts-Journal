@@ -7,7 +7,7 @@ import { propStatus } from "../analytics/prop";
 import { buildReportCard } from "../analytics/reportcard";
 import { evaluateRules } from "../analytics/rules";
 import {
-  byEmotion, byHoldTime, byHour, byMistake, bySetup, bySymbol, byTradeNumber, byWeekday, dailySeries, summarize,
+  byEmotion, byHoldTime, byHour, byMistake, bySetup, bySymbol, byTradeNumber, byWeekday, dailySeries, riskBasis, summarize,
   summarizeDays, type Bucket,
 } from "../analytics/stats";
 import { detectTilt } from "../analytics/tilt";
@@ -25,7 +25,7 @@ export async function coachSnapshot() {
   const since = addDays(today, -90);
   const trades = await listTrades({ since: new Date(`${since}T00:00:00Z`) });
   const journals = await listJournalDays(since, today);
-  const s = summarize(trades, settings.rules.defaultRisk);
+  const s = summarize(trades, riskBasis(settings.rules));
   const days = summarizeDays(dailySeries(trades, tz));
   const rules = evaluateRules(trades, settings.rules, tz);
   const tilt = detectTilt(trades, tz);

@@ -81,6 +81,8 @@ export type TradingRules = {
   /** The window is set in your time but follows the New York open when the clocks are out of step. */
   followMarket?: boolean;
   defaultRisk: number | null;
+  /** 1R per account when you've set it (account id → dollars); others are worked out from their losses. */
+  accountRisk?: Record<string, number>;
   custom: { id: string; label: string }[];
 };
 

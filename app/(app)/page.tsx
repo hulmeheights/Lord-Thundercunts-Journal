@@ -7,7 +7,7 @@ import { listConnections } from "@/lib/data/connections";
 import { briefingStubs } from "@/lib/data/briefing";
 import { db } from "@/lib/db";
 import { addDays, dayKey, isWeekend, longDate, minuteOfDay, startOfMonth, startOfWeek, timeInTz, todayKey, weekdayIndex } from "@/lib/analytics/time";
-import { bySetup, dailySeries, inRange, summarize } from "@/lib/analytics/stats";
+import { bySetup, dailySeries, inRange, riskBasis, summarize } from "@/lib/analytics/stats";
 import { evaluateRules } from "@/lib/analytics/rules";
 import { ringStreak, ringsClosed, ringsForDay } from "@/lib/analytics/rings";
 import { propStatus } from "@/lib/analytics/prop";
@@ -133,7 +133,7 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
   // The last 30 days.
   const last30 = inRange(trades, tz, addDays(today, -29), today);
   const prev30 = inRange(trades, tz, addDays(today, -59), addDays(today, -30));
-  const s30 = summarize(last30, settings.rules.defaultRisk);
+  const s30 = summarize(last30, riskBasis(settings.rules));
   const p30 = summarize(prev30);
   const r30 = evaluateRules(last30, settings.rules, tz);
   const days30 = [...r30.byDay.values()];

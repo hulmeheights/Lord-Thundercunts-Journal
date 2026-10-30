@@ -6,7 +6,7 @@ import type { Trade } from "@/lib/types";
 import { cn } from "@/lib/cn";
 import { fmtMoney } from "@/lib/format";
 import { addDays, dayKey, holdMinutes, todayKey } from "@/lib/analytics/time";
-import { summarize, usualRisks } from "@/lib/analytics/stats";
+import { accountRisks, summarize } from "@/lib/analytics/stats";
 import { motionKit, prefersReducedMotion } from "@/lib/motion";
 import { Btn, Label, Num, Stats } from "@/components/m";
 import { Seg } from "@/components/m/Seg";
@@ -36,6 +36,7 @@ export function TradeList({
   accounts,
   openImport = false,
   defaultRisk = null,
+  accountRisk,
 }: {
   trades: Trade[];
   tz: string;
@@ -43,6 +44,7 @@ export function TradeList({
   accounts: string[];
   openImport?: boolean;
   defaultRisk?: number | null;
+  accountRisk?: Record<string, number>;
 }) {
   const [range, setRange] = useState<Range>("30");
   const [result, setResult] = useState<Result>("all");
@@ -84,8 +86,8 @@ export function TradeList({
 
   const oldestFirst = useMemo(() => [...filtered].reverse(), [filtered]);
   const tickMax = useMemo(() => filtered.reduce((m, t) => Math.max(m, Math.abs(t.netPnl)), 1), [filtered]);
-  const s = summarize(filtered, defaultRisk);
-  const usual = useMemo(() => usualRisks(trades), [trades]);
+  const s = summarize(filtered, { defaultRisk, accountRisk });
+  const usual = useMemo(() => accountRisks(trades, { defaultRisk, accountRisk }), [trades, defaultRisk, accountRisk]);
   const avgHold = filtered.length ? filtered.reduce((x, t) => x + holdMinutes(t.entryTime, t.exitTime), 0) / filtered.length : 0;
   const shown = groups.slice(0, pages * SESSIONS_PER_PAGE);
   const remaining = groups.length - shown.length;

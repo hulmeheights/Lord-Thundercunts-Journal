@@ -2,7 +2,7 @@ import type { JournalDay, ObstacleKey, OrderParams, PropSettings, RitualItem, Tr
 import { fmtMoney, fmtPct, plural } from "../format";
 import { evaluateRules, type RuleReport } from "./rules";
 import type { TiltReport } from "./tilt";
-import { byHour, byMistake, bySetup, dailySeries, sortByEntry, summarize, type Bucket } from "./stats";
+import { byHour, byMistake, bySetup, dailySeries, riskBasis, sortByEntry, summarize, type Bucket } from "./stats";
 import { dayKey, fmtHold, minuteOfDay } from "./time";
 import { propStatus } from "./prop";
 import { suggestRules, type WhatIfOptions } from "./whatif";
@@ -376,7 +376,7 @@ export type ObserverInput = {
 
 export function buildDossier(input: ObserverInput): ObserverDossier {
   const { name, trades, journals, rules, tilt, settings, tz } = input;
-  const s = summarize(trades, settings.rules.defaultRisk);
+  const s = summarize(trades, riskBasis(settings.rules));
   const days = dailySeries(trades, tz);
   const byDay = perDayByEntry(trades, tz);
   const journalByDay = new Map(journals.map((j) => [j.day, j]));
