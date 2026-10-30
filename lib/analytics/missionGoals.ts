@@ -32,6 +32,8 @@ export function missionDaysWithGoals(trades: Trade[], rules: TradingRules, tz: s
   // Each goal's verdict on each day it covers.
   const judged = new Map<string, string[]>();
   const covered = new Set<string>();
+  // The trades each covered day is judged on: only the accounts its goals count.
+  const counted = new Map<string, Map<string, Trade>>();
   for (const g of goals) {
     const c = covers(g, tz);
     if (!c) continue;
@@ -39,13 +41,21 @@ export function missionDaysWithGoals(trades: Trade[], rules: TradingRules, tz: s
     const b = c.to === null || c.to > today ? today : c.to;
     if (a > b) continue;
     for (let d = a; d <= b; d = addDays(d, 1)) covered.add(d);
-    for (const mark of judgeDays(goalTrades(trades, g.measure!, tz), (g.measure as Extract<GoalMeasure, { kind: "days" }>).rules, rules, tz, a, b)) {
+    const mine = goalTrades(trades, g.measure!, tz);
+    for (const t of mine) {
+      const d = dayKey(t.entryTime, tz);
+      if (d >= a && d <= b) counted.set(d, (counted.get(d) ?? new Map()).set(t.id, t));
+    }
+    for (const mark of judgeDays(mine, (g.measure as Extract<GoalMeasure, { kind: "days" }>).rules, rules, tz, a, b)) {
       judged.set(mark.day, [...new Set([...(judged.get(mark.day) ?? []), ...mark.why])]);
     }
   }
   return base.map((d) => {
     if (!covered.has(d.day)) return d;
     const why = judged.get(d.day) ?? [];
-    return { ...d, reasons: why, kind: why.length ? "leak" : d.trades ? "burn" : "hold" };
+    // A day with trades only on accounts the goal doesn't count is a day you sat out, as far as the mission goes.
+    const ts = [...(counted.get(d.day)?.values() ?? [])];
+    const net = Math.round(ts.reduce((s, t) => s + t.netPnl, 0) * 100) / 100;
+    return { ...d, trades: ts.length, net, reasons: why, kind: why.length ? "leak" : ts.length ? "burn" : "hold" };
   });
 }

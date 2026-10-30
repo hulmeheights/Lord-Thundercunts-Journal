@@ -111,3 +111,14 @@ test("while a goal runs, the mission judges its days by the goal's rules only", 
   const late = missionDaysWithGoals([trade("2026-10-27T15:20:00Z", 100)], rules, LDN, "2026-10-26", "2026-10-27", undefined, [goal]);
   assert.equal(late.find((d) => d.day === "2026-10-27")!.kind, "leak");
 });
+
+test("mission: a goal limited to one account ignores trades on other accounts (no burn, no leak)", async () => {
+  const { missionDaysWithGoals } = await import("../lib/analytics/missionGoals");
+  const on = (id: string, t: Trade) => ({ ...t, accountId: id });
+  const goal = { kind: "trading" as const, measure: { kind: "days" as const, rules: [{ type: "window" as const, start: "14:30", end: "16:00" }], span: "until" as const, n: 1, until: "2026-11-06", accounts: ["import:main"] }, startedOn: "2026-10-26", createdAt: "2026-10-26T00:00:00Z", completedAt: null, targetDay: null };
+  const days = missionDaysWithGoals(
+    [on("import:main", trade("2026-10-26T14:40:00Z", 100)), on("import:other", trade("2026-10-27T15:00:00Z", 300)), on("import:other", trade("2026-10-27T09:00:00Z", -50))],
+    { ...base, followMarket: false }, "UTC", "2026-10-26", "2026-10-27", undefined, [goal],
+  );
+  assert.deepEqual(days.map((d) => [d.day, d.kind, d.trades, d.net]), [["2026-10-26", "burn", 1, 100], ["2026-10-27", "hold", 0, 0]]);
+});
