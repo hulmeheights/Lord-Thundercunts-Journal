@@ -1,10 +1,12 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import { safeEqual } from "@/lib/crypto";
 import { Alert } from "@/lib/bot/signal";
 import { handleAlert, logEvent } from "@/lib/bot/engine";
 import { webhookSecret } from "@/lib/bot/config";
 
 export const dynamic = "force-dynamic";
+// Orders on several accounts can take a few seconds; they run after the reply (below).
+export const maxDuration = 60;
 
 /**
  * TradingView → Autopilot. Public (TradingView can't log in), so the shared
@@ -29,11 +31,14 @@ export async function POST(req: Request) {
     await logEvent("error", `Alert didn't look right: ${parsed.error.issues[0]?.path.join(".")} ${parsed.error.issues[0]?.message}`);
     return NextResponse.json({ ok: false, error: "bad alert" }, { status: 400 });
   }
-  try {
-    const r = await handleAlert(raw, parsed.data);
-    return NextResponse.json({ ok: true, ...r });
-  } catch (e) {
-    await logEvent("error", `Webhook error: ${e instanceof Error ? e.message : String(e)}`).catch(() => {});
-    return NextResponse.json({ ok: false }, { status: 500 });
-  }
+  // TradingView gives up on a webhook after about 3 seconds, so reply at once and do the work straight after.
+  const received = new Date();
+  after(async () => {
+    try {
+      await handleAlert(raw, parsed.data, received);
+    } catch (e) {
+      await logEvent("error", `Webhook error: ${e instanceof Error ? e.message : String(e)}`).catch(() => {});
+    }
+  });
+  return NextResponse.json({ ok: true, received: received.toISOString() });
 }
