@@ -465,4 +465,67 @@ export const MIGRATIONS: { version: number; sql: string }[] = [
       update trades tr set import_id = 'imp_old_' || g.grp from g where tr.id = g.id;
     `,
   },
+  {
+    version: 23,
+    sql: /* sql */ `
+      -- Autopilot: the TradingView → TopstepX bot. One settings row (off /
+      -- paper / live), the accounts it mirrors to, every signal it heard
+      -- (also its duplicate guard), what it did per account, and a log.
+      create table if not exists bot_settings (
+        id int primary key default 1 check (id = 1),
+        mode text not null default 'off' check (mode in ('off', 'paper', 'live')),
+        updated_at timestamptz not null default now()
+      );
+      insert into bot_settings (id) values (1) on conflict (id) do nothing;
+      create table if not exists bot_accounts (
+        id text primary key,
+        label text not null check (char_length(label) between 1 and 60),
+        topstep_account text,
+        contracts int not null default 5 check (contracts between 1 and 50),
+        max_daily_loss double precision not null default 500 check (max_daily_loss > 0),
+        max_daily_win double precision check (max_daily_win is null or max_daily_win > 0),
+        enabled boolean not null default false,
+        created_at timestamptz not null default now()
+      );
+      create table if not exists bot_signals (
+        id text primary key,
+        event text not null,
+        dir text,
+        price double precision,
+        stop double precision,
+        target double precision,
+        session text,
+        mode text not null,
+        received_at timestamptz not null default now()
+      );
+      create index if not exists bot_signals_at_idx on bot_signals (received_at desc);
+      create table if not exists bot_trades (
+        id text primary key,
+        signal_id text references bot_signals (id) on delete set null,
+        account_id text references bot_accounts (id) on delete set null,
+        account_label text not null,
+        mode text not null check (mode in ('paper', 'live')),
+        session text not null,
+        dir text not null check (dir in ('LONG', 'SHORT')),
+        qty int not null,
+        entry_price double precision not null,
+        stop_price double precision not null,
+        target_price double precision not null,
+        exit_price double precision,
+        pnl double precision,
+        status text not null check (status in ('open', 'closed', 'skipped', 'error')),
+        reason text,
+        order_id text,
+        entered_at timestamptz not null default now(),
+        exited_at timestamptz
+      );
+      create index if not exists bot_trades_at_idx on bot_trades (entered_at desc);
+      create table if not exists bot_events (
+        id bigserial primary key,
+        level text not null,
+        message text not null,
+        created_at timestamptz not null default now()
+      );
+    `,
+  },
 ];

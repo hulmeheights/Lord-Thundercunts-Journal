@@ -1,4 +1,4 @@
-import { BookOpen, ChartLine, Eye, House, ListChecks, MessageCircle, ShieldCheck } from "lucide-react";
+import { BookOpen, Bot, ChartLine, Eye, House, ListChecks, MessageCircle, ShieldCheck } from "lucide-react";
 
 export const NAV = [
   { href: "/", label: "Today", icon: House },
@@ -8,6 +8,7 @@ export const NAV = [
   { href: "/observer", label: "Observer", icon: Eye },
   { href: "/guardian", label: "Guardian", icon: ShieldCheck },
   { href: "/coach", label: "Coach", icon: MessageCircle },
+  { href: "/autopilot", label: "Autopilot", icon: Bot },
 ] as const;
 
 export function isActive(pathname: string, href: string) {

@@ -1,0 +1,158 @@
+"use client";
+
+import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import { addBotAccount, checkTopstep, deleteBotAccount, saveBotAccount } from "@/lib/actions/bot";
+import type { BotAccountView } from "@/lib/data/bot";
+import { cn } from "@/lib/cn";
+import { Button } from "@/components/ui/Button";
+import { Toggle } from "@/components/ui/Toggle";
+
+const lab = "mb-1.5 block font-mono text-[9px] tracking-[0.24em] text-ink-4 uppercase";
+const money = (n: number) => `${n >= 0 ? "+" : "−"}$${Math.abs(n).toLocaleString("en-GB", { maximumFractionDigits: 0 })}`;
+
+function Card({ a, live, options }: { a: BotAccountView; live: boolean; options: { id: number; name: string }[] }) {
+  const router = useRouter();
+  const [f, setF] = useState({ label: a.label, topstepAccount: a.topstepAccount, contracts: String(a.contracts), maxDailyLoss: String(a.maxDailyLoss), maxDailyWin: a.maxDailyWin ? String(a.maxDailyWin) : "", enabled: a.enabled });
+  const [msg, setMsg] = useState<string | null>(null);
+  const [pending, start] = useTransition();
+  const dirty = f.label !== a.label || f.topstepAccount !== a.topstepAccount || f.contracts !== String(a.contracts) || f.maxDailyLoss !== String(a.maxDailyLoss) || f.maxDailyWin !== (a.maxDailyWin ? String(a.maxDailyWin) : "");
+  const save = (next = f) =>
+    start(async () => {
+      setMsg(null);
+      const r = await saveBotAccount(a.id, {
+        label: next.label,
+        topstepAccount: next.topstepAccount,
+        contracts: Math.round(Number(next.contracts)),
+        maxDailyLoss: Number(next.maxDailyLoss),
+        maxDailyWin: next.maxDailyWin.trim() ? Number(next.maxDailyWin) : null,
+        enabled: next.enabled,
+      });
+      if ("error" in r && r.error) return setMsg(r.error);
+      setMsg("Saved");
+      router.refresh();
+    });
+  const num = "field num h-9 w-full px-2 py-0";
+  return (
+    <div className={cn("border border-line-2 p-4", f.enabled ? (live ? "border-neg/40" : "border-gold/40") : "opacity-80")}>
+      <div className="flex items-center gap-3">
+        <input className="field h-9 min-w-0 flex-1 font-mono text-[12px]" value={f.label} maxLength={60} aria-label="Card name" onChange={(e) => setF({ ...f, label: e.target.value })} />
+        <Toggle
+          checked={f.enabled}
+          label={`Mirror to ${f.label}`}
+          onChange={(v) => {
+            const next = { ...f, enabled: v };
+            setF(next);
+            save(next);
+          }}
+        />
+      </div>
+      <div className="mt-1.5 font-mono text-[10px] text-ink-4">
+        {f.enabled ? (live ? "On · real orders" : "On · paper") : "Off · skipped"} · today <span className={a.today > 0 ? "text-pos" : a.today < 0 ? "text-neg" : ""}>{money(a.today)}</span>
+      </div>
+      <div className="mt-4 grid grid-cols-2 gap-3">
+        <label className="col-span-2">
+          <span className={lab}>TopstepX account (name or ID)</span>
+          <input className="field h-9 w-full font-mono text-[11.5px]" list="ltj-tsx" value={f.topstepAccount} maxLength={80} placeholder="e.g. 50KTC-V2-…" onChange={(e) => setF({ ...f, topstepAccount: e.target.value })} />
+          {!f.topstepAccount.trim() && <span className="mt-1 block font-mono text-[10px] text-gold">Live orders skip a card with no account.</span>}
+          {f.topstepAccount.trim() && options.length > 0 && !options.some((o) => String(o.id) === f.topstepAccount.trim() || o.name.toLowerCase().includes(f.topstepAccount.trim().toLowerCase())) && (
+            <span className="mt-1 block font-mono text-[10px] text-neg">No TopstepX account matches this.</span>
+          )}
+        </label>
+        <label>
+          <span className={lab}>Contracts</span>
+          <input className={num} inputMode="numeric" value={f.contracts} onChange={(e) => setF({ ...f, contracts: e.target.value.replace(/\D/g, "") })} />
+        </label>
+        <label>
+          <span className={lab}>Max daily loss $</span>
+          <input className={num} inputMode="decimal" value={f.maxDailyLoss} onChange={(e) => setF({ ...f, maxDailyLoss: e.target.value.replace(/[^0-9.]/g, "") })} />
+        </label>
+        <label className="col-span-2">
+          <span className={lab}>Max daily win $ (consistency cap · blank = none)</span>
+          <input className={num} inputMode="decimal" value={f.maxDailyWin} placeholder="e.g. 1600" onChange={(e) => setF({ ...f, maxDailyWin: e.target.value.replace(/[^0-9.]/g, "") })} />
+        </label>
+      </div>
+      <div className="mt-4 flex flex-wrap items-center gap-4">
+        <Button size="sm" variant={dirty ? "primary" : "secondary"} disabled={pending || !dirty} onClick={() => save()}>
+          {pending ? "Saving…" : "Save card"}
+        </Button>
+        {!a.enabled && (
+          <button
+            type="button"
+            disabled={pending}
+            onClick={() =>
+              start(async () => {
+                const r = await deleteBotAccount(a.id);
+                if ("error" in r && r.error) return setMsg(r.error);
+                router.refresh();
+              })
+            }
+            className="font-mono text-[9.5px] tracking-[0.26em] text-ink-4 uppercase hover:text-neg"
+          >
+            Delete
+          </button>
+        )}
+        {msg && <span className={cn("font-mono text-[10.5px]", msg === "Saved" ? "text-pos" : "text-neg")}>{msg}</span>}
+      </div>
+    </div>
+  );
+}
+
+/** One card per TopstepX account the bot mirrors to. */
+export function Accounts({ accounts, live, topstepReady }: { accounts: BotAccountView[]; live: boolean; topstepReady: boolean }) {
+  const router = useRouter();
+  const [pending, start] = useTransition();
+  const [found, setFound] = useState<{ id: number; name: string; canTrade: boolean; balance: number | null }[] | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  return (
+    <div>
+      <datalist id="ltj-tsx">
+        {(found ?? []).map((o) => (
+          <option key={o.id} value={o.name} />
+        ))}
+      </datalist>
+      <div className="grid gap-4 md:grid-cols-2">
+        {accounts.map((a) => (
+          <Card key={a.id} a={a} live={live} options={found ?? []} />
+        ))}
+      </div>
+      {accounts.length === 0 && <p className="font-mono text-[11.5px] text-ink-3">No cards yet. Add one for each TopstepX account the bot should trade.</p>}
+      <div className="mt-6 flex flex-wrap items-center gap-4">
+        <Button variant="secondary" disabled={pending} onClick={() => start(async () => void (await addBotAccount(), router.refresh()))}>
+          + Add account
+        </Button>
+        <Button
+          variant="ghost"
+          disabled={pending || !topstepReady}
+          onClick={() =>
+            start(async () => {
+              setErr(null);
+              const r = await checkTopstep();
+              if (r.error) setErr(r.error);
+              setFound(r.accounts ?? []);
+            })
+          }
+        >
+          Check TopstepX
+        </Button>
+        {!topstepReady && <span className="font-mono text-[10.5px] text-ink-4">Set the TopstepX API key to check your accounts.</span>}
+      </div>
+      {err && <p className="mt-3 font-mono text-[11px] text-neg">{err}</p>}
+      {found && !err && (
+        <ul className="mt-4 border-t border-line">
+          {found.length === 0 && <li className="py-3 font-mono text-[11px] text-ink-3">Connected, but no active accounts were found.</li>}
+          {found.map((o) => (
+            <li key={o.id} className="flex flex-wrap justify-between gap-x-4 border-b border-line py-2.5 font-mono text-[11px]">
+              <span className="text-ink">{o.name}</span>
+              <span className="text-ink-4">
+                ID {o.id}
+                {o.balance !== null && ` · $${o.balance.toLocaleString("en-GB", { maximumFractionDigits: 0 })}`}
+                {!o.canTrade && " · can't trade"}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
