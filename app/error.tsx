@@ -1,6 +1,6 @@
 "use client";
 
-export default function ErrorPage({ reset }: { error: Error & { digest?: string }; reset: () => void }) {
+export default function ErrorPage({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
   return (
     <div className="flex min-h-[70dvh] flex-col justify-center px-[clamp(1.25rem,5vw,4rem)]">
       <div className="label mb-8">Interrupted</div>
@@ -8,6 +8,7 @@ export default function ErrorPage({ reset }: { error: Error & { digest?: string 
         Something went <em>sideways</em>.
       </h1>
       <p className="mt-6 max-w-[44ch] font-mono text-[12px] leading-[1.9] text-ink-2">It was contained and nothing was lost. Try again; if it keeps happening, check the database connection in Vercel.</p>
+      {error.digest && <p className="mt-3 font-mono text-[10.5px] text-ink-4">Error code: {error.digest}</p>}
       <div className="mt-10">
         <button onClick={reset} className="inline-flex h-[52px] items-center border border-ink bg-ink px-8 font-mono text-[11px] tracking-[0.26em] text-bg uppercase transition-colors duration-300 hover:bg-transparent hover:text-ink">
           Try again
