@@ -74,6 +74,8 @@ export type BotAccount = {
   profitTarget: number | null;
   /** The account's starting balance, so profit = balance − start. */
   startBalance: number;
+  /** Does the news blackout apply to this account? (Topstep: yes. Firms without a news rule: switch it off.) */
+  newsRule: boolean;
 };
 
 /** Has the account made its profit target? Profit is its balance above the start (or, on paper, the paper P&L). */

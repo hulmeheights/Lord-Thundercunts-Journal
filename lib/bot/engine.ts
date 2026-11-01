@@ -9,8 +9,8 @@ import { newsBlock } from "./news";
 import { newsAround, refreshNews } from "./newsFeed";
 
 export type BotMode = "off" | "paper" | "live";
-type AccountRow = { id: string; label: string; topstep_account: string | null; contracts: number; max_daily_loss: number; max_daily_win: number | null; enabled: boolean; profit_target: number | null; start_balance: number; created_at: Date };
-const toAccount = (r: AccountRow): BotAccount => ({ id: r.id, label: r.label, topstepAccountId: r.topstep_account, contracts: r.contracts, maxDailyLoss: r.max_daily_loss, maxDailyWin: r.max_daily_win, enabled: r.enabled, profitTarget: r.profit_target, startBalance: r.start_balance });
+type AccountRow = { id: string; label: string; topstep_account: string | null; contracts: number; max_daily_loss: number; max_daily_win: number | null; enabled: boolean; profit_target: number | null; start_balance: number; news_rule: boolean; created_at: Date };
+const toAccount = (r: AccountRow): BotAccount => ({ id: r.id, label: r.label, topstepAccountId: r.topstep_account, contracts: r.contracts, maxDailyLoss: r.max_daily_loss, maxDailyWin: r.max_daily_win, enabled: r.enabled, profitTarget: r.profit_target, startBalance: r.start_balance, newsRule: r.news_rule });
 const money = (n: number) => `${n >= 0 ? "+" : "−"}$${Math.abs(n).toFixed(2)}`;
 
 export async function logEvent(level: "info" | "warn" | "error", message: string) {
@@ -106,7 +106,7 @@ export async function handleAlert(raw: string, a: Alert, now = new Date()): Prom
 
   // ── Entry ─────────────────────────────────────────────────────────────────
   const rows = await sql<AccountRow[]>`select * from bot_accounts where enabled order by created_at`;
-  const accts = rows.map(toAccount);
+  let accts = rows.map(toAccount);
   const head = `${d.dir} ${SESSION_LABEL[session]} @ ~${a.price} · SL ${d.stop} · TP ${d.target}`;
   if (!accts.length) {
     await logEvent("warn", `Entry skipped, no accounts switched on: ${head}`);
@@ -136,11 +136,18 @@ export async function handleAlert(raw: string, a: Alert, now = new Date()): Prom
     }
     const blocking = newsBlock(now, near, newsMinutes);
     if (blocking.length) {
+      // Only cards that follow the news rule sit it out; accounts at firms without one trade on.
       const why = `news blackout: ${blocking.map((e) => e.title).join(", ")} at ${new Date(blocking[0]!.at).toLocaleTimeString("en-GB", { timeZone: "America/New_York", hour: "2-digit", minute: "2-digit" })} NY (±${newsMinutes} min)`;
-      for (const acct of accts) await record(acct, "skipped", why);
-      await logEvent("info", `Entry skipped, ${why}: ${head}`);
-      await telegram(`SKIPPED (${why}): ${head}`);
-      return { status: "news" };
+      const out = accts.filter((x) => x.newsRule);
+      for (const acct of out) await record(acct, "skipped", why);
+      accts = accts.filter((x) => !x.newsRule);
+      if (!accts.length) {
+        await logEvent("info", `Entry skipped, ${why}: ${head}`);
+        await telegram(`SKIPPED (${why}): ${head}`);
+        return { status: "news" };
+      }
+      lines.push(...out.map((x) => `• ${x.label}: skipped (${why})`));
+      await logEvent("info", `${out.length} account(s) sat out the ${why}; ${accts.length} without a news rule carry on: ${head}`);
     }
   }
   const bad = bracketOk(d.dir, a.price, d.stop, d.target);

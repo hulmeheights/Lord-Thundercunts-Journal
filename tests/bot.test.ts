@@ -35,7 +35,7 @@ test("bracket ticks, sanity check and P&L for MNQ", () => {
 });
 
 test("each account's own daily gates", () => {
-  const a = { id: "a", label: "A", topstepAccountId: "1", contracts: 5, maxDailyLoss: 500, maxDailyWin: 1600, enabled: true, profitTarget: 3000, startBalance: 50000 };
+  const a = { id: "a", label: "A", topstepAccountId: "1", contracts: 5, maxDailyLoss: 500, maxDailyWin: 1600, enabled: true, profitTarget: 3000, startBalance: 50000, newsRule: true };
   assert.equal(gate(a, 0), null);
   assert.match(gate(a, 1600)!, /max daily win/);
   assert.match(gate(a, -500)!, /daily loss limit/);

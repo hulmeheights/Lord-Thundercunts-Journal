@@ -597,4 +597,11 @@ export const MIGRATIONS: { version: number; sql: string }[] = [
       alter table bot_trades add constraint bot_trades_status_check check (status in ('pending', 'open', 'closed', 'skipped', 'error'));
     `,
   },
+  {
+    version: 28,
+    sql: /* sql */ `
+      -- Some firms (Topstep) restrict trading around big news, others don't: each card says whether the blackout applies.
+      alter table bot_accounts add column if not exists news_rule boolean not null default true;
+    `,
+  },
 ];
