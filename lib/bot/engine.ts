@@ -1,7 +1,7 @@
 import "server-only";
 import { db } from "../db";
 import { randomToken, sha256 } from "../crypto";
-import { bracketOk, bracketTicks, gate, sessionOf, SESSION_LABEL, targetReached, tradingDayStart, type Alert, type BotAccount } from "./signal";
+import { bracketOk, bracketTicks, gate, hedgeCheck, sessionOf, SESSION_LABEL, targetReached, tradingDayStart, type Alert, type BotAccount } from "./signal";
 import { accounts as tsxAccounts, matchAccount, mnq, openPositions, placeBracketed, token, type TsxAccount } from "./topstepx";
 import { telegram } from "./notify";
 
@@ -203,16 +203,43 @@ export async function handleAlert(raw: string, a: Alert, now = new Date()): Prom
     go.push({ acct, match });
   }
 
+  // Before any order: every account the cards point at, checked at Topstep in one go.
+  // If any is still holding the OPPOSITE side, the signal is skipped everywhere:
+  // long on one account while short on another counts as hedging. An account still
+  // in a same-side trade just sits this one out. Normally all are flat and nothing is skipped.
+  if (go.length) {
+    const watched = new Map<number, string>();
+    for (const acct of accts) {
+      const m = acct.topstepAccountId ? matchAccount(live!.list, acct.topstepAccountId) : null;
+      if (m) watched.set(m.id, acct.label);
+    }
+    const held = new Map<number, { contractId: string; type: number; size: number }[]>();
+    await Promise.all(
+      [...watched.keys()].map((id) =>
+        openPositions(live!.t, id)
+          .then((p) => void held.set(id, p))
+          .catch((e) => void later.push(logEvent("warn", `Couldn't check ${watched.get(id)} at Topstep (${e instanceof Error ? e.message : String(e)}); carrying on`))),
+      ),
+    );
+    const check = hedgeCheck(d.dir, held);
+    const opposite = check.opposite.map((id) => watched.get(id)!);
+    if (opposite.length) {
+      const why = `${opposite.join(", ")} still ${d.dir === "LONG" ? "short" : "long"} at Topstep: skipped on every account so nothing is hedged`;
+      for (const { acct } of go) skip(acct, why);
+      later.push(logEvent("warn", `Signal skipped everywhere: ${why}`));
+      go.length = 0;
+    } else {
+      for (let k = go.length - 1; k >= 0; k--) {
+        if (check.busy.has(go[k]!.match.id)) {
+          skip(go[k]!.acct, "still in a trade at Topstep (not flat)");
+          go.splice(k, 1);
+        }
+      }
+    }
+  }
+
   await Promise.all(
     go.map(async ({ acct, match }) => {
-      // Never open a second position on an account that's still in one: two
-      // positions, or long here while short there, is what gets accounts flagged.
-      try {
-        const open = await openPositions(live!.t, match.id);
-        if (open.some((p) => p.size !== 0)) return skip(acct, "still in a trade at Topstep (not flat)");
-      } catch (e) {
-        later.push(logEvent("warn", `Couldn't check ${acct.label} is flat (${e instanceof Error ? e.message : String(e)}); placing the order anyway`));
-      }
       try {
         const orderId = await placeBracketed(live!.t, { accountId: match.id, contractId: live!.contractId, dir: d.dir, size: acct.contracts, stopTicks, targetTicks, tag: `ltj-${signalId.slice(4, 14)}-${acct.id.slice(-6)}` });
         later.push(record(acct, "open", null, orderId));

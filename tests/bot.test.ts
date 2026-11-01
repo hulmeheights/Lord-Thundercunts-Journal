@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { Alert, bracketOk, bracketTicks, gate, pnlOf, sessionOf, targetReached, tradingDayStart } from "../lib/bot/signal";
+import { Alert, bracketOk, bracketTicks, gate, hedgeCheck, pnlOf, sessionOf, targetReached, tradingDayStart } from "../lib/bot/signal";
 
 test("the alert message parses exactly as the script sends it", () => {
   const entry = Alert.parse({ price: 21000.25, data: { secret: "s", event: "entry", dir: "LONG", qty: 5, stop: 20980, target: 21040.5 } });
@@ -47,4 +47,12 @@ test("account profit target: passed once the balance is that far above the start
   assert.equal(targetReached(card, 53_234 - 50_000), true); // the trade closed at $3,234: passed
   assert.equal(targetReached(card, 2_999), false);
   assert.equal(targetReached({ profitTarget: null }, 1_000_000), false);
+});
+
+test("hedge guard: never long on one account and short on another", () => {
+  const flat = new Map([[1, []], [2, []], [3, []]]);
+  assert.deepEqual(hedgeCheck("SHORT", flat), { opposite: [], busy: new Set() }); // normal: everything trades
+  const stuckLong = new Map([[1, [{ type: 1, size: 5 }]], [2, []], [3, []]]);
+  assert.deepEqual(hedgeCheck("SHORT", stuckLong).opposite, [1]); // a short now would hedge: skipped everywhere
+  assert.deepEqual(hedgeCheck("LONG", stuckLong), { opposite: [], busy: new Set([1]) }); // same side: only account 1 sits out
 });
