@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { addBotAccount, checkTopstep, deleteBotAccount, saveBotAccount } from "@/lib/actions/bot";
+import { addBotAccount, deleteBotAccount, saveBotAccount } from "@/lib/actions/bot";
 import type { BotAccountView } from "@/lib/data/bot";
 import { cn } from "@/lib/cn";
 import { Button } from "@/components/ui/Button";
@@ -142,22 +142,21 @@ function Card({ a, live, options }: { a: BotAccountView; live: boolean; options:
   );
 }
 
-/** One card per TopstepX account the bot mirrors to. */
-export function Accounts({ accounts, live, topstepReady }: { accounts: BotAccountView[]; live: boolean; topstepReady: boolean }) {
+/** One card per TopstepX account the bot mirrors to. The account list comes from your Mac (the website never contacts Topstep). */
+export function Accounts({ accounts, live, macAccounts, macAccountsAt }: { accounts: BotAccountView[]; live: boolean; macAccounts: { id: number; name: string; canTrade: boolean; balance: number | null }[]; macAccountsAt: string | null }) {
   const router = useRouter();
   const [pending, start] = useTransition();
-  const [found, setFound] = useState<{ id: number; name: string; canTrade: boolean; balance: number | null }[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
   return (
     <div>
       <datalist id="ltj-tsx">
-        {(found ?? []).map((o) => (
+        {macAccounts.map((o) => (
           <option key={o.id} value={o.name} />
         ))}
       </datalist>
       <div className="grid gap-4 md:grid-cols-2">
         {accounts.map((a) => (
-          <Card key={a.id} a={a} live={live} options={found ?? []} />
+          <Card key={a.id} a={a} live={live} options={macAccounts} />
         ))}
       </div>
       {accounts.length === 0 && <p className="font-mono text-[11.5px] text-ink-3">No cards yet. Add one for each TopstepX account the bot should trade.</p>}
@@ -176,38 +175,27 @@ export function Accounts({ accounts, live, topstepReady }: { accounts: BotAccoun
         >
           + Add account
         </Button>
-        <Button
-          variant="ghost"
-          disabled={pending || !topstepReady}
-          onClick={() =>
-            start(async () => {
-              setErr(null);
-              const r = await checkTopstep();
-              if (r.error) setErr(r.error);
-              setFound(r.accounts ?? []);
-            })
-          }
-        >
-          Check TopstepX
-        </Button>
-        {!topstepReady && <span className="font-mono text-[10.5px] text-ink-4">Set the TopstepX API key to check your accounts.</span>}
       </div>
       {err && <p className="mt-3 font-mono text-[11px] text-neg">{err}</p>}
-      {found && !err && (
-        <ul className="mt-4 border-t border-line">
-          {found.length === 0 && <li className="py-3 font-mono text-[11px] text-ink-3">Connected, but no active accounts were found.</li>}
-          {found.map((o) => (
-            <li key={o.id} className="flex flex-wrap justify-between gap-x-4 border-b border-line py-2.5 font-mono text-[11px]">
-              <span className="text-ink">{o.name}</span>
-              <span className="text-ink-4">
-                ID {o.id}
-                {o.balance !== null && ` · $${o.balance.toLocaleString("en-GB", { maximumFractionDigits: 0 })}`}
-                {!o.canTrade && " · can't trade"}
-              </span>
-            </li>
-          ))}
-        </ul>
-      )}
+      <div className="mt-6">
+        <div className="mb-2 font-mono text-[9.5px] tracking-[0.24em] text-ink-4 uppercase">Your TopstepX accounts · from your Mac{macAccountsAt ? ` · ${macAccountsAt}` : ""}</div>
+        {macAccounts.length === 0 ? (
+          <p className="font-mono text-[11px] text-ink-3">Your Mac sends this list when it starts and around each session. Pick from it when you fill a card in.</p>
+        ) : (
+          <ul className="border-t border-line">
+            {macAccounts.map((o) => (
+              <li key={o.id} className="flex flex-wrap justify-between gap-x-4 border-b border-line py-2.5 font-mono text-[11px]">
+                <span className="text-ink">{o.name}</span>
+                <span className="text-ink-4">
+                  ID {o.id}
+                  {o.balance !== null && ` · $${o.balance.toLocaleString("en-GB", { maximumFractionDigits: 0 })}`}
+                  {!o.canTrade && " · can't trade"}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
     </div>
   );
 }

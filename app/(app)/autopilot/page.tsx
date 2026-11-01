@@ -63,7 +63,6 @@ export default async function AutopilotPage() {
   const books = { live: s.trades.filter((t) => t.mode === "live"), paper: s.trades.filter((t) => t.mode === "paper") };
   const steps = [
     { ok: setup.secret, text: "Webhook secret set in Vercel (BOT_WEBHOOK_SECRET, at least 16 characters)" },
-    { ok: setup.topstep, text: "TopstepX API login set in Vercel (BOT_TOPSTEP_USERNAME + BOT_TOPSTEP_API_KEY), used only to read accounts and positions" },
     { ok: setup.telegram, text: "Telegram receipts (optional: TELEGRAM_TOKEN + TELEGRAM_CHAT_ID)" },
     { ok: runner.paired, text: "Your Mac set up to place the orders (section 02)" },
     { ok: s.accounts.some((a) => a.enabled && a.topstepAccount), text: "At least one card switched on and pointed at a TopstepX account" },
@@ -81,7 +80,7 @@ export default async function AutopilotPage() {
             The reversal, on <em>autopilot</em>.
           </>
         }
-        sub="Your MNQ Session Open Reversal strategy fires on TradingView; Autopilot places the bracketed order on every account you switch on, and keeps the book here."
+        sub="Your MNQ Session Open Reversal strategy fires on TradingView. The bot on your Mac applies your rules and places the bracketed orders from your own computer; this page holds your settings and keeps the book."
         meta={<Meta value={live ? <LiveLight>Live</LiveLight> : s.mode === "off" ? "Off" : "Paper"} tone={live ? "pos" : null} caption={`${on} ${on === 1 ? "account" : "accounts"} on${s.lastSignal ? ` · last alert ${when(s.lastSignal.at)}` : " · no alerts yet"}`} />}
       />
 
@@ -93,7 +92,7 @@ export default async function AutopilotPage() {
 
       <Section id="switch" n={1} label="The switch" lead={<>Off, on paper, or <em>live</em>.</>}>
         <div className="max-w-2xl">
-          <ModeSwitch mode={s.mode} ready={setup.secret && setup.topstep} />
+          <ModeSwitch mode={s.mode} ready={setup.secret && runner.paired} />
           <p className="mt-6 font-mono text-[10.5px] leading-[1.8] text-ink-4">
             Switching off only stops new entries. A trade already open keeps its stop and target at Topstep. Start on Paper: it follows every signal with no orders, so you can see the bot behave before money is involved.
           </p>
@@ -105,7 +104,7 @@ export default async function AutopilotPage() {
       </Section>
 
       <Section id="accounts" n={3} label="Accounts" lead={<>Mirrored to <em>{on}</em>.</>}>
-        <Accounts accounts={s.accounts} live={live} topstepReady={setup.topstep} />
+        <Accounts accounts={s.accounts} live={live} macAccounts={runner.accounts} macAccountsAt={runner.accountsAt ? when(runner.accountsAt) : null} />
         <p className="mt-6 max-w-3xl font-mono text-[10.5px] leading-[1.8] text-ink-4">
           Every trade uses your script&apos;s stop and target exactly. The only thing a card changes is how many contracts it trades, and it stops taking new trades for the day once its loss limit or max win is reached (counted from 18:00 New York, like Topstep). Two cards on the same TopstepX account: the second is skipped. One account failing doesn&apos;t stop the others.
         </p>
@@ -199,7 +198,7 @@ export default async function AutopilotPage() {
               ))}
             </ul>
             <ol className="mt-8 list-decimal space-y-2 pl-5 font-mono text-[11px] leading-[1.8] text-ink-3 marker:text-ink-4">
-              <li>In Vercel, add the environment variables above, then redeploy. The old mnq-bot&apos;s names (TOPSTEP_USERNAME, TOPSTEP_API_KEY, WEBHOOK_SECRET) work too.</li>
+              <li>In Vercel, add BOT_WEBHOOK_SECRET, then redeploy. Your TopstepX login lives only on your Mac: the website has no Topstep connection, so don&apos;t add TopstepX keys to Vercel.</li>
               <li>In TradingView, open your strategy&apos;s Settings → Automation and paste the same webhook secret.</li>
               <li>Delete your old alert (pointing at mnq-bot) so only one alert trades. Then create one alert on MNQ1! 1m with the strategy as its condition, the message and webhook URL here.</li>
               <li>Recreate the alert whenever you change a strategy setting, ideally with no trade open. Renew it before it expires.</li>

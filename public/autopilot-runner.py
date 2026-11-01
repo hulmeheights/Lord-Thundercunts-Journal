@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """
-Thunder Autopilot: home runner.
+Thunder Autopilot: the bot, running on your Mac.
 
-Topstep wants every order to come from your own computer. Your journal decides
-(every rule: on/off, news, limits, targets, hedge checks); this program, on your
-Mac, collects each order ticket and places it at TopstepX from here, then
-reports back. It can only log in and place a bracketed market order; it never
-cancels, changes settings or touches anything else.
+Topstep requires all trading to come from your own computer, so the whole bot
+runs here. Your journal website only stores TradingView's alerts and your
+settings, and shows the book: it never contacts Topstep. For each alert this
+program applies every rule (live or not, accounts on, news blackout, daily loss
+and max win, profit targets, flat and hedge checks), places the bracketed orders
+at TopstepX from this Mac, and tells the journal what it did.
 
   python3 autopilot-runner.py setup      # once: saves your details (only on this Mac)
   python3 autopilot-runner.py install    # starts it now and every time you log in, keeps the Mac awake
@@ -14,6 +15,7 @@ cancels, changes settings or touches anything else.
   python3 autopilot-runner.py uninstall  # stop it and remove it
   python3 autopilot-runner.py run        # run in this window instead (Ctrl+C to stop)
 
+To update: download it again (the same curl line) and run install again.
 Standard library only: nothing extra to install.
 """
 import getpass
@@ -25,11 +27,12 @@ import ssl
 import subprocess
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor
 import urllib.error
 import urllib.request
 from datetime import datetime
 
-VERSION = "1.0"
+VERSION = "2.0"
 TOPSTEP = os.environ.get("THUNDER_TOPSTEP_URL", "https://api.topstepx.com")  # override only for testing
 TICKET_TTL_MS = 20_000  # never place a ticket older than this: a late entry is a different trade
 HOME = os.path.expanduser("~")
@@ -85,10 +88,11 @@ def load_config():
 
 
 class Topstep:
-    """Only two calls: log in, and place one bracketed market order."""
+    """Your TopstepX API, called only from this Mac."""
 
     def __init__(self, user, key):
         self.user, self.key, self.token, self.at = user, key, None, 0
+        self.contract, self.contract_at = None, 0
 
     def login(self):
         if self.token and time.time() - self.at < 20 * 60:
@@ -99,53 +103,130 @@ class Topstep:
         self.token, self.at = d["token"], time.time()
         return self.token
 
-    def place(self, t):
-        # One atomic market order with its stop and target attached at Topstep (OCO).
-        # Bracket ticks are signed from the fill: long = stop below (negative), target above.
-        sign = 1 if t["dir"] == "LONG" else -1
-        order = {
-            "accountId": t["accountId"],
-            "contractId": t["contractId"],
-            "type": 2,
-            "side": 0 if t["dir"] == "LONG" else 1,
-            "size": t["size"],
-            "customTag": t["tag"],
-            "stopLossBracket": {"ticks": -t["stopTicks"] * sign, "type": 4},
-            "takeProfitBracket": {"ticks": t["targetTicks"] * sign, "type": 1},
-        }
-        code, d = http("POST", TOPSTEP + "/api/Order/place", order, {"Authorization": "Bearer " + self.login()})
+    def call(self, path, body):
+        code, d = http("POST", TOPSTEP + path, body, {"Authorization": "Bearer " + self.login()})
         if code == 401:  # token expired early: log in again once
             self.token = None
-            code, d = http("POST", TOPSTEP + "/api/Order/place", order, {"Authorization": "Bearer " + self.login()})
-        if code != 200 or not d.get("success"):
-            raise RuntimeError(f"order rejected ({code}: {d.get('errorMessage') or d.get('errorCode') or 'no reason given'})")
+            code, d = http("POST", TOPSTEP + path, body, {"Authorization": "Bearer " + self.login()})
+        if code != 200 or d.get("success") is False:
+            raise RuntimeError(f"{path.split('/')[-1]} failed ({code}: {d.get('errorMessage') or d.get('errorCode') or 'no reason given'})")
+        return d
+
+    def accounts(self):
+        return self.call("/api/Account/search", {"onlyActiveAccounts": True}).get("accounts") or []
+
+    def mnq(self):
+        if self.contract and time.time() - self.contract_at < 3600:
+            return self.contract
+        found = self.call("/api/Contract/search", {"searchText": "MNQ", "live": False}).get("contracts") or []
+        pick = next((c for c in found if str(c.get("name", "")).upper().startswith("MNQ") and c.get("activeContract", True)), None) or next(
+            (c for c in found if str(c.get("name", "")).upper().startswith("MNQ")), None
+        )
+        if not pick:
+            raise RuntimeError("no MNQ contract found")
+        self.contract, self.contract_at = pick["id"], time.time()
+        return self.contract
+
+    def positions(self, account_id):
+        return [p for p in (self.call("/api/Position/searchOpen", {"accountId": account_id}).get("positions") or []) if p.get("size", 0) != 0]
+
+    def place(self, account_id, contract_id, direction, size, stop_ticks, target_ticks, tag):
+        # One atomic market order with its stop and target attached at Topstep (OCO).
+        # Bracket ticks are signed from the fill: long = stop below (negative), target above.
+        sign = 1 if direction == "LONG" else -1
+        d = self.call(
+            "/api/Order/place",
+            {
+                "accountId": account_id,
+                "contractId": contract_id,
+                "type": 2,
+                "side": 0 if direction == "LONG" else 1,
+                "size": size,
+                "customTag": tag,
+                "stopLossBracket": {"ticks": -stop_ticks * sign, "type": 4},
+                "takeProfitBracket": {"ticks": target_ticks * sign, "type": 1},
+            },
+        )
         return str(d.get("orderId", ""))
+
+
+# ── The rules (the same ones the journal shows you) ─────────────────────────
+
+TICKS_PER_POINT = 4
+
+
+def iso(t):
+    return datetime.fromisoformat(t.replace("Z", "+00:00"))
+
+
+def match_account(accounts, hint):
+    h = str(hint or "").strip().lower()
+    if not h:
+        return None
+    for test in (lambda a: str(a["id"]) == h, lambda a: a.get("name", "").lower() == h, lambda a: h in a.get("name", "").lower()):
+        for a in accounts:
+            if test(a):
+                return a
+    return None
+
+
+def bracket_problem(direction, price, stop, target):
+    if direction == "LONG" and not (stop < price < target):
+        return "stop must be below and target above the price for a long"
+    if direction == "SHORT" and not (target < price < stop):
+        return "stop must be above and target below the price for a short"
+    return None
+
+
+def day_gate(card):
+    pnl = card.get("dayPnl", 0)
+    if card.get("maxDailyWin") is not None and pnl >= card["maxDailyWin"]:
+        return f"max daily win reached (${pnl:,.0f})"
+    if pnl <= -card["maxDailyLoss"]:
+        return f"daily loss limit hit (-${abs(pnl):,.0f})"
+    return None
+
+
+def news_block(alert, ctx):
+    minutes = ctx.get("newsMinutes", 0)
+    if minutes <= 0:
+        return None
+    at = iso(alert["receivedAt"])
+    hits = [e for e in ctx.get("news", []) if abs((at - iso(e["at"])).total_seconds()) <= minutes * 60]
+    if not hits:
+        return None
+    return f"news blackout: {', '.join(e['title'] for e in hits)} (±{minutes} min)"
+
+
+def target_reached(card, balance):
+    return card.get("profitTarget") is not None and balance is not None and balance - card["startBalance"] >= card["profitTarget"]
 
 
 def run():
     cfg = load_config()
     base = cfg["url"].rstrip("/")
-    auth = {"Authorization": "Bearer " + cfg["token"], "X-Runner": f"{platform.node()[:40]} · runner {VERSION}"}
+    auth = {"Authorization": "Bearer " + cfg["token"], "X-Runner": f"{platform.node()[:40]} · bot {VERSION}"}
     ts = Topstep(cfg["user"], cfg["key"])
-    log(f"Autopilot runner {VERSION} started for {base}")
-    try:
-        ts.login()
-        log("TopstepX login OK")
-    except Exception as e:
-        log(f"WARNING: {e}")
+    log(f"Autopilot bot {VERSION} started for {base}")
+    last_accounts = 0
     failures = 0
     while True:
         try:
             code, d = http("GET", base + "/api/bot/runner", headers=auth, timeout=35)
             if code == 401:
-                log("The journal turned this Mac away: make a new runner key in Autopilot and run setup again.")
+                log("The journal turned this Mac away: make a new key in Autopilot and run setup again.")
                 time.sleep(60)
                 continue
             if code != 200:
                 raise RuntimeError(f"journal answered {code}")
             failures = 0
-            for t in d.get("orders", []):
-                handle(base, auth, ts, t)
+            ctx = d.get("context") or {}
+            for alert in d.get("alerts", []):
+                handle(base, auth, ts, alert, ctx)
+            # Your accounts and balances for the journal (and the profit targets): at start, after exits, and every 10 minutes.
+            if ctx.get("balancesDue") or time.time() - last_accounts > 600:
+                send_accounts(base, auth, ts, ctx)
+                last_accounts = time.time()
             wait = int(d.get("wait", 0))
             if wait > 0:
                 time.sleep(min(wait, 900))
@@ -158,25 +239,149 @@ def run():
             time.sleep(min(30, 2 * failures))
 
 
-def handle(base, auth, ts, t):
-    if t.get("ageMs", 0) > TICKET_TTL_MS:
-        report(base, auth, t["id"], False, error="ticket was too old to place safely")
-        return
+def send_accounts(base, auth, ts, ctx):
     try:
-        oid = ts.place(t)
-        log(f"PLACED {t['dir']} {t['size']} MNQ on account {t['accountId']} (order {oid})")
-        report(base, auth, t["id"], True, order_id=oid)
+        accts = ts.accounts()
     except Exception as e:
-        log(f"FAILED {t['dir']} on account {t['accountId']}: {e}")
-        report(base, auth, t["id"], False, error=str(e)[:400])
+        log(f"Couldn't read your TopstepX accounts: {e}")
+        return
+    balances, passed = [], []
+    for card in ctx.get("cards", []):
+        m = match_account(accts, card.get("topstepAccountId"))
+        if m and m.get("balance") is not None:
+            balances.append({"cardId": card["id"], "balance": m["balance"]})
+            if target_reached(card, m["balance"]):
+                passed.append({"cardId": card["id"], "profit": m["balance"] - card["startBalance"]})
+    body = {
+        "type": "accounts",
+        "accounts": [{"id": a["id"], "name": a.get("name", ""), "balance": a.get("balance"), "canTrade": a.get("canTrade", True) is not False} for a in accts],
+        "balances": balances,
+        "passed": passed,
+    }
+    post(base, auth, body)
+    for p in passed:
+        log(f"Profit target reached on card {p['cardId']}: the journal switches it off")
 
 
-def report(base, auth, tid, ok, order_id=None, error=None):
-    body = {"id": tid, "ok": ok}
-    if order_id:
-        body["orderId"] = order_id
-    if error:
-        body["error"] = error
+def handle(base, auth, ts, alert, ctx):
+    """One live entry: every rule, then the orders, then tell the journal what happened."""
+    cards = ctx.get("cards", [])
+    results, passed = [], []
+
+    def skip(card, why, status="skipped"):
+        results.append({"cardId": card["id"], "status": status, "reason": why, "qty": card["contracts"]})
+
+    head = f"{alert['dir']} @ ~{alert['price']} SL {alert['stop']} TP {alert['target']}"
+    if ctx.get("mode") != "live":
+        for c in cards:
+            skip(c, "Autopilot isn't on Live")
+        return finish(base, auth, alert, results, passed, head)
+    if alert.get("ageMs", 0) > TICKET_TTL_MS:
+        for c in cards:
+            skip(c, "signal too old to place safely", "error")
+        return finish(base, auth, alert, results, passed, head)
+
+    news = news_block(alert, ctx)
+    bad = bracket_problem(alert["dir"], alert["price"], alert["stop"], alert["target"])
+    stop_ticks = max(1, round(abs(alert["price"] - alert["stop"]) * TICKS_PER_POINT))
+    target_ticks = max(1, round(abs(alert["target"] - alert["price"]) * TICKS_PER_POINT))
+
+    live = [c for c in cards]
+    if news:
+        for c in [c for c in live if c.get("newsRule", True)]:
+            skip(c, news)
+        live = [c for c in live if not c.get("newsRule", True)]
+    if bad:
+        for c in live:
+            skip(c, f"bad bracket: {bad}")
+        live = []
+    still = []
+    for c in live:
+        why = day_gate(c)
+        if why:
+            skip(c, why)
+        else:
+            still.append(c)
+    live = still
+    if not live:
+        return finish(base, auth, alert, results, passed, head)
+
+    try:
+        accts = ts.accounts()
+        contract = ts.mnq()
+    except Exception as e:
+        for c in live:
+            skip(c, f"couldn't reach TopstepX: {e}", "error")
+        return finish(base, auth, alert, results, passed, head)
+
+    go, used = [], set()
+    for c in live:
+        m = match_account(accts, c.get("topstepAccountId"))
+        if not m:
+            skip(c, f"Topstep account \"{c.get('topstepAccountId')}\" not found" if c.get("topstepAccountId") else "no Topstep account set on this card")
+            continue
+        if m["id"] in used:
+            skip(c, "another card already traded this Topstep account")
+            continue
+        used.add(m["id"])
+        if target_reached(c, m.get("balance")):
+            passed.append({"cardId": c["id"], "profit": m["balance"] - c["startBalance"]})
+            skip(c, "profit target reached, card switched off")
+            continue
+        go.append((c, m))
+
+    if go:
+        # Hedge guard: every account the cards point at, checked at once. Anyone holding the
+        # opposite side → skip everywhere (long here while short there is hedging). Same side → that one sits out.
+        watched = {}
+        for c in cards:
+            m = match_account(accts, c.get("topstepAccountId"))
+            if m:
+                watched[m["id"]] = c["label"]
+        held = {}
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            futures = {aid: pool.submit(ts.positions, aid) for aid in watched}
+            for aid, f in futures.items():
+                try:
+                    held[aid] = f.result()
+                except Exception as e:
+                    log(f"Couldn't check {watched[aid]} at Topstep ({e}); carrying on")
+        against = 2 if alert["dir"] == "LONG" else 1  # ProjectX position type: 1 long, 2 short
+        opposite = [watched[aid] for aid, ps in held.items() if any(p.get("type") == against for p in ps)]
+        if opposite:
+            why = f"{', '.join(opposite)} still {'short' if alert['dir'] == 'LONG' else 'long'} at Topstep: skipped on every account so nothing is hedged"
+            for c, _ in go:
+                skip(c, why)
+            go = []
+        else:
+            busy = [(c, m) for c, m in go if held.get(m["id"])]
+            for c, _ in busy:
+                skip(c, "still in a trade at Topstep (not flat)")
+            go = [(c, m) for c, m in go if not held.get(m["id"])]
+
+    def place(cm):
+        c, m = cm
+        tag = f"ltj-{alert['signalId'][4:14]}-{c['id'][-6:]}"
+        try:
+            oid = ts.place(m["id"], contract, alert["dir"], c["contracts"], stop_ticks, target_ticks, tag)
+            log(f"PLACED {alert['dir']} {c['contracts']} MNQ on {c['label']} (order {oid})")
+            return {"cardId": c["id"], "status": "open", "orderId": oid, "qty": c["contracts"]}
+        except Exception as e:
+            log(f"FAILED {alert['dir']} on {c['label']}: {e}")
+            return {"cardId": c["id"], "status": "error", "reason": str(e)[:400], "qty": c["contracts"]}
+
+    if go:
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            results.extend(pool.map(place, go))
+    finish(base, auth, alert, results, passed, head)
+
+
+def finish(base, auth, alert, results, passed, head):
+    log(f"{head}: {sum(1 for r in results if r['status'] == 'open')} placed, {len(results)} cards")
+    post(base, auth, {"type": "results", "signalId": alert["signalId"], "results": results, "passed": passed})
+
+
+def post(base, auth, body):
     for attempt in range(4):
         try:
             code, _ = http("POST", base + "/api/bot/runner", body, auth)
@@ -185,7 +390,7 @@ def report(base, auth, tid, ok, order_id=None, error=None):
         except Exception:
             pass
         time.sleep(1 + attempt)
-    log(f"Couldn't report ticket {tid} back to the journal (check the book)")
+    log("Couldn't report back to the journal (check the book)")
 
 
 def setup():

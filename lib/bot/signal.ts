@@ -91,18 +91,3 @@ export function gate(a: BotAccount, dayPnl: number): string | null {
 /** The exact alert message to paste into TradingView. */
 export const ALERT_MESSAGE = '{"price": {{strategy.order.price}}, "data": {{strategy.order.alert_message}}}';
 
-export type HeldPosition = { type: number; size: number };
-/**
- * The hedge guard, given what each account holds at Topstep (ProjectX type
- * 1 = long, 2 = short). Any account holding the opposite side → skip the signal
- * on every account (long here while short there is hedging). Otherwise only
- * accounts still in a trade sit it out.
- */
-export function hedgeCheck(dir: "LONG" | "SHORT", held: Map<number, HeldPosition[]>): { opposite: number[]; busy: Set<number> } {
-  const against = dir === "LONG" ? 2 : 1;
-  const open = [...held].map(([id, ps]) => [id, ps.filter((p) => p.size !== 0)] as const);
-  return {
-    opposite: open.filter(([, ps]) => ps.some((p) => p.type === against)).map(([id]) => id),
-    busy: new Set(open.filter(([, ps]) => ps.length > 0).map(([id]) => id)),
-  };
-}

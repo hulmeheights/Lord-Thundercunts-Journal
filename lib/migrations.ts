@@ -604,4 +604,17 @@ export const MIGRATIONS: { version: number; sql: string }[] = [
       alter table bot_accounts add column if not exists news_rule boolean not null default true;
     `,
   },
+  {
+    version: 29,
+    sql: /* sql */ `
+      -- Autopilot, bot-on-your-Mac: the journal only hands live alerts to the
+      -- Mac (which decides and places) and keeps what the Mac reports.
+      alter table bot_signals add column if not exists handoff text check (handoff is null or handoff in ('waiting', 'claimed', 'done', 'missed'));
+      alter table bot_signals add column if not exists claimed_at timestamptz;
+      create index if not exists bot_signals_handoff_idx on bot_signals (handoff, received_at);
+      alter table bot_runner add column if not exists accounts jsonb;
+      alter table bot_runner add column if not exists accounts_at timestamptz;
+      alter table bot_settings add column if not exists balances_due timestamptz;
+    `,
+  },
 ];

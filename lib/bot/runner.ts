@@ -4,8 +4,12 @@ import { randomToken, sha256 } from "../crypto";
 import { NY, sessionOf } from "./signal";
 import { minuteOfDay } from "../analytics/time";
 
-/** Tickets the Mac hasn't placed within this long are never placed (a late entry is a different trade). */
-export const TICKET_TTL_MS = 20_000;
+/**
+ * The bot on your Mac talks to the journal here. The journal only hands over
+ * the stored alerts and your settings, and records what the Mac did: it never
+ * contacts Topstep. Alerts older than 20 seconds are never handed over.
+ */
+export const ALERT_TTL_MS = 20_000;
 /** The Mac counts as connected if it checked in within this long. */
 export const ONLINE_MS = 45_000;
 
@@ -24,10 +28,21 @@ export async function runnerAuthed(header: string | null): Promise<boolean> {
   return !!r?.token_hash && r.token_hash === sha256(t);
 }
 
-export async function runnerStatus(): Promise<{ paired: boolean; lastSeen: string | null; online: boolean; info: string | null }> {
+export type MacAccount = { id: number; name: string; balance: number | null; canTrade: boolean };
+
+export async function runnerStatus(): Promise<{ paired: boolean; lastSeen: string | null; online: boolean; info: string | null; accounts: MacAccount[]; accountsAt: string | null }> {
   const sql = await db();
-  const [r] = await sql<{ token_hash: string | null; last_seen: Date | null; info: string | null }[]>`select token_hash, last_seen, info from bot_runner where id = 1`;
-  return { paired: !!r?.token_hash, lastSeen: r?.last_seen?.toISOString() ?? null, online: !!r?.last_seen && Date.now() - r.last_seen.getTime() < ONLINE_MS, info: r?.info ?? null };
+  const [r] = await sql<{ token_hash: string | null; last_seen: Date | null; info: string | null; accounts: MacAccount[] | null; accounts_at: Date | null }[]>`
+    select token_hash, last_seen, info, accounts, accounts_at from bot_runner where id = 1
+  `;
+  return {
+    paired: !!r?.token_hash,
+    lastSeen: r?.last_seen?.toISOString() ?? null,
+    online: !!r?.last_seen && Date.now() - r.last_seen.getTime() < ONLINE_MS,
+    info: r?.info ?? null,
+    accounts: r?.accounts ?? [],
+    accountsAt: r?.accounts_at?.toISOString() ?? null,
+  };
 }
 
 /**
@@ -44,30 +59,21 @@ export function napSeconds(now: Date): number {
   return next <= 5 ? 0 : Math.min(900, (next - 5) * 60);
 }
 
-/** Mark tickets nobody placed in time (and claimed ones never reported) as expired; their trades become errors. */
-export async function expireTickets() {
+export type HandedAlert = { signalId: string; dir: "LONG" | "SHORT"; price: number; stop: number; target: number; receivedAt: string; ageMs: number };
+
+/** Live entry alerts waiting for the Mac (each handed over exactly once). Stale ones are marked missed. */
+export async function claimAlerts(): Promise<HandedAlert[]> {
   const sql = await db();
-  const gone = await sql<{ trade_id: string; status: string }[]>`
-    update bot_orders set status = 'expired', done_at = now(),
-      error = case when status = 'pending' then 'your Mac didn''t pick it up within 20 seconds' else 'your Mac took it but never confirmed: check TopstepX' end
-    where (status = 'pending' and created_at < now() - interval '20 seconds') or (status = 'claimed' and claimed_at < now() - interval '60 seconds')
-    returning trade_id, status
+  const missed = await sql<{ id: string }[]>`
+    update bot_signals set handoff = 'missed' where handoff = 'waiting' and received_at < now() - interval '20 seconds' returning id
   `;
-  for (const g of gone) {
-    await sql`update bot_trades set status = 'error', reason = (select error from bot_orders where trade_id = ${g.trade_id} limit 1) where id = ${g.trade_id} and status = 'pending'`;
+  if (missed.length) {
+    await sql`insert into bot_events (level, message) values ('error', ${`${missed.length} live ${missed.length === 1 ? "signal was" : "signals were"} not picked up by your Mac within 20 seconds: nothing placed`})`;
   }
-  return gone.length;
-}
-
-export type Ticket = { id: string; accountId: number; contractId: string; dir: "LONG" | "SHORT"; size: number; stopTicks: number; targetTicks: number; tag: string; ageMs: number };
-
-/** Hand any waiting tickets to the Mac (each exactly once). */
-export async function claimTickets(): Promise<Ticket[]> {
-  const sql = await db();
-  const rows = await sql<{ id: string; topstep_account_id: string; contract_id: string; dir: "LONG" | "SHORT"; size: number; stop_ticks: number; target_ticks: number; tag: string; age_ms: number }[]>`
-    update bot_orders set status = 'claimed', claimed_at = now()
-    where status = 'pending' and created_at >= now() - interval '20 seconds'
-    returning id, topstep_account_id, contract_id, dir, size, stop_ticks, target_ticks, tag, (extract(epoch from (now() - created_at)) * 1000)::int as age_ms
+  const rows = await sql<{ id: string; dir: "LONG" | "SHORT"; price: number; stop: number; target: number; received_at: Date; age_ms: number }[]>`
+    update bot_signals set handoff = 'claimed', claimed_at = now()
+    where handoff = 'waiting' and received_at >= now() - interval '20 seconds'
+    returning id, dir, price, stop, target, received_at, (extract(epoch from (now() - received_at)) * 1000)::int as age_ms
   `;
-  return rows.map((r) => ({ id: r.id, accountId: Number(r.topstep_account_id), contractId: r.contract_id, dir: r.dir, size: r.size, stopTicks: r.stop_ticks, targetTicks: r.target_ticks, tag: r.tag, ageMs: r.age_ms }));
+  return rows.map((r) => ({ signalId: r.id, dir: r.dir, price: r.price, stop: r.stop, target: r.target, receivedAt: r.received_at.toISOString(), ageMs: r.age_ms }));
 }

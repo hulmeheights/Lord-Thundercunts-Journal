@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/Button";
 const MODES = [
   { value: "off", label: "Off", hint: "Signals are logged and skipped. Nothing is traded." },
   { value: "paper", label: "Paper", hint: "Every signal is followed on paper: recorded with its P&L, no orders sent." },
-  { value: "live", label: "Live", hint: "Real bracketed orders go to every switched-on account at TopstepX." },
+  { value: "live", label: "Live", hint: "Your Mac applies your rules and places real bracketed orders on every switched-on account, from your own computer." },
 ] as const;
 
 /** Off / Paper / Live. Live asks for the word LIVE first. */
@@ -61,8 +61,8 @@ export function ModeSwitch({ mode, ready }: { mode: "off" | "paper" | "live"; re
       {arming && mode !== "live" && (
         <div className="mt-5 border border-neg/40 p-4">
           <p className="font-mono text-[11.5px] leading-[1.8] text-ink-2">
-            Live sends real orders to every switched-on card&apos;s TopstepX account on the next signal.{" "}
-            {ready ? "Type LIVE to confirm." : "Finish the setup below first: the webhook secret and TopstepX API key must be set."}
+            Live means your Mac places real orders on every switched-on card&apos;s TopstepX account on the next signal.{" "}
+            {ready ? "Type LIVE to confirm." : "Finish the setup first: the webhook secret set in Vercel and your Mac connected (section 02)."}
           </p>
           <div className="mt-3 flex flex-wrap items-center gap-3">
             <input value={word} onChange={(e) => setWord(e.target.value)} placeholder="LIVE" aria-label="Type LIVE to confirm" className="field h-9 w-32 font-mono uppercase" />

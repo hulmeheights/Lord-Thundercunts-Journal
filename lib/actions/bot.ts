@@ -7,7 +7,6 @@ import { db } from "../db";
 import { randomToken } from "../crypto";
 import { botSetup } from "../bot/config";
 import { logEvent } from "../bot/engine";
-import { accounts, token } from "../bot/topstepx";
 import { createRunnerToken, runnerStatus } from "../bot/runner";
 
 const done = () => revalidatePath("/autopilot");
@@ -32,7 +31,7 @@ export async function setBotMode(mode: "off" | "paper" | "live", confirm = "") {
     if (m === "live") {
       if (confirm.trim().toUpperCase() !== "LIVE") return { error: "Type LIVE to switch real orders on." };
       const s = botSetup();
-      if (!s.secret || !s.topstep) return { error: "Finish the setup first: the webhook secret and the TopstepX API key must both be set." };
+      if (!s.secret) return { error: "Finish the setup first: the webhook secret must be set in Vercel." };
       if (!(await runnerStatus()).paired) return { error: "Connect your Mac first (Autopilot → Your Mac): Topstep needs orders to come from your own computer." };
     }
     const sql = await db();
@@ -97,16 +96,6 @@ export async function deleteBotAccount(id: string) {
   });
 }
 
-/** Read-only check: logs in and lists your TopstepX accounts, so a card can be pointed at the right one. */
-export async function checkTopstep(): Promise<{ accounts?: { id: number; name: string; canTrade: boolean; balance: number | null }[]; error?: string }> {
-  await assertSession();
-  try {
-    const list = await accounts(await token());
-    return { accounts: list.map((a) => ({ id: a.id, name: a.name, canTrade: a.canTrade !== false, balance: a.balance ?? null })) };
-  } catch (e) {
-    return { error: e instanceof Error ? e.message : "Couldn't reach TopstepX." };
-  }
-}
 
 /** The date the TradingView alert expires, so you're reminded before the bot goes silent. */
 export async function setAlertExpiry(day: string | null) {
