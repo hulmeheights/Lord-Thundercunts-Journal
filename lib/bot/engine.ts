@@ -2,7 +2,7 @@ import "server-only";
 import { db } from "../db";
 import { randomToken, sha256 } from "../crypto";
 import { bracketOk, bracketTicks, gate, sessionOf, SESSION_LABEL, tradingDayStart, type Alert, type BotAccount } from "./signal";
-import { accounts as tsxAccounts, matchAccount, mnq, placeBracketed, token } from "./topstepx";
+import { accounts as tsxAccounts, matchAccount, mnq, openPositions, placeBracketed, token } from "./topstepx";
 import { telegram } from "./notify";
 
 export type BotMode = "off" | "paper" | "live";
@@ -140,6 +140,19 @@ export async function handleAlert(raw: string, a: Alert, now = new Date()): Prom
       continue;
     }
     used.add(match.id);
+    // Never open a second position on an account that's still in one: two
+    // positions, or long here while short there, is what gets accounts flagged.
+    try {
+      const open = await openPositions(live!.t, match.id);
+      if (open.some((p) => p.size !== 0)) {
+        const why = "still in a trade at Topstep (not flat)";
+        await record(acct, "skipped", why);
+        lines.push(`• ${acct.label}: skipped (${why})`);
+        continue;
+      }
+    } catch (e) {
+      await logEvent("warn", `Couldn't check ${acct.label} is flat (${e instanceof Error ? e.message : String(e)}); placing the order anyway`);
+    }
     try {
       const orderId = await placeBracketed(live!.t, { accountId: match.id, contractId: live!.contractId, dir: d.dir, size: acct.contracts, stopTicks, targetTicks, tag: `ltj-${signalId.slice(4, 14)}-${acct.id.slice(-6)}` });
       await record(acct, "open", null, orderId);

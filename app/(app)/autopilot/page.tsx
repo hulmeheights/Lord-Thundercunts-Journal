@@ -13,6 +13,19 @@ import { Copy } from "@/components/autopilot/Copy";
 
 export const metadata = { title: "Autopilot" };
 
+/** A glowing green light, so live is unmistakable. */
+function LiveLight({ children }: { children: React.ReactNode }) {
+  return (
+    <span className="inline-flex items-center gap-[0.45em]">
+      <span aria-hidden className="relative inline-block h-[0.42em] w-[0.42em]">
+        <span className="absolute inset-0 animate-ping rounded-full bg-pos opacity-60" />
+        <span className="absolute inset-0 rounded-full bg-pos shadow-[0_0_10px_3px_rgba(116,184,156,0.75)]" />
+      </span>
+      {children}
+    </span>
+  );
+}
+
 const SESSIONS: Session[] = ["NYAM", "NYPM", "LON", "ASIA"];
 
 function book(trades: BotTradeView[]) {
@@ -53,7 +66,7 @@ export default async function AutopilotPage() {
           </>
         }
         sub="Your MNQ Session Open Reversal strategy fires on TradingView; Autopilot places the bracketed order on every account you switch on, and keeps the book here."
-        meta={<Meta value={s.mode === "off" ? "Off" : live ? "Live" : "Paper"} tone={live ? "neg" : null} caption={`${on} ${on === 1 ? "account" : "accounts"} on${s.lastSignal ? ` · last alert ${when(s.lastSignal.at)}` : " · no alerts yet"}`} />}
+        meta={<Meta value={live ? <LiveLight>Live</LiveLight> : s.mode === "off" ? "Off" : "Paper"} tone={live ? "pos" : null} caption={`${on} ${on === 1 ? "account" : "accounts"} on${s.lastSignal ? ` · last alert ${when(s.lastSignal.at)}` : " · no alerts yet"}`} />}
       />
 
       <Section id="switch" n={1} label="The switch" lead={<>Off, on paper, or <em>live</em>.</>}>

@@ -41,10 +41,18 @@ export function ModeSwitch({ mode, ready }: { mode: "off" | "paper" | "live"; re
             onClick={() => (m.value === "live" ? setArming(true) : go(m.value))}
             className={cn(
               "h-14 font-mono text-[11px] tracking-[0.3em] uppercase transition-colors duration-300 [&+&]:border-l [&+&]:border-line-2",
-              mode === m.value ? (m.value === "live" ? "bg-neg/15 text-neg" : m.value === "paper" ? "bg-gold/10 text-gold" : "bg-ink/5 text-ink") : "text-ink-4 hover:text-ink",
+              mode === m.value ? (m.value === "live" ? "bg-pos/10 text-pos" : m.value === "paper" ? "bg-gold/10 text-gold" : "bg-ink/5 text-ink") : "text-ink-4 hover:text-ink",
             )}
           >
-            {mode === m.value && "● "}
+            {mode === m.value &&
+              (m.value === "live" ? (
+                <span aria-hidden className="relative mr-2.5 inline-block h-2 w-2 align-middle">
+                  <span className="absolute inset-0 animate-ping rounded-full bg-pos opacity-60" />
+                  <span className="absolute inset-0 rounded-full bg-pos shadow-[0_0_8px_2px_rgba(116,184,156,0.8)]" />
+                </span>
+              ) : (
+                "● "
+              ))}
             {m.label}
           </button>
         ))}

@@ -4,14 +4,14 @@ import { BrokerError } from "../brokers/types";
 /**
  * Autopilot's TopstepX (ProjectX Gateway) client: the ONLY code in the
  * journal that can place an order, and the only thing it can do beyond
- * reading is place one. It can't cancel, modify, flatten, change settings or
+ * reading (accounts, the MNQ contract, open positions) is place one. It can't cancel, modify, flatten, change settings or
  * touch an account any other way: every call must be in ALLOWED.
  * Credentials come from the server's environment (BOT_TOPSTEP_USERNAME and
  * BOT_TOPSTEP_API_KEY, or the old bot's TOPSTEP_* names), never from the
  * browser or the database.
  */
 const HOST = "https://api.topstepx.com";
-const ALLOWED = new Set(["/api/Auth/loginKey", "/api/Account/search", "/api/Contract/search", "/api/Order/place"]);
+const ALLOWED = new Set(["/api/Auth/loginKey", "/api/Account/search", "/api/Contract/search", "/api/Position/searchOpen", "/api/Order/place"]);
 
 let cached: { token: string; at: number } | null = null;
 
@@ -64,6 +64,11 @@ export async function mnq(t: string): Promise<Contract> {
   const pick = list.find((c) => /^MNQ/i.test(c.name) && c.activeContract !== false) ?? list.find((c) => /^MNQ/i.test(c.name));
   if (!pick) throw new BrokerError("No MNQ contract found");
   return pick;
+}
+
+/** Open positions on an account (read only): used to make sure an account is flat before a new entry. */
+export async function openPositions(t: string, accountId: number): Promise<{ contractId: string; type: number; size: number }[]> {
+  return (await call<{ positions?: { contractId: string; type: number; size: number }[] }>("/api/Position/searchOpen", { accountId }, t)).positions ?? [];
 }
 
 /**
