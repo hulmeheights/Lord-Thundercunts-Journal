@@ -3,6 +3,7 @@ import { env } from "@/lib/env";
 import { safeEqual } from "@/lib/crypto";
 import { syncAll } from "@/lib/brokers/sync";
 import { sendDueReminders } from "@/lib/data/reminders";
+import { refreshNews } from "@/lib/bot/newsFeed";
 
 export const maxDuration = 60;
 
@@ -21,5 +22,6 @@ export async function GET(request: Request) {
   // Skip connections synced in the last 45 minutes (opening the app syncs too).
   const results = await syncAll({ staleMinutes: 45 });
   const reminders = await sendDueReminders().catch(() => null);
+  await refreshNews().catch(() => null);
   return NextResponse.json({ ok: true, reminders, results: results.map((r) => ({ connection: r.connection, ok: r.ok, newFills: r.newFills ?? 0 })) });
 }

@@ -116,3 +116,16 @@ export async function setAlertExpiry(day: string | null) {
     return { ok: true };
   });
 }
+
+/** How many minutes either side of high-impact news Autopilot stays out (0 = off). */
+export async function setNewsMinutes(minutes: number) {
+  await assertSession();
+  return safely(async () => {
+    const m = z.number().int().min(0).max(120).parse(minutes);
+    const sql = await db();
+    await sql`update bot_settings set news_minutes = ${m} where id = 1`;
+    await logEvent("info", m ? `News blackout set to ${m} minutes either side` : "News blackout switched off");
+    done();
+    return { ok: true };
+  });
+}

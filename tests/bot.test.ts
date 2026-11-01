@@ -56,3 +56,20 @@ test("hedge guard: never long on one account and short on another", () => {
   assert.deepEqual(hedgeCheck("SHORT", stuckLong).opposite, [1]); // a short now would hedge: skipped everywhere
   assert.deepEqual(hedgeCheck("LONG", stuckLong), { opposite: [], busy: new Set([1]) }); // same side: only account 1 sits out
 });
+
+test("news blackout: high-impact US only, real release times, ±minutes", async () => {
+  const { parseFeed, newsBlock, windows } = await import("../lib/bot/news");
+  const events = parseFeed([
+    { title: "Non-Farm Employment Change", country: "USD", date: "2026-11-06T08:30:00-05:00", impact: "High" },
+    { title: "Unemployment Rate", country: "USD", date: "2026-11-06T08:30:00-05:00", impact: "High" },
+    { title: "Congressional Elections", country: "USD", date: "2026-11-03T10:16:00-05:00", impact: "High" }, // all-day item: ignored
+    { title: "ISM Services PMI", country: "USD", date: "2026-11-04T10:00:00-05:00", impact: "Medium" }, // not high
+    { title: "BoE Rate", country: "GBP", date: "2026-11-05T07:00:00-05:00", impact: "High" }, // not US
+  ]);
+  assert.deepEqual(events.map((e) => e.title), ["Non-Farm Employment Change", "Unemployment Rate"]);
+  const nfp = Date.parse("2026-11-06T13:30:00Z");
+  assert.equal(newsBlock(new Date(nfp - 11 * 60_000), events, 11).length, 2); // 08:19 NY: blocked
+  assert.equal(newsBlock(new Date(nfp + 11 * 60_000), events, 11).length, 2); // 08:41: blocked
+  assert.equal(newsBlock(new Date(nfp + 12 * 60_000), events, 11).length, 0); // 08:42: free
+  assert.equal(windows(events, 11).length, 1); // one window for both releases
+});

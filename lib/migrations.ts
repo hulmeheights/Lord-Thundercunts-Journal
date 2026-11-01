@@ -547,4 +547,17 @@ export const MIGRATIONS: { version: number; sql: string }[] = [
       alter table bot_settings add column if not exists alert_expires text check (alert_expires is null or alert_expires ~ '^\\d{4}-\\d{2}-\\d{2}$');
     `,
   },
+  {
+    version: 26,
+    sql: /* sql */ `
+      -- Autopilot's news blackout: this week's high-impact US releases, and how wide the window is.
+      create table if not exists bot_news (
+        at timestamptz not null,
+        title text not null,
+        fetched_at timestamptz not null default now(),
+        primary key (at, title)
+      );
+      alter table bot_settings add column if not exists news_minutes int not null default 11 check (news_minutes between 0 and 120);
+    `,
+  },
 ];

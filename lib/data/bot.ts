@@ -25,7 +25,7 @@ export type BotEventView = { level: string; message: string; at: string };
 export async function autopilotState() {
   const sql = await db();
   const [[settings], accounts, trades, events, [last]] = await Promise.all([
-    sql<{ mode: BotMode; updated_at: Date; alert_expires: string | null }[]>`select mode, updated_at, alert_expires from bot_settings where id = 1`,
+    sql<{ mode: BotMode; updated_at: Date; alert_expires: string | null; news_minutes: number }[]>`select mode, updated_at, alert_expires, news_minutes from bot_settings where id = 1`,
     sql<{ id: string; label: string; topstep_account: string | null; contracts: number; max_daily_loss: number; max_daily_win: number | null; enabled: boolean; profit_target: number | null; start_balance: number; last_balance: number | null; passed_at: Date | null; created_at: Date }[]>`select * from bot_accounts order by created_at`,
     sql<{ id: string; account_label: string; mode: "paper" | "live"; session: Session; dir: "LONG" | "SHORT"; qty: number; entry_price: number; stop_price: number; target_price: number; exit_price: number | null; pnl: number | null; status: BotTradeView["status"]; reason: string | null; entered_at: Date; exited_at: Date | null; account_id: string | null }[]>`
       select * from bot_trades order by entered_at desc limit 300
@@ -41,6 +41,7 @@ export async function autopilotState() {
   return {
     mode,
     alertExpires: settings?.alert_expires ?? null,
+    newsMinutes: settings?.news_minutes ?? 11,
     lastSignal: last ? { at: last.received_at.toISOString(), event: last.event } : null,
     accounts: accounts.map<BotAccountView>((a) => {
       const paper = trades.filter((t) => t.account_id === a.id && t.mode === "paper" && t.status === "closed" && t.entered_at >= a.created_at).reduce((s, t) => s + (t.pnl ?? 0), 0);

@@ -4,6 +4,8 @@ import { randomToken, sha256 } from "../crypto";
 import { bracketOk, bracketTicks, gate, hedgeCheck, sessionOf, SESSION_LABEL, targetReached, tradingDayStart, type Alert, type BotAccount } from "./signal";
 import { accounts as tsxAccounts, matchAccount, mnq, openPositions, placeBracketed, token, type TsxAccount } from "./topstepx";
 import { telegram } from "./notify";
+import { newsBlock } from "./news";
+import { newsAround, refreshNews } from "./newsFeed";
 
 export type BotMode = "off" | "paper" | "live";
 type AccountRow = { id: string; label: string; topstep_account: string | null; contracts: number; max_daily_loss: number; max_daily_win: number | null; enabled: boolean; profit_target: number | null; start_balance: number; created_at: Date };
@@ -121,6 +123,24 @@ export async function handleAlert(raw: string, a: Alert, now = new Date()): Prom
     await logEvent("info", `Entry skipped, Autopilot is off: ${head}`);
     await telegram(`SKIPPED (Autopilot off): ${head}`);
     return { status: "off" };
+  }
+  // News blackout: no new entries within N minutes of a high-impact US release.
+  const [{ news_minutes: newsMinutes }] = await sql<{ news_minutes: number }[]>`select news_minutes from bot_settings where id = 1`;
+  if (newsMinutes > 0) {
+    let near = await newsAround(new Date(now.getTime() - newsMinutes * 60_000), new Date(now.getTime() + newsMinutes * 60_000));
+    if (!near.length) {
+      // Calendar may be stale (e.g. a new week): refresh once, quickly, then look again.
+      await refreshNews();
+      near = await newsAround(new Date(now.getTime() - newsMinutes * 60_000), new Date(now.getTime() + newsMinutes * 60_000));
+    }
+    const blocking = newsBlock(now, near, newsMinutes);
+    if (blocking.length) {
+      const why = `news blackout: ${blocking.map((e) => e.title).join(", ")} at ${new Date(blocking[0]!.at).toLocaleTimeString("en-GB", { timeZone: "America/New_York", hour: "2-digit", minute: "2-digit" })} NY (±${newsMinutes} min)`;
+      for (const acct of accts) await record(acct, "skipped", why);
+      await logEvent("info", `Entry skipped, ${why}: ${head}`);
+      await telegram(`SKIPPED (${why}): ${head}`);
+      return { status: "news" };
+    }
   }
   const bad = bracketOk(d.dir, a.price, d.stop, d.target);
   if (bad) {

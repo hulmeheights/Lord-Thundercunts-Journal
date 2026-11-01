@@ -11,6 +11,9 @@ import { ModeSwitch } from "@/components/autopilot/ModeSwitch";
 import { Accounts } from "@/components/autopilot/Accounts";
 import { Copy } from "@/components/autopilot/Copy";
 import { AlertExpiry } from "@/components/autopilot/AlertExpiry";
+import { NewsMinutes } from "@/components/autopilot/NewsMinutes";
+import { newsAround, newsFreshness, refreshNews } from "@/lib/bot/newsFeed";
+import { windows } from "@/lib/bot/news";
 import { todayKey } from "@/lib/analytics/time";
 
 export const metadata = { title: "Autopilot" };
@@ -41,6 +44,11 @@ function book(trades: BotTradeView[]) {
 export default async function AutopilotPage() {
   const [settings, s, h] = await Promise.all([getSettings(), autopilotState(), headers()]);
   const setup = botSetup();
+  await refreshNews();
+  const [upcoming, fresh] = await Promise.all([newsAround(new Date(Date.now() - 60 * 60_000), new Date(Date.now() + 8 * 86_400_000)), newsFreshness()]);
+  const blackouts = windows(upcoming, s.newsMinutes);
+  const ny = (iso: string) => new Date(iso).toLocaleString("en-GB", { timeZone: "America/New_York", weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+  const local = (iso: string) => new Date(iso).toLocaleTimeString("en-GB", { timeZone: tz, hour: "2-digit", minute: "2-digit" });
   const daysLeft = s.alertExpires ? Math.round((Date.parse(`${s.alertExpires}T00:00:00Z`) - Date.parse(`${todayKey(settings.profile.timezone)}T00:00:00Z`)) / 86_400_000) : null;
   const tz = settings.profile.timezone;
   const when = (iso: string) => new Date(iso).toLocaleString("en-GB", { timeZone: tz, weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
@@ -61,7 +69,7 @@ export default async function AutopilotPage() {
 
   return (
     <>
-      <SectionIndex ids={["switch", "accounts", "ledger", "setup", "log"]} />
+      <SectionIndex ids={["switch", "accounts", "news", "ledger", "setup", "log"]} />
       <PageHead
         eyebrow="07 — Autopilot"
         title={
@@ -95,7 +103,30 @@ export default async function AutopilotPage() {
         </p>
       </Section>
 
-      <Section id="ledger" n={3} label="The book" lead={<>Every signal, every <em>account</em>.</>}>
+      <Section id="news" n={3} label="News" lead={<>Out of the way of the <em>big</em> releases.</>}>
+        <div className="max-w-3xl">
+          <NewsMinutes initial={s.newsMinutes} />
+          <ul className="mt-6">
+            {s.newsMinutes === 0 && <li className="font-mono text-[11px] text-gold">Blackout is off: Autopilot trades straight through news.</li>}
+            {s.newsMinutes > 0 && blackouts.length === 0 && <li className="font-mono text-[11px] text-ink-3">No high-impact US releases in the next week.</li>}
+            {s.newsMinutes > 0 &&
+              blackouts.map((w) => (
+                <li key={w.at} className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-0.5 border-b border-line py-2.5 font-mono text-[11px]">
+                  <span className="text-ink">{w.titles.join(" · ")}</span>
+                  <span className="text-ink-2">{ny(w.at)} NY</span>
+                  <span className="col-span-2 text-[10px] text-ink-4">
+                    No entries {local(w.from)}–{local(w.to)} your time
+                  </span>
+                </li>
+              ))}
+          </ul>
+          <p className="mt-4 font-mono text-[10.5px] leading-[1.8] text-ink-4">
+            High-impact US releases from the Forex Factory calendar (CPI, NFP, FOMC, PPI, GDP and the like), refreshed every few hours{fresh ? `, last at ${when(fresh.toISOString())}` : ""}. A trade already open keeps its stop and target through the news; only new entries wait.
+          </p>
+        </div>
+      </Section>
+
+      <Section id="ledger" n={4} label="The book" lead={<>Every signal, every <em>account</em>.</>}>
         <div className="grid gap-8 lg:grid-cols-2">
           {(["live", "paper"] as const).map((k) => {
             const b = book(books[k]);
@@ -148,7 +179,7 @@ export default async function AutopilotPage() {
         </ul>
       </Section>
 
-      <Section id="setup" n={4} label="Setup" lead={<>Five minutes, <em>once</em>.</>}>
+      <Section id="setup" n={5} label="Setup" lead={<>Five minutes, <em>once</em>.</>}>
         <div className="grid gap-12 lg:grid-cols-2">
           <div>
             <ul className="space-y-2.5">
@@ -179,7 +210,7 @@ export default async function AutopilotPage() {
         </div>
       </Section>
 
-      <Section id="log" n={5} label="Log">
+      <Section id="log" n={6} label="Log">
         <ul>
           {s.events.length === 0 && <li className="font-mono text-[11.5px] text-ink-3">Quiet so far.</li>}
           {s.events.map((e, i) => (
