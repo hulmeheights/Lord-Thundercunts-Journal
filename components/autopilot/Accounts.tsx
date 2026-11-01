@@ -13,10 +13,11 @@ const money = (n: number) => `${n >= 0 ? "+" : "−"}$${Math.abs(n).toLocaleStri
 
 function Card({ a, live, options }: { a: BotAccountView; live: boolean; options: { id: number; name: string }[] }) {
   const router = useRouter();
-  const [f, setF] = useState({ label: a.label, topstepAccount: a.topstepAccount, contracts: String(a.contracts), maxDailyLoss: String(a.maxDailyLoss), maxDailyWin: a.maxDailyWin ? String(a.maxDailyWin) : "", enabled: a.enabled });
+  const initial = { label: a.label, topstepAccount: a.topstepAccount, contracts: String(a.contracts), maxDailyLoss: String(a.maxDailyLoss), maxDailyWin: a.maxDailyWin ? String(a.maxDailyWin) : "", profitTarget: a.profitTarget ? String(a.profitTarget) : "", startBalance: String(a.startBalance), enabled: a.enabled };
+  const [f, setF] = useState(initial);
   const [msg, setMsg] = useState<string | null>(null);
   const [pending, start] = useTransition();
-  const dirty = f.label !== a.label || f.topstepAccount !== a.topstepAccount || f.contracts !== String(a.contracts) || f.maxDailyLoss !== String(a.maxDailyLoss) || f.maxDailyWin !== (a.maxDailyWin ? String(a.maxDailyWin) : "");
+  const dirty = (Object.keys(initial) as (keyof typeof initial)[]).some((k) => k !== "enabled" && f[k] !== initial[k]);
   const save = (next = f) =>
     start(async () => {
       setMsg(null);
@@ -26,6 +27,8 @@ function Card({ a, live, options }: { a: BotAccountView; live: boolean; options:
         contracts: Math.round(Number(next.contracts)),
         maxDailyLoss: Number(next.maxDailyLoss),
         maxDailyWin: next.maxDailyWin.trim() ? Number(next.maxDailyWin) : null,
+        profitTarget: next.profitTarget.trim() ? Number(next.profitTarget) : null,
+        startBalance: Number(next.startBalance),
         enabled: next.enabled,
       });
       if ("error" in r && r.error) return setMsg(r.error);
@@ -71,6 +74,31 @@ function Card({ a, live, options }: { a: BotAccountView; live: boolean; options:
           <span className={lab}>Max daily win $ (consistency cap · blank = none)</span>
           <input className={num} inputMode="decimal" value={f.maxDailyWin} placeholder="e.g. 1600" onChange={(e) => setF({ ...f, maxDailyWin: e.target.value.replace(/[^0-9.]/g, "") })} />
         </label>
+        <label>
+          <span className={lab}>Account profit target $</span>
+          <input className={num} inputMode="decimal" value={f.profitTarget} placeholder="blank = no target" onChange={(e) => setF({ ...f, profitTarget: e.target.value.replace(/[^0-9.]/g, "") })} />
+        </label>
+        <label>
+          <span className={lab}>Starting balance $</span>
+          <input className={num} inputMode="decimal" value={f.startBalance} onChange={(e) => setF({ ...f, startBalance: e.target.value.replace(/[^0-9.]/g, "") })} />
+        </label>
+        <p className="col-span-2 font-mono text-[10px] leading-[1.7] text-ink-4">
+          {a.passedAt && !f.enabled ? (
+            <span className="text-pos">✓ Profit target reached: switched itself off. Clear the target (or raise it) before switching it back on.</span>
+          ) : a.profitTarget ? (
+            a.profit == null ? (
+              "Progress shows after its first live trade."
+            ) : a.profit >= a.profitTarget ? (
+              <span className="text-pos">Target reached: switches off at the next check.</span>
+            ) : (
+              <>
+                {money(a.profit)} of ${a.profitTarget.toLocaleString("en-GB")} · ${Math.round(a.profitTarget - a.profit).toLocaleString("en-GB")} to go. The trade that crosses it closes at its own target; then the card switches off.
+              </>
+            )
+          ) : (
+            "No target: it trades for as long as it's switched on."
+          )}
+        </p>
       </div>
       <div className="mt-4 flex flex-wrap items-center gap-4">
         <Button size="sm" variant={dirty ? "primary" : "secondary"} disabled={pending || !dirty} onClick={() => save()}>

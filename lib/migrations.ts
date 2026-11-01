@@ -528,4 +528,16 @@ export const MIGRATIONS: { version: number; sql: string }[] = [
       );
     `,
   },
+  {
+    version: 24,
+    sql: /* sql */ `
+      -- Autopilot: an account profit target per card. Once the account's
+      -- balance is that far above its start, the card switches itself off.
+      alter table bot_accounts add column if not exists profit_target double precision check (profit_target is null or profit_target > 0);
+      alter table bot_accounts add column if not exists start_balance double precision not null default 50000 check (start_balance > 0);
+      alter table bot_accounts add column if not exists last_balance double precision;
+      alter table bot_accounts add column if not exists balance_at timestamptz;
+      alter table bot_accounts add column if not exists passed_at timestamptz;
+    `,
+  },
 ];

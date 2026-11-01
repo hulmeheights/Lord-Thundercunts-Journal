@@ -62,7 +62,22 @@ export function pnlOf(dir: "LONG" | "SHORT", entry: number, exit: number, qty: n
   return Math.round((exit - entry) * (dir === "LONG" ? 1 : -1) * DOLLARS_PER_POINT * qty * 100) / 100;
 }
 
-export type BotAccount = { id: string; label: string; topstepAccountId: string | null; contracts: number; maxDailyLoss: number; maxDailyWin: number | null; enabled: boolean };
+export type BotAccount = {
+  id: string;
+  label: string;
+  topstepAccountId: string | null;
+  contracts: number;
+  maxDailyLoss: number;
+  maxDailyWin: number | null;
+  enabled: boolean;
+  /** Account profit target (e.g. 3000 to pass a 50K Combine); null = run as long as you like. */
+  profitTarget: number | null;
+  /** The account's starting balance, so profit = balance − start. */
+  startBalance: number;
+};
+
+/** Has the account made its profit target? Profit is its balance above the start (or, on paper, the paper P&L). */
+export const targetReached = (a: Pick<BotAccount, "profitTarget">, profit: number) => a.profitTarget != null && profit >= a.profitTarget;
 
 /** Why an account sits a signal out today, or null if it can trade. */
 export function gate(a: BotAccount, dayPnl: number): string | null {

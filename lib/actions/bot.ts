@@ -47,6 +47,8 @@ const Fields = z.object({
   contracts: z.number().int().min(1, "At least 1 contract").max(50),
   maxDailyLoss: z.number().positive("Set a daily loss limit").max(1_000_000),
   maxDailyWin: z.number().positive().max(1_000_000).nullable(),
+  profitTarget: z.number().positive("The profit target is above 0, or blank for none").max(10_000_000).nullable(),
+  startBalance: z.number().positive("Set the account's starting balance").max(100_000_000),
   enabled: z.boolean(),
 });
 
@@ -71,7 +73,9 @@ export async function saveBotAccount(id: string, v: z.input<typeof Fields>) {
     const sql = await db();
     await sql`
       update bot_accounts set label = ${f.label}, topstep_account = ${f.topstepAccount || null}, contracts = ${f.contracts},
-        max_daily_loss = ${f.maxDailyLoss}, max_daily_win = ${f.maxDailyWin}, enabled = ${f.enabled}
+        max_daily_loss = ${f.maxDailyLoss}, max_daily_win = ${f.maxDailyWin}, enabled = ${f.enabled},
+        profit_target = ${f.profitTarget}, start_balance = ${f.startBalance},
+        passed_at = case when ${f.enabled} then null else passed_at end
       where id = ${Id.parse(id)}
     `;
     done();

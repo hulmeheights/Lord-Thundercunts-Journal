@@ -58,8 +58,15 @@ export function matchAccount(list: TsxAccount[], hint: string): TsxAccount | nul
 }
 
 type Contract = { id: string; name: string; activeContract?: boolean };
-/** The front-month MNQ contract. */
+let contractCache: { c: Contract; at: number } | null = null;
+/** The front-month MNQ contract (remembered for an hour, so an entry doesn't wait for it). */
 export async function mnq(t: string): Promise<Contract> {
+  if (contractCache && Date.now() - contractCache.at < 60 * 60_000) return contractCache.c;
+  const c = await findMnq(t);
+  contractCache = { c, at: Date.now() };
+  return c;
+}
+async function findMnq(t: string): Promise<Contract> {
   const list = (await call<{ contracts?: Contract[] }>("/api/Contract/search", { searchText: "MNQ", live: false }, t)).contracts ?? [];
   const pick = list.find((c) => /^MNQ/i.test(c.name) && c.activeContract !== false) ?? list.find((c) => /^MNQ/i.test(c.name));
   if (!pick) throw new BrokerError("No MNQ contract found");

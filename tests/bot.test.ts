@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { Alert, bracketOk, bracketTicks, gate, pnlOf, sessionOf, tradingDayStart } from "../lib/bot/signal";
+import { Alert, bracketOk, bracketTicks, gate, pnlOf, sessionOf, targetReached, tradingDayStart } from "../lib/bot/signal";
 
 test("the alert message parses exactly as the script sends it", () => {
   const entry = Alert.parse({ price: 21000.25, data: { secret: "s", event: "entry", dir: "LONG", qty: 5, stop: 20980, target: 21040.5 } });
@@ -35,9 +35,16 @@ test("bracket ticks, sanity check and P&L for MNQ", () => {
 });
 
 test("each account's own daily gates", () => {
-  const a = { id: "a", label: "A", topstepAccountId: "1", contracts: 5, maxDailyLoss: 500, maxDailyWin: 1600, enabled: true };
+  const a = { id: "a", label: "A", topstepAccountId: "1", contracts: 5, maxDailyLoss: 500, maxDailyWin: 1600, enabled: true, profitTarget: 3000, startBalance: 50000 };
   assert.equal(gate(a, 0), null);
   assert.match(gate(a, 1600)!, /max daily win/);
   assert.match(gate(a, -500)!, /daily loss limit/);
   assert.equal(gate({ ...a, maxDailyWin: null }, 5000), null);
+});
+
+test("account profit target: passed once the balance is that far above the start; blank = never", () => {
+  const card = { profitTarget: 3000 };
+  assert.equal(targetReached(card, 53_234 - 50_000), true); // the trade closed at $3,234: passed
+  assert.equal(targetReached(card, 2_999), false);
+  assert.equal(targetReached({ profitTarget: null }, 1_000_000), false);
 });
