@@ -68,7 +68,7 @@ export default async function AutopilotPage() {
       <Section id="accounts" n={2} label="Accounts" lead={<>Mirrored to <em>{on}</em>.</>}>
         <Accounts accounts={s.accounts} live={live} topstepReady={setup.topstep} />
         <p className="mt-6 max-w-3xl font-mono text-[10.5px] leading-[1.8] text-ink-4">
-          Each card trades its own contracts (the script&apos;s size is ignored) and stops for the day at its own loss limit or max win, counted from 18:00 New York like Topstep. Two cards on the same TopstepX account: the second is skipped. One account failing doesn&apos;t stop the others.
+          Every trade uses your script&apos;s stop and target exactly. The only thing a card changes is how many contracts it trades, and it stops taking new trades for the day once its loss limit or max win is reached (counted from 18:00 New York, like Topstep). Two cards on the same TopstepX account: the second is skipped. One account failing doesn&apos;t stop the others.
         </p>
       </Section>
 
