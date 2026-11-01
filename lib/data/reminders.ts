@@ -8,12 +8,13 @@ import { listLedger } from "./ledger";
 import { missionState } from "../analytics/mission";
 import { checkGoal } from "../analytics/goalcheck";
 import { evaluateRules } from "../analytics/rules";
-import { capsuleReady, clockChange, morning, weekendLift, checkin, evening, goalNews, preSession, quiet, ruleAlerts, weekly, windowClosed, type GoalEvent, type Reminder, type RuleBreak } from "../analytics/notify";
+import { alertExpiry, capsuleReady, clockChange, morning, weekendLift, checkin, evening, goalNews, preSession, quiet, ruleAlerts, weekly, windowClosed, type GoalEvent, type Reminder, type RuleBreak } from "../analytics/notify";
 import { addDays, dayKey, fmtMinute, minuteOfDay, weekdayIndex, windowFor } from "../analytics/time";
 import { claimDaily, pushAll, subscriptionCount } from "../push";
 import { QUOTES } from "../content/quotes";
 import { inactivityReminder } from "../analytics/inactivity";
 import { watchedAccounts } from "./inactivity";
+import { db } from "../db";
 
 /** Called by the cron about once an hour: sends whatever is due right now, each reminder once. */
 export async function sendDueReminders(now = new Date()): Promise<{ sent: string[] }> {
@@ -64,6 +65,12 @@ export async function sendDueReminders(now = new Date()): Promise<{ sent: string
       breaks.push({ rule: v.rule, firstEntry: first ? fmtMinute(minuteOfDay(first.entryTime, tz)) : "", detail: v.detail });
     }
     add(ruleAlerts({ day, minute, breaks }));
+  }
+  // The TradingView alert running out means a silent bot: always on, whatever the other switches say.
+  {
+    const sql = await db();
+    const [b] = await sql<{ alert_expires: string | null }[]>`select alert_expires from bot_settings where id = 1`.catch(() => []);
+    add(alertExpiry({ day, minute, expires: b?.alert_expires ?? null }));
   }
   // Inactivity first after rule alerts: a closed account is the costliest thing to miss.
   if (settings.inactivity.rules.some((r) => r.enabled)) {

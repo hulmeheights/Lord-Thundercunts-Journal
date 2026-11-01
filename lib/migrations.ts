@@ -540,4 +540,11 @@ export const MIGRATIONS: { version: number; sql: string }[] = [
       alter table bot_accounts add column if not exists passed_at timestamptz;
     `,
   },
+  {
+    version: 25,
+    sql: /* sql */ `
+      -- When the TradingView alert behind Autopilot expires, for the reminders.
+      alter table bot_settings add column if not exists alert_expires text check (alert_expires is null or alert_expires ~ '^\\d{4}-\\d{2}-\\d{2}$');
+    `,
+  },
 ];

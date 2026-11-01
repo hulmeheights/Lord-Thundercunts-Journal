@@ -104,3 +104,15 @@ export async function checkTopstep(): Promise<{ accounts?: { id: number; name: s
     return { error: e instanceof Error ? e.message : "Couldn't reach TopstepX." };
   }
 }
+
+/** The date the TradingView alert expires, so you're reminded before the bot goes silent. */
+export async function setAlertExpiry(day: string | null) {
+  await assertSession();
+  return safely(async () => {
+    const d = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().parse(day || null);
+    const sql = await db();
+    await sql`update bot_settings set alert_expires = ${d} where id = 1`;
+    done();
+    return { ok: true };
+  });
+}

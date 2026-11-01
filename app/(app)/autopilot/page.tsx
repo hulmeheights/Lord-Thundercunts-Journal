@@ -10,6 +10,8 @@ import { SectionIndex } from "@/components/m/SectionIndex";
 import { ModeSwitch } from "@/components/autopilot/ModeSwitch";
 import { Accounts } from "@/components/autopilot/Accounts";
 import { Copy } from "@/components/autopilot/Copy";
+import { AlertExpiry } from "@/components/autopilot/AlertExpiry";
+import { todayKey } from "@/lib/analytics/time";
 
 export const metadata = { title: "Autopilot" };
 
@@ -39,6 +41,7 @@ function book(trades: BotTradeView[]) {
 export default async function AutopilotPage() {
   const [settings, s, h] = await Promise.all([getSettings(), autopilotState(), headers()]);
   const setup = botSetup();
+  const daysLeft = s.alertExpires ? Math.round((Date.parse(`${s.alertExpires}T00:00:00Z`) - Date.parse(`${todayKey(settings.profile.timezone)}T00:00:00Z`)) / 86_400_000) : null;
   const tz = settings.profile.timezone;
   const when = (iso: string) => new Date(iso).toLocaleString("en-GB", { timeZone: tz, weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
   const host = h.get("x-forwarded-host") ?? h.get("host") ?? "your-journal.vercel.app";
@@ -53,6 +56,7 @@ export default async function AutopilotPage() {
     { ok: setup.telegram, text: "Telegram receipts (optional: TELEGRAM_TOKEN + TELEGRAM_CHAT_ID)" },
     { ok: s.accounts.some((a) => a.enabled && a.topstepAccount), text: "At least one card switched on and pointed at a TopstepX account" },
     { ok: !!s.lastSignal, text: "First alert received from TradingView" },
+    { ok: !!s.alertExpires && (daysLeft ?? -1) >= 0, text: "Alert expiry date added (for the reminder)" },
   ];
 
   return (
@@ -68,6 +72,12 @@ export default async function AutopilotPage() {
         sub="Your MNQ Session Open Reversal strategy fires on TradingView; Autopilot places the bracketed order on every account you switch on, and keeps the book here."
         meta={<Meta value={live ? <LiveLight>Live</LiveLight> : s.mode === "off" ? "Off" : "Paper"} tone={live ? "pos" : null} caption={`${on} ${on === 1 ? "account" : "accounts"} on${s.lastSignal ? ` · last alert ${when(s.lastSignal.at)}` : " · no alerts yet"}`} />}
       />
+
+      {daysLeft !== null && daysLeft <= 7 && (
+        <a href="#setup" className="mb-4 block border border-gold/50 px-4 py-3 font-mono text-[11.5px] leading-[1.7] text-gold">
+          {daysLeft < 0 ? "Your TradingView alert has expired: Autopilot gets no signals until you renew it." : daysLeft === 0 ? "Your TradingView alert expires today. Renew it in TradingView, then update the date in Setup." : `Your TradingView alert expires in ${daysLeft} ${daysLeft === 1 ? "day" : "days"}. Renew it in TradingView, then update the date in Setup.`}
+        </a>
+      )}
 
       <Section id="switch" n={1} label="The switch" lead={<>Off, on paper, or <em>live</em>.</>}>
         <div className="max-w-2xl">
@@ -159,6 +169,7 @@ export default async function AutopilotPage() {
             </ol>
           </div>
           <div>
+            <AlertExpiry initial={s.alertExpires} />
             <Copy label="Webhook URL" value={`${origin}/api/bot/webhook`} />
             <Copy label="Alert message (exactly)" value={ALERT_MESSAGE} />
             <p className="mt-4 font-mono text-[10.5px] leading-[1.8] text-ink-4">

@@ -41,6 +41,7 @@ async function call(method: "GET" | "POST" | "DELETE", body?: unknown) {
 
 /** Push notifications to this phone or computer: a nudge before the session, and a recap after. */
 const KIND_LABEL: Record<string, string> = {
+  alert: "TradingView alert expiry",
   inactive: "Inactivity warning",
   clock: "Clock-change heads-up",
   morning: "9:00 positive",

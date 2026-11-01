@@ -225,6 +225,42 @@ function ConnectForm({ option, onConnected }: { option: Option; onConnected: () 
   );
 }
 
+/**
+ * A list of accounts that folds away: folded it's one line (how many, how
+ * many count in your stats); open it can be searched once it gets long.
+ * Folding only hides the list; the switches still decide what's in your stats.
+ */
+function AccountList({ title, accounts }: { title: string; accounts: BrokerAccount[] }) {
+  const [open, setOpen] = useState(accounts.length <= 5);
+  const [q, setQ] = useState("");
+  const counted = accounts.filter((a) => a.included).length;
+  const shown = q.trim() ? accounts.filter((a) => a.name.toLowerCase().includes(q.trim().toLowerCase())) : accounts;
+  return (
+    <div>
+      <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} className="flex w-full items-baseline justify-between gap-4 border-b border-line py-3 pl-[2rem] text-left">
+        <span className="font-mono text-[11px] text-ink-2">
+          {title} · {accounts.length} {accounts.length === 1 ? "account" : "accounts"}
+          <span className="text-ink-4"> · {counted} in your stats</span>
+        </span>
+        <span className="font-mono text-[9.5px] tracking-[0.26em] text-ink-4 uppercase">{open ? "Hide" : "Show"}</span>
+      </button>
+      {open && (
+        <>
+          {accounts.length > 10 && (
+            <div className="border-b border-line py-2 pl-[2rem]">
+              <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Find an account" aria-label="Find an account" className={`${lineInput} w-full max-w-xs`} />
+            </div>
+          )}
+          {shown.map((a) => (
+            <AccountRow key={a.id} a={a} />
+          ))}
+          {shown.length === 0 && <p className="border-b border-line py-3 pl-[2rem] font-mono text-[11px] text-ink-4">No account matches.</p>}
+        </>
+      )}
+    </div>
+  );
+}
+
 function AccountRow({ a }: { a: BrokerAccount }) {
   const router = useRouter();
   const [, start] = useTransition();
@@ -375,9 +411,7 @@ export function Connections({ connections, accounts, notice = null }: { connecti
                     Disconnect
                   </Button>
                 </div>
-                {accs.map((a) => (
-                  <AccountRow key={a.id} a={a} />
-                ))}
+                {accs.length > 0 && <AccountList title="Accounts" accounts={accs} />}
               </div>
             );
           })}
@@ -387,9 +421,7 @@ export function Connections({ connections, accounts, notice = null }: { connecti
       {importAccounts.length > 0 && (
         <div className="mb-16">
           <Sub>Imported accounts</Sub>
-          {importAccounts.map((a) => (
-            <AccountRow key={a.id} a={a} />
-          ))}
+          <AccountList title="Imported" accounts={importAccounts} />
         </div>
       )}
 

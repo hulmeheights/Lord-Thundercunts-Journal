@@ -11,7 +11,7 @@ import type { MissionDay } from "./mission";
 import { MANIFEST, PRAYERS, THANKFUL, type Uplift } from "../content/uplift";
 
 
-export type NotifyKind = "inactive" | "clock" | "morning" | "uplift" | "checkin" | "pre" | "close" | "evening" | "weekly" | "capsule" | "goal" | "rule";
+export type NotifyKind = "alert" | "inactive" | "clock" | "morning" | "uplift" | "checkin" | "pre" | "close" | "evening" | "weekly" | "capsule" | "goal" | "rule";
 export type Reminder = { kind: NotifyKind; /** What it's claimed under: once per this key. */ key: string; title: string; body: string; url: string };
 
 /** No pushes overnight, whatever is due. */
@@ -292,4 +292,22 @@ export function clockChange(i: { day: string; minute: number; before: number; ne
       : `The UK and US change their clocks on different weekends, so New York opens an hour ${i.next.shift < 0 ? "earlier" : "later"} on your clock until they line up again. From ${when} your window is ${win}.`,
     url: "/",
   };
+}
+
+/**
+ * The TradingView alert behind Autopilot runs out on a date; an expired alert
+ * means a silent bot. Heads-up 7, 3 and 1 days before and on the day, between
+ * 12:00 and 13:00 so it lands with the check-in, once each.
+ */
+export function alertExpiry(i: { day: string; minute: number; expires: string | null }): Reminder | null {
+  if (!i.expires || i.minute < 12 * 60 || i.minute >= 13 * 60) return null;
+  const left = Math.round((Date.parse(`${i.expires}T00:00:00Z`) - Date.parse(`${i.day}T00:00:00Z`)) / 86_400_000);
+  if (![7, 3, 1, 0].includes(left) && left >= 0) return null;
+  if (left < -3) return null;
+  const title = left > 0 ? `TradingView alert: ${plural(left, "day")} left` : left === 0 ? "TradingView alert expires today" : "TradingView alert has expired";
+  const body =
+    left >= 0
+      ? "Renew it in TradingView (Alerts → your alert → set a new expiry), then put the new date in Autopilot. If it runs out, the bot goes silent."
+      : "Autopilot won't get any signals until you renew it in TradingView. Then put the new date in Autopilot.";
+  return { kind: "alert", key: `${i.expires}:${left > 0 ? left : left === 0 ? "0" : "late"}`, title, body, url: "/autopilot#setup" };
 }

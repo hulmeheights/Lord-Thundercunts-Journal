@@ -118,3 +118,16 @@ test("positive pushes: 9:00 daily and 15:00 at weekends, rotating categories, no
   }
 });
 
+
+test("TradingView alert expiry: 7, 3, 1 days before, on the day and once after, around 12:00", async () => {
+  const { alertExpiry } = await import("../lib/analytics/notify");
+  const at = (day: string) => alertExpiry({ day, minute: 12 * 60 + 15, expires: "2026-12-10" });
+  assert.equal(at("2026-12-03")?.title, "TradingView alert: 7 days left");
+  assert.equal(at("2026-12-05"), null); // 5 days: nothing
+  assert.equal(at("2026-12-09")?.title, "TradingView alert: 1 day left");
+  assert.equal(at("2026-12-10")?.title, "TradingView alert expires today");
+  assert.equal(at("2026-12-11")?.title, "TradingView alert has expired");
+  assert.equal(at("2026-12-20"), null);
+  assert.equal(alertExpiry({ day: "2026-12-03", minute: 9 * 60, expires: "2026-12-10" }), null); // only with the check-in
+  assert.equal(alertExpiry({ day: "2026-12-03", minute: 12 * 60 + 15, expires: null }), null);
+});
