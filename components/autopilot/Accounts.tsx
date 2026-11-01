@@ -118,7 +118,18 @@ export function Accounts({ accounts, live, topstepReady }: { accounts: BotAccoun
       </div>
       {accounts.length === 0 && <p className="font-mono text-[11.5px] text-ink-3">No cards yet. Add one for each TopstepX account the bot should trade.</p>}
       <div className="mt-6 flex flex-wrap items-center gap-4">
-        <Button variant="secondary" disabled={pending} onClick={() => start(async () => void (await addBotAccount(), router.refresh()))}>
+        <Button
+          variant="secondary"
+          disabled={pending}
+          onClick={() =>
+            start(async () => {
+              setErr(null);
+              const r = await addBotAccount();
+              if ("error" in r && r.error) return setErr(r.error);
+              router.refresh();
+            })
+          }
+        >
           + Add account
         </Button>
         <Button
