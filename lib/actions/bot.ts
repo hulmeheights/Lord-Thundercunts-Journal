@@ -8,6 +8,7 @@ import { randomToken } from "../crypto";
 import { botSetup } from "../bot/config";
 import { logEvent } from "../bot/engine";
 import { accounts, token } from "../bot/topstepx";
+import { createRunnerToken, runnerStatus } from "../bot/runner";
 
 const done = () => revalidatePath("/autopilot");
 
@@ -32,6 +33,7 @@ export async function setBotMode(mode: "off" | "paper" | "live", confirm = "") {
       if (confirm.trim().toUpperCase() !== "LIVE") return { error: "Type LIVE to switch real orders on." };
       const s = botSetup();
       if (!s.secret || !s.topstep) return { error: "Finish the setup first: the webhook secret and the TopstepX API key must both be set." };
+      if (!(await runnerStatus()).paired) return { error: "Connect your Mac first (Autopilot → Your Mac): Topstep needs orders to come from your own computer." };
     }
     const sql = await db();
     await sql`update bot_settings set mode = ${m}, updated_at = now() where id = 1`;
@@ -128,4 +130,17 @@ export async function setNewsMinutes(minutes: number) {
     done();
     return { ok: true };
   });
+}
+
+/** A new key for the runner on your Mac (shown once; any older key stops working). */
+export async function newRunnerKey(): Promise<{ key?: string; error?: string }> {
+  await assertSession();
+  try {
+    const key = await createRunnerToken();
+    await logEvent("info", "New key made for the runner on your Mac (any older key stopped working)");
+    done();
+    return { key };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
 }

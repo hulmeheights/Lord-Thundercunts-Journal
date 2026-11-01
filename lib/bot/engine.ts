@@ -2,7 +2,8 @@ import "server-only";
 import { db } from "../db";
 import { randomToken, sha256 } from "../crypto";
 import { bracketOk, bracketTicks, gate, hedgeCheck, sessionOf, SESSION_LABEL, targetReached, tradingDayStart, type Alert, type BotAccount } from "./signal";
-import { accounts as tsxAccounts, matchAccount, mnq, openPositions, placeBracketed, token, type TsxAccount } from "./topstepx";
+import { accounts as tsxAccounts, matchAccount, mnq, openPositions, token, type TsxAccount } from "./topstepx";
+import { runnerStatus } from "./runner";
 import { telegram } from "./notify";
 import { newsBlock } from "./news";
 import { newsAround, refreshNews } from "./newsFeed";
@@ -258,19 +259,29 @@ export async function handleAlert(raw: string, a: Alert, now = new Date()): Prom
     }
   }
 
-  await Promise.all(
-    go.map(async ({ acct, match }) => {
-      try {
-        const orderId = await placeBracketed(live!.t, { accountId: match.id, contractId: live!.contractId, dir: d.dir, size: acct.contracts, stopTicks, targetTicks, tag: `ltj-${signalId.slice(4, 14)}-${acct.id.slice(-6)}` });
-        later.push(record(acct, "open", null, orderId));
-        lines.push(`• ${acct.label}: ${acct.contracts} MNQ ✓ (SL ${stopTicks}t / TP ${targetTicks}t)`);
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        later.push(record(acct, "error", msg), logEvent("error", `Order failed on ${acct.label}: ${msg}`));
-        lines.push(`• ${acct.label}: ORDER FAILED, check TopstepX`);
-      }
-    }),
-  );
+  // Topstep wants orders to come from your own computer, so the website only
+  // writes tickets; the runner on your Mac places them within a second and reports back.
+  if (go.length) {
+    const runner = await runnerStatus();
+    if (!runner.online) {
+      const why = runner.paired ? "your Mac isn't connected (home runner offline), so nothing was placed" : "no Mac connected yet (home runner not set up)";
+      for (const { acct } of go) skip(acct, why);
+      later.push(logEvent("error", `Live entry not placed: ${why}`));
+      go.length = 0;
+    }
+  }
+  for (const { acct, match } of go) {
+    const tradeId = `bt_${randomToken(10)}`;
+    await sql`
+      insert into bot_trades (id, signal_id, account_id, account_label, mode, session, dir, qty, entry_price, stop_price, target_price, status, reason, entered_at)
+      values (${tradeId}, ${signalId}, ${acct.id}, ${acct.label}, 'live', ${session}, ${d.dir}, ${acct.contracts}, ${a.price}, ${d.stop}, ${d.target}, 'pending', 'sent to your Mac', ${now})
+    `;
+    await sql`
+      insert into bot_orders (id, trade_id, account_label, topstep_account_id, contract_id, dir, size, stop_ticks, target_ticks, tag)
+      values (${`bo_${randomToken(10)}`}, ${tradeId}, ${acct.label}, ${match.id}, ${live!.contractId}, ${d.dir}, ${acct.contracts}, ${stopTicks}, ${targetTicks}, ${`ltj-${signalId.slice(4, 14)}-${acct.id.slice(-6)}`})
+    `;
+    lines.push(`• ${acct.label}: ${acct.contracts} MNQ → sent to your Mac (SL ${stopTicks}t / TP ${targetTicks}t)`);
+  }
   await Promise.all(later);
   await logEvent("info", `Entry ${mode === "paper" ? "(paper) " : ""}${head}`);
   await telegram(`ENTRY${mode === "paper" ? " (PAPER)" : ""} ${head}\n${lines.join("\n")}`);

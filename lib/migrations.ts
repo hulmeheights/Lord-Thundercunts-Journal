@@ -560,4 +560,41 @@ export const MIGRATIONS: { version: number; sql: string }[] = [
       alter table bot_settings add column if not exists news_minutes int not null default 11 check (news_minutes between 0 and 120);
     `,
   },
+  {
+    version: 27,
+    sql: /* sql */ `
+      -- Autopilot's home runner: Topstep wants orders to come from your own
+      -- computer, so the website writes order tickets and a small program on
+      -- your Mac places them and reports back. Tickets older than 20 seconds
+      -- are never placed.
+      create table if not exists bot_orders (
+        id text primary key,
+        trade_id text not null references bot_trades (id) on delete cascade,
+        account_label text not null,
+        topstep_account_id bigint not null,
+        contract_id text not null,
+        dir text not null check (dir in ('LONG', 'SHORT')),
+        size int not null check (size between 1 and 50),
+        stop_ticks int not null check (stop_ticks > 0),
+        target_ticks int not null check (target_ticks > 0),
+        tag text not null,
+        status text not null default 'pending' check (status in ('pending', 'claimed', 'placed', 'failed', 'expired')),
+        order_id text,
+        error text,
+        created_at timestamptz not null default now(),
+        claimed_at timestamptz,
+        done_at timestamptz
+      );
+      create index if not exists bot_orders_pending_idx on bot_orders (status, created_at);
+      create table if not exists bot_runner (
+        id int primary key default 1 check (id = 1),
+        token_hash text,
+        last_seen timestamptz,
+        info text
+      );
+      insert into bot_runner (id) values (1) on conflict (id) do nothing;
+      alter table bot_trades drop constraint if exists bot_trades_status_check;
+      alter table bot_trades add constraint bot_trades_status_check check (status in ('pending', 'open', 'closed', 'skipped', 'error'));
+    `,
+  },
 ];

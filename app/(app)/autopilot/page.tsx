@@ -11,6 +11,8 @@ import { ModeSwitch } from "@/components/autopilot/ModeSwitch";
 import { Accounts } from "@/components/autopilot/Accounts";
 import { Copy } from "@/components/autopilot/Copy";
 import { AlertExpiry } from "@/components/autopilot/AlertExpiry";
+import { Runner } from "@/components/autopilot/Runner";
+import { runnerStatus } from "@/lib/bot/runner";
 import { NewsMinutes } from "@/components/autopilot/NewsMinutes";
 import { newsAround, newsFreshness, refreshNews } from "@/lib/bot/newsFeed";
 import { windows } from "@/lib/bot/news";
@@ -44,6 +46,7 @@ function book(trades: BotTradeView[]) {
 export default async function AutopilotPage() {
   const [settings, s, h] = await Promise.all([getSettings(), autopilotState(), headers()]);
   const setup = botSetup();
+  const runner = await runnerStatus();
   await refreshNews();
   const [upcoming, fresh] = await Promise.all([newsAround(new Date(Date.now() - 60 * 60_000), new Date(Date.now() + 8 * 86_400_000)), newsFreshness()]);
   const blackouts = windows(upcoming, s.newsMinutes);
@@ -60,8 +63,9 @@ export default async function AutopilotPage() {
   const books = { live: s.trades.filter((t) => t.mode === "live"), paper: s.trades.filter((t) => t.mode === "paper") };
   const steps = [
     { ok: setup.secret, text: "Webhook secret set in Vercel (BOT_WEBHOOK_SECRET, at least 16 characters)" },
-    { ok: setup.topstep, text: "TopstepX API login set in Vercel (BOT_TOPSTEP_USERNAME + BOT_TOPSTEP_API_KEY)" },
+    { ok: setup.topstep, text: "TopstepX API login set in Vercel (BOT_TOPSTEP_USERNAME + BOT_TOPSTEP_API_KEY), used only to read accounts and positions" },
     { ok: setup.telegram, text: "Telegram receipts (optional: TELEGRAM_TOKEN + TELEGRAM_CHAT_ID)" },
+    { ok: runner.paired, text: "Your Mac set up to place the orders (section 02)" },
     { ok: s.accounts.some((a) => a.enabled && a.topstepAccount), text: "At least one card switched on and pointed at a TopstepX account" },
     { ok: !!s.lastSignal, text: "First alert received from TradingView" },
     { ok: !!s.alertExpires && (daysLeft ?? -1) >= 0, text: "Alert expiry date added (for the reminder)" },
@@ -69,7 +73,7 @@ export default async function AutopilotPage() {
 
   return (
     <>
-      <SectionIndex ids={["switch", "accounts", "news", "ledger", "setup", "log"]} />
+      <SectionIndex ids={["switch", "mac", "accounts", "news", "ledger", "setup", "log"]} />
       <PageHead
         eyebrow="07 — Autopilot"
         title={
@@ -96,14 +100,18 @@ export default async function AutopilotPage() {
         </div>
       </Section>
 
-      <Section id="accounts" n={2} label="Accounts" lead={<>Mirrored to <em>{on}</em>.</>}>
+      <Section id="mac" n={2} label="Your Mac" lead={<>Orders leave from <em>your</em> computer.</>}>
+        <Runner status={runner} origin={origin} lastSeen={runner.lastSeen ? when(runner.lastSeen) : null} />
+      </Section>
+
+      <Section id="accounts" n={3} label="Accounts" lead={<>Mirrored to <em>{on}</em>.</>}>
         <Accounts accounts={s.accounts} live={live} topstepReady={setup.topstep} />
         <p className="mt-6 max-w-3xl font-mono text-[10.5px] leading-[1.8] text-ink-4">
           Every trade uses your script&apos;s stop and target exactly. The only thing a card changes is how many contracts it trades, and it stops taking new trades for the day once its loss limit or max win is reached (counted from 18:00 New York, like Topstep). Two cards on the same TopstepX account: the second is skipped. One account failing doesn&apos;t stop the others.
         </p>
       </Section>
 
-      <Section id="news" n={3} label="News" lead={<>Out of the way of the <em>big</em> releases.</>}>
+      <Section id="news" n={4} label="News" lead={<>Out of the way of the <em>big</em> releases.</>}>
         <div className="max-w-3xl">
           <NewsMinutes initial={s.newsMinutes} />
           <ul className="mt-6">
@@ -126,7 +134,7 @@ export default async function AutopilotPage() {
         </div>
       </Section>
 
-      <Section id="ledger" n={4} label="The book" lead={<>Every signal, every <em>account</em>.</>}>
+      <Section id="ledger" n={5} label="The book" lead={<>Every signal, every <em>account</em>.</>}>
         <div className="grid gap-8 lg:grid-cols-2">
           {(["live", "paper"] as const).map((k) => {
             const b = book(books[k]);
@@ -179,7 +187,7 @@ export default async function AutopilotPage() {
         </ul>
       </Section>
 
-      <Section id="setup" n={5} label="Setup" lead={<>Five minutes, <em>once</em>.</>}>
+      <Section id="setup" n={6} label="Setup" lead={<>Five minutes, <em>once</em>.</>}>
         <div className="grid gap-12 lg:grid-cols-2">
           <div>
             <ul className="space-y-2.5">
@@ -210,7 +218,7 @@ export default async function AutopilotPage() {
         </div>
       </Section>
 
-      <Section id="log" n={6} label="Log">
+      <Section id="log" n={7} label="Log">
         <ul>
           {s.events.length === 0 && <li className="font-mono text-[11.5px] text-ink-3">Quiet so far.</li>}
           {s.events.map((e, i) => (

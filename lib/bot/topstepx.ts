@@ -2,16 +2,17 @@ import "server-only";
 import { BrokerError } from "../brokers/types";
 
 /**
- * Autopilot's TopstepX (ProjectX Gateway) client: the ONLY code in the
- * journal that can place an order, and the only thing it can do beyond
- * reading (accounts, the MNQ contract, open positions) is place one. It can't cancel, modify, flatten, change settings or
- * touch an account any other way: every call must be in ALLOWED.
+ * Autopilot's TopstepX (ProjectX Gateway) client: READ ONLY. It can list your
+ * accounts and balances, find the MNQ contract and see open positions, which is
+ * all the website needs to decide. It can't place, cancel or change anything:
+ * Topstep requires orders to come from your own computer, so the runner on
+ * your Mac places them. Every call must be in ALLOWED.
  * Credentials come from the server's environment (BOT_TOPSTEP_USERNAME and
  * BOT_TOPSTEP_API_KEY, or the old bot's TOPSTEP_* names), never from the
  * browser or the database.
  */
 const HOST = "https://api.topstepx.com";
-const ALLOWED = new Set(["/api/Auth/loginKey", "/api/Account/search", "/api/Contract/search", "/api/Position/searchOpen", "/api/Order/place"]);
+const ALLOWED = new Set(["/api/Auth/loginKey", "/api/Account/search", "/api/Contract/search", "/api/Position/searchOpen"]);
 
 let cached: { token: string; at: number } | null = null;
 
@@ -76,30 +77,4 @@ async function findMnq(t: string): Promise<Contract> {
 /** Open positions on an account (read only): used to make sure an account is flat before a new entry. */
 export async function openPositions(t: string, accountId: number): Promise<{ contractId: string; type: number; size: number }[]> {
   return (await call<{ positions?: { contractId: string; type: number; size: number }[] }>("/api/Position/searchOpen", { accountId }, t)).positions ?? [];
-}
-
-/**
- * One atomic market order with its stop-loss and take-profit brackets
- * attached at Topstep (platform-managed OCO; the account needs Auto OCO
- * Brackets on). Bracket ticks are signed offsets from the fill: for a long the
- * stop is below (negative) and the target above (positive); a short mirrors it.
- */
-export async function placeBracketed(t: string, o: { accountId: number; contractId: string; dir: "LONG" | "SHORT"; size: number; stopTicks: number; targetTicks: number; tag: string }): Promise<string> {
-  const buy = o.dir === "LONG";
-  const sign = buy ? 1 : -1;
-  const d = await call<{ orderId?: number }>(
-    "/api/Order/place",
-    {
-      accountId: o.accountId,
-      contractId: o.contractId,
-      type: 2, // market
-      side: buy ? 0 : 1,
-      size: o.size,
-      customTag: o.tag,
-      stopLossBracket: { ticks: -o.stopTicks * sign, type: 4 }, // stop
-      takeProfitBracket: { ticks: o.targetTicks * sign, type: 1 }, // limit
-    },
-    t,
-  );
-  return String(d.orderId ?? "");
 }
