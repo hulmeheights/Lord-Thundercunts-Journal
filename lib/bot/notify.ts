@@ -30,7 +30,10 @@ export async function botNotify(text: string, opts: { push?: boolean } = {}): Pr
   if (!opts.push) return;
   try {
     const [{ getSettings }, { pushAll }] = await Promise.all([import("../data/settings"), import("../push")]);
-    if ((await getSettings()).notify.autopilot === false) return;
+    const settings = await getSettings();
+    if (settings.notify.autopilot === false) return;
+    const [{ tradingQuiet }, { minuteOfDay }] = await Promise.all([import("../analytics/notify"), import("../analytics/time")]);
+    if (tradingQuiet(settings.notify, minuteOfDay(new Date().toISOString(), settings.profile.timezone))) return;
     const [title, ...rest] = text.split("\n");
     await pushAll({ title: title.slice(0, 120), body: rest.join("\n").slice(0, 400) || " ", url: "/autopilot#ledger", tag: `autopilot:${Date.now()}` });
   } catch {

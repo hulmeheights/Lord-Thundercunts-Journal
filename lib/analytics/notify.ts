@@ -6,7 +6,7 @@
  * window at least an hour wide: exactly one run lands in it, whatever the
  * clocks are doing. Each reminder is claimed once (per day, or per item).
  */
-import { fmtMinute, weekdayIndex } from "./time";
+import { fmtMinute, parseHHMM, weekdayIndex } from "./time";
 import type { MissionDay } from "./mission";
 import { MANIFEST, PRAYERS, THANKFUL, type Uplift } from "../content/uplift";
 
@@ -310,4 +310,13 @@ export function alertExpiry(i: { day: string; minute: number; expires: string | 
       ? "Renew it in TradingView (Alerts → your alert → set a new expiry), then put the new date in Autopilot. If it runs out, the bot goes silent."
       : "Autopilot won't get any signals until you renew it in TradingView. Then put the new date in Autopilot.";
   return { kind: "alert", key: `${i.expires}:${left > 0 ? left : left === 0 ? "0" : "late"}`, title, body, url: "/autopilot#setup" };
+}
+
+/** "Quiet while trading": true when `minute` (your clock) falls in the chosen window. */
+export function tradingQuiet(n: { quietOn?: boolean; quietFrom?: string; quietTo?: string }, minute: number): boolean {
+  if (n.quietOn === false) return false;
+  const from = parseHHMM(n.quietFrom ?? "14:00");
+  const to = parseHHMM(n.quietTo ?? "16:30");
+  if (from === null || to === null || from === to) return false;
+  return from < to ? minute >= from && minute < to : minute >= from || minute < to;
 }

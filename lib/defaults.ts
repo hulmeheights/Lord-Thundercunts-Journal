@@ -25,7 +25,7 @@ export const DEFAULT_SETTINGS: Settings = {
   goals: { mission: "Payouts paying the bills", missionStart: null, counts: ["session", "maxTrades", "maxDailyLoss", "stopAfterLosses"] },
   widget: DEFAULT_WIDGET,
   inactivity: DEFAULT_INACTIVITY,
-  notify: { morning: true, checkin: true, preSession: true, close: true, evening: true, weekly: true, capsules: true, goals: true, ruleAlerts: true, autopilot: true },
+  notify: { morning: true, checkin: true, preSession: true, close: true, evening: true, weekly: true, capsules: true, goals: true, ruleAlerts: true, autopilot: true, quietOn: true, quietFrom: "14:00", quietTo: "16:30" },
   prop: {
     enabled: false,
     firm: "Topstep",

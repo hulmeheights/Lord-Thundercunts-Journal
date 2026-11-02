@@ -131,3 +131,14 @@ test("TradingView alert expiry: 7, 3, 1 days before, on the day and once after, 
   assert.equal(alertExpiry({ day: "2026-12-03", minute: 9 * 60, expires: "2026-12-10" }), null); // only with the check-in
   assert.equal(alertExpiry({ day: "2026-12-03", minute: 12 * 60 + 15, expires: null }), null);
 });
+
+test("quiet while trading: nothing between the chosen times (default 14:00–16:30)", async () => {
+  const { tradingQuiet } = await import("../lib/analytics/notify");
+  const m = (h: number, mm = 0) => h * 60 + mm;
+  assert.equal(tradingQuiet({}, m(14)), true);
+  assert.equal(tradingQuiet({}, m(16, 29)), true);
+  assert.equal(tradingQuiet({}, m(16, 30)), false);
+  assert.equal(tradingQuiet({}, m(13, 59)), false);
+  assert.equal(tradingQuiet({ quietOn: false }, m(15)), false);
+  assert.equal(tradingQuiet({ quietFrom: "13:30", quietTo: "15:00" }, m(13, 45)), true);
+});

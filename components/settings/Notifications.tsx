@@ -171,9 +171,17 @@ export function Notifications({ initial, scheduled, recent = [], timezone }: { i
           ) : null}
         </div>
       </SRow>
+      <SRow name="Quiet while trading" hint="Nothing at all comes through between these times on trading and non-trading days alike: no reminders, no Autopilot trades. Anything due then is skipped, not saved for later.">
+        <div className="flex flex-wrap items-center gap-3">
+          <input type="time" className="field num h-9 w-28 px-2 py-0" value={prefs.quietFrom ?? "14:00"} aria-label="Quiet from" disabled={prefs.quietOn === false} onChange={(e) => e.target.value && save({ ...prefs, quietFrom: e.target.value })} />
+          <span className="font-mono text-[11px] text-ink-4">to</span>
+          <input type="time" className="field num h-9 w-28 px-2 py-0" value={prefs.quietTo ?? "16:30"} aria-label="Quiet until" disabled={prefs.quietOn === false} onChange={(e) => e.target.value && save({ ...prefs, quietTo: e.target.value })} />
+          <Toggle checked={prefs.quietOn !== false} onChange={(v) => save({ ...prefs, quietOn: v })} label="Quiet while trading" />
+        </div>
+      </SRow>
       {KINDS.map(({ k, name, hint }) => (
         <SRow key={k} name={name} hint={hint}>
-          <Toggle checked={prefs[k] ?? true} onChange={(v) => save({ ...prefs, [k]: v })} label={name} />
+          <Toggle checked={(prefs[k] as boolean | undefined) ?? true} onChange={(v) => save({ ...prefs, [k]: v })} label={name} />
         </SRow>
       ))}
       <p className="mt-4 font-mono text-[10.5px] leading-[1.8] text-ink-4">It checks every hour from 07:00 to 22:30 and sends what's due; each one goes at most once a day. A normal trading day is about four (noon, before the window, after it, evening) plus any alerts. Nothing overnight. Times use your timezone in Profile.</p>

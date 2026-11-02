@@ -121,8 +121,12 @@ export type NotifySettings = {
   capsules: boolean;
   goals: boolean;
   ruleAlerts: boolean;
-  /** Autopilot trades: entries, exits, skips and failures. */
+  /** Autopilot trades: placed and closed. */
   autopilot?: boolean;
+  /** Quiet while trading: nothing at all between these times (your clock). */
+  quietOn?: boolean;
+  quietFrom?: string;
+  quietTo?: string;
 };
 
 export type Settings = {

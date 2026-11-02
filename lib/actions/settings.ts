@@ -136,7 +136,8 @@ export async function setAiEnabled(enabled: boolean) {
 export async function setNotify(v: NotifySettings) {
   await guard();
   const keys: (keyof NotifySettings)[] = ["autopilot", "morning", "checkin", "preSession", "close", "evening", "weekly", "capsules", "goals", "ruleAlerts"];
-  await saveSetting("notify", Object.fromEntries(keys.map((k) => [k, v[k] === true])) as NotifySettings);
+  const hhmm = (t: unknown, d: string) => (typeof t === "string" && /^([01]\d|2[0-3]):[0-5]\d$/.test(t) ? t : d);
+  await saveSetting("notify", { ...(Object.fromEntries(keys.map((k) => [k, v[k] === true])) as unknown as NotifySettings), quietOn: v.quietOn !== false, quietFrom: hhmm(v.quietFrom, "14:00"), quietTo: hhmm(v.quietTo, "16:30") });
   revalidatePath("/settings");
   return { ok: true };
 }

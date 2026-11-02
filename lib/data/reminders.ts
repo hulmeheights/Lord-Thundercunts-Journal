@@ -8,7 +8,7 @@ import { listLedger } from "./ledger";
 import { missionState } from "../analytics/mission";
 import { checkGoal } from "../analytics/goalcheck";
 import { evaluateRules } from "../analytics/rules";
-import { alertExpiry, capsuleReady, clockChange, morning, weekendLift, checkin, evening, goalNews, preSession, quiet, ruleAlerts, weekly, windowClosed, type GoalEvent, type Reminder, type RuleBreak } from "../analytics/notify";
+import { alertExpiry, tradingQuiet, capsuleReady, clockChange, morning, weekendLift, checkin, evening, goalNews, preSession, quiet, ruleAlerts, weekly, windowClosed, type GoalEvent, type Reminder, type RuleBreak } from "../analytics/notify";
 import { addDays, dayKey, fmtMinute, minuteOfDay, weekdayIndex, windowFor } from "../analytics/time";
 import { claimDaily, pushAll, subscriptionCount } from "../push";
 import { QUOTES } from "../content/quotes";
@@ -25,7 +25,7 @@ export async function sendDueReminders(now = new Date()): Promise<{ sent: string
   const tz = settings.profile.timezone;
   const day = dayKey(now, tz);
   const minute = minuteOfDay(now.toISOString(), tz);
-  if (quiet(minute)) return { sent };
+  if (quiet(minute) || tradingQuiet(n, minute)) return { sent };
 
   const [goals, ledger, entry] = await Promise.all([listGoals(), listLedger(), getJournalDay(day)]);
   const startOf = (g: (typeof goals)[number]) => g.startedOn ?? g.createdAt.slice(0, 10);
