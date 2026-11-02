@@ -187,6 +187,6 @@ export async function handleAlert(raw: string, a: Alert, now = new Date()): Prom
     }
   }
   await logEvent("info", `Entry (paper) ${head}`);
-  await botNotify(`Trade placed (paper) · ${head}\n${lines.join("\n")}`, { push: lines.some((l) => l.includes("(paper)")) });
+  await botNotify(`Trade placed (paper) · ${head}\n${lines.join("\n")}`);
   return { status: "entry" };
 }

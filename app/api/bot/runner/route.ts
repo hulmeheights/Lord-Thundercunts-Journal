@@ -112,6 +112,6 @@ export async function POST(req: Request) {
   await logEvent("info", `Your Mac handled ${head}: ${r.results.filter((x) => x.status === "open").length} placed`);
   const placed = r.results.filter((x) => x.status === "open").length;
   const failed = r.results.filter((x) => x.status === "error").length;
-  await botNotify(`${placed ? `Trade placed · ${head}` : `Not placed · ${head}`}${failed ? " (some failed)" : ""}\n${lines.join("\n") || "• no accounts switched on"}`, { push: placed > 0 });
+  await botNotify(`${placed ? `Trade placed · ${head}` : `Not placed · ${head}`}${failed ? " (some failed)" : ""}\n${lines.join("\n") || "• no accounts switched on"}`);
   return NextResponse.json({ ok: true });
 }
