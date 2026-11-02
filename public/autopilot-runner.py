@@ -205,7 +205,7 @@ def target_reached(card, balance):
 def run():
     cfg = load_config()
     base = cfg["url"].rstrip("/")
-    auth = {"Authorization": "Bearer " + cfg["token"], "X-Runner": f"{platform.node()[:40]} · bot {VERSION}"}
+    auth = {"Authorization": "Bearer " + cfg["token"], "X-Runner": f"{platform.node()[:40]} - bot {VERSION}"}
     ts = Topstep(cfg["user"], cfg["key"])
     log(f"Autopilot bot {VERSION} started for {base}")
     last_accounts = 0
@@ -405,7 +405,7 @@ def setup():
         print("  ✓ TopstepX login works")
     except Exception as e:
         sys.exit(f"  ✗ {e}")
-    code, _ = http("GET", url.rstrip("/") + "/api/bot/runner", headers={"Authorization": "Bearer " + token, "X-Runner": f"{platform.node()[:40]} · setup"}, timeout=35)
+    code, _ = http("GET", url.rstrip("/") + "/api/bot/runner", headers={"Authorization": "Bearer " + token, "X-Runner": f"{platform.node()[:40]} - setup"}, timeout=35)
     if code != 200:
         sys.exit(f"  ✗ The journal didn't accept the runner key ({code}). Make a new one in Autopilot and try again.")
     print("  ✓ Connected to your journal")

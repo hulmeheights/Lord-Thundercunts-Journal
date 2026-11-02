@@ -39,7 +39,8 @@ export async function GET(req: Request) {
   const nap = napSeconds(new Date());
   if (!(await runnerAuthed(req.headers.get("authorization")))) return NextResponse.json({ error: "unauthorised" }, { status: 401 });
   const sql = await db();
-  const info = (req.headers.get("x-runner") ?? "").slice(0, 120) || null;
+  // Headers are plain ASCII: anything else (e.g. a "·" from an older Mac program) becomes " - ".
+  const info = (req.headers.get("x-runner") ?? "").replace(/[^\x20-\x7e]+/g, " - ").replace(/\s+/g, " ").trim().slice(0, 120) || null;
   await sql`update bot_runner set last_seen = now(), info = coalesce(${info}, info) where id = 1`;
   if (nap > 0) return NextResponse.json({ alerts: [], wait: nap, context: await context() });
   const [{ mode }] = await sql<{ mode: string }[]>`select mode from bot_settings where id = 1`;
