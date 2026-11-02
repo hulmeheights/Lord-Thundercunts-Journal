@@ -4,7 +4,7 @@ import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { parseCsv } from "@/lib/import/csv";
 import { autoMap, detectShape, MAPPABLE_FIELDS, mapRows, SHAPE_LABEL, type Field as MapField, type Mapping } from "@/lib/import/formats";
-import type { DateOrder } from "@/lib/import/values";
+import { guessDateOrder, type DateOrder } from "@/lib/import/values";
 import { deleteImport, importChunk } from "@/lib/actions/import";
 import { feeResolver } from "@/lib/import/fees";
 import { fmtMoney, fmtPrice } from "@/lib/format";
@@ -74,6 +74,7 @@ export function ImportSheet({ tz, accounts, onDone }: { tz: string; accounts: st
     setFileName(file.name);
     setRows(parsed);
     setMapping(autoMap(parsed[0]!));
+    setDateOrder(guessDateOrder(parsed) ?? "MDY");
   };
 
   const preview = useMemo(() => {

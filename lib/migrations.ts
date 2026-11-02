@@ -661,4 +661,19 @@ export const MIGRATIONS: { version: number; sql: string }[] = [
       where c.deliver_on::text = '2027-01-25' and c.opened_at is null and c.goals @> '[{"kind": "net", "target": 10000}]';
     `,
   },
+  {
+    version: 32,
+    sql: /* sql */ `
+      -- One-off fix: two UK-dated exports imported on 2 Nov 2026 were read as 11 Feb. Swap day and month back
+      -- (both dates are on GMT, so the swap is exact) for those imports' February trades only.
+      update trades t set
+        entry_time = t.entry_time + (make_date(extract(year from t.entry_time at time zone 'UTC')::int, extract(day from t.entry_time at time zone 'UTC')::int, extract(month from t.entry_time at time zone 'UTC')::int) - (t.entry_time at time zone 'UTC')::date) * interval '1 day',
+        exit_time = t.exit_time + (make_date(extract(year from t.exit_time at time zone 'UTC')::int, extract(day from t.exit_time at time zone 'UTC')::int, extract(month from t.exit_time at time zone 'UTC')::int) - (t.exit_time at time zone 'UTC')::date) * interval '1 day'
+      where t.source = 'import'
+        and t.import_id in (select id from imports where created_at >= '2026-11-02' and created_at < '2026-11-03')
+        and t.entry_time >= '2026-02-01' and t.entry_time < '2026-03-01'
+        and extract(day from t.entry_time at time zone 'UTC') <= 12
+        and extract(day from t.exit_time at time zone 'UTC') <= 12;
+    `,
+  },
 ];

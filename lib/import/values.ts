@@ -91,3 +91,30 @@ export function parseSide(raw: string | undefined | null): "buy" | "sell" | null
   if (/^(s|sell|sold|sld|short|1|ask)$/.test(s) || s.startsWith("sell")) return "sell";
   return null;
 }
+
+/**
+ * Which way round a file writes its dates (02/11 = 2 Nov in the UK, 11 Feb in
+ * the US). Exports follow the account's locale, so it's decided once per file:
+ * any day above 12 settles it; if every date is ambiguous, the reading that
+ * puts the trades in the past and closest to today wins.
+ */
+export function guessDateOrder(rows: string[][], now = new Date()): DateOrder | null {
+  const re = /^(\d{1,2})[-/.](\d{1,2})[-/.](\d{2,4})\b/;
+  const found: [number, number, number][] = [];
+  for (const r of rows.slice(1)) {
+    for (const c of r) {
+      const m = re.exec(c.trim());
+      if (m) found.push([+m[1]!, +m[2]!, +m[3]! < 100 ? +m[3]! + 2000 : +m[3]!]);
+    }
+  }
+  if (!found.length) return null;
+  if (found.some(([a]) => a > 12)) return "DMY";
+  if (found.some(([, b]) => b > 12)) return "MDY";
+  const soon = now.getTime() + 2 * 86_400_000;
+  const score = (order: DateOrder) => {
+    const ts = found.map(([a, b, y]) => Date.UTC(y, (order === "MDY" ? a : b) - 1, order === "MDY" ? b : a));
+    if (ts.some((t) => t > soon)) return Infinity; // trades can't be in the future
+    return now.getTime() - Math.max(...ts);
+  };
+  return score("DMY") < score("MDY") ? "DMY" : "MDY";
+}

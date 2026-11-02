@@ -98,3 +98,14 @@ test("Tradovate-style negative money and Rithmic-style headers", () => {
   assert.equal(f.fees, 1);
   assert.equal(f.account, "LT123");
 });
+
+test("date order is decided per file: UK exports with only ambiguous days aren't read as US", async () => {
+  const { guessDateOrder } = await import("../lib/import/values");
+  const now = new Date("2026-11-02T18:00:00Z");
+  const uk = [["boughtTimestamp", "soldTimestamp"], ["02/11/2026 14:31:05", "02/11/2026 14:40:00"]];
+  assert.equal(guessDateOrder(uk, now), "DMY"); // 2 Nov, not 11 Feb
+  assert.equal(guessDateOrder([["t"], ["10/30/2026 14:31"]], now), "MDY");
+  assert.equal(guessDateOrder([["t"], ["30/10/2026 14:31"]], now), "DMY");
+  assert.equal(guessDateOrder([["t"], ["11/01/2026 14:31"]], now), "MDY"); // 1 Nov beats 11 Jan (closer to today)
+  assert.equal(guessDateOrder([["t"], ["2026-11-02 14:31"]], now), null);
+});
