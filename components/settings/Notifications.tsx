@@ -8,7 +8,7 @@ import { Note, SRow } from "./ui";
 import type { NotifySettings } from "@/lib/types";
 
 const KINDS: { k: keyof NotifySettings; name: string; hint: string }[] = [
-  { k: "autopilot", name: "Autopilot trades", hint: "Every time the bot acts, any time of day: trades placed (and on which accounts), exits with the P&L, anything skipped or failed and why, a missed signal, and a profit target reached." },
+  { k: "autopilot", name: "Autopilot trades", hint: "The moment a trade is placed (which accounts) and the moment it closes (the P&L), any time of day. Skips and anything else stay in Autopilot's log." },
   { k: "morning", name: "Prayer, gratitude and quotes", hint: "Every day at 9:00, and again at 15:00 on weekends: a moment to pray (to God or the universe), something to be thankful for, a picture to manifest, or a psychology quote. Never market talk at weekends." },
   { k: "checkin", name: "12:00 check-in", hint: "Trading days at noon: your window, no orders before it, today's plan (or a nudge to write one) and where your goals stand." },
   { k: "preSession", name: "Before your window", hint: "In the 90 minutes before it opens: how long to go, what's missing from your pre-session journal (plan, readiness, ritual) and your streak." },

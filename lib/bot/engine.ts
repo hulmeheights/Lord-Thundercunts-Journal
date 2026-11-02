@@ -94,7 +94,7 @@ export async function handleAlert(raw: string, a: Alert, now = new Date()): Prom
     if (closed.length) {
       const total = closed.reduce((s, r) => s + r.pnl, 0);
       await logEvent("info", `Exit ${d.dir} @ ${a.price}: ${closed.length} closed, ${money(total)}`);
-      await botNotify(`EXIT ${d.dir} @ ${a.price}\n${closed.map((r) => `• ${r.account_label}: ${money(r.pnl)}`).join("\n")}\nTotal: ${money(total)}`);
+      await botNotify(`Trade closed · ${money(total)}\n${d.dir} out @ ${a.price}\n${closed.map((r) => `• ${r.account_label}: ${money(r.pnl)}`).join("\n")}`, { push: true });
     } else await logEvent("info", `Exit ${d.dir} @ ${a.price}: nothing open to close`);
     if (mode === "paper") {
       const profit = await paperProfit();
@@ -136,7 +136,7 @@ export async function handleAlert(raw: string, a: Alert, now = new Date()): Prom
   if (mode === "off") {
     for (const acct of accts) await record(acct, "skipped", "Autopilot is off");
     await logEvent("info", `Entry skipped, Autopilot is off: ${head}`);
-    await botNotify(`SKIPPED (Autopilot off): ${head}`, { push: false });
+    await botNotify(`SKIPPED (Autopilot off): ${head}`);
     return { status: "off" };
   }
 
@@ -187,6 +187,6 @@ export async function handleAlert(raw: string, a: Alert, now = new Date()): Prom
     }
   }
   await logEvent("info", `Entry (paper) ${head}`);
-  await botNotify(`ENTRY (PAPER) ${head}\n${lines.join("\n")}`);
+  await botNotify(`Trade placed (paper) · ${head}\n${lines.join("\n")}`, { push: lines.some((l) => l.includes("(paper)")) });
   return { status: "entry" };
 }

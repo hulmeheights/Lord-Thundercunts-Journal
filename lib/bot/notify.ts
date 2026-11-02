@@ -20,18 +20,19 @@ export async function telegram(text: string): Promise<void> {
 export const telegramConfigured = () => !!(process.env.TELEGRAM_TOKEN?.trim() && process.env.TELEGRAM_CHAT_ID?.trim());
 
 /**
- * A trade event on your phone (the journal's own notifications) and on
- * Telegram if that's set up. The first line is the title. Phone pushes follow
- * the "Autopilot trades" switch in Settings → Notifications. Never throws.
+ * A bot event to Telegram (if set up), and to your phone only when asked:
+ * a trade placed or a trade finished, the moment it happens. The first line
+ * is the title. Phone pushes follow the "Autopilot trades" switch in
+ * Settings → Notifications. Never throws.
  */
 export async function botNotify(text: string, opts: { push?: boolean } = {}): Promise<void> {
   await telegram(text);
-  if (opts.push === false) return;
+  if (!opts.push) return;
   try {
     const [{ getSettings }, { pushAll }] = await Promise.all([import("../data/settings"), import("../push")]);
     if ((await getSettings()).notify.autopilot === false) return;
     const [title, ...rest] = text.split("\n");
-    await pushAll({ title: `Autopilot · ${title}`.slice(0, 120), body: rest.join("\n").slice(0, 400) || " ", url: "/autopilot#ledger", tag: `autopilot:${Date.now()}` });
+    await pushAll({ title: title.slice(0, 120), body: rest.join("\n").slice(0, 400) || " ", url: "/autopilot#ledger", tag: `autopilot:${Date.now()}` });
   } catch {
     // A missed notification must never stop a trade.
   }
