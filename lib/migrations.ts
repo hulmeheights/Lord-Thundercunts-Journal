@@ -650,4 +650,15 @@ export const MIGRATIONS: { version: number; sql: string }[] = [
       );
     `,
   },
+  {
+    version: 31,
+    sql: /* sql */ `
+      -- One-off, asked for: the letter opening 25 Jan 2027 counts its $10,000 goal as money paid out, not net P&L.
+      update capsules c set goals = (
+        select jsonb_agg(case when g->>'kind' = 'net' and (g->>'target')::numeric = 10000 then jsonb_set(g, '{kind}', '"paidOut"') else g end order by i)
+        from jsonb_array_elements(c.goals) with ordinality as x(g, i)
+      )
+      where c.deliver_on::text = '2027-01-25' and c.opened_at is null and c.goals @> '[{"kind": "net", "target": 10000}]';
+    `,
+  },
 ];
