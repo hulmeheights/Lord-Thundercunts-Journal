@@ -4,7 +4,7 @@ import { db } from "@/lib/db";
 import { randomToken } from "@/lib/crypto";
 import { claimAlerts, napSeconds, runnerAuthed } from "@/lib/bot/runner";
 import { dayPnl, logEvent, money, switchOff, toAccount, type AccountRow } from "@/lib/bot/engine";
-import { telegram } from "@/lib/bot/notify";
+import { botNotify } from "@/lib/bot/notify";
 import { newsAround } from "@/lib/bot/newsFeed";
 import { SESSION_LABEL, type Session } from "@/lib/bot/signal";
 
@@ -110,6 +110,8 @@ export async function POST(req: Request) {
   }
   const head = `${sig.dir} ${SESSION_LABEL[sig.session]} @ ~${sig.price} · SL ${sig.stop} · TP ${sig.target}`;
   await logEvent("info", `Your Mac handled ${head}: ${r.results.filter((x) => x.status === "open").length} placed`);
-  await telegram(`ENTRY ${head}\n${lines.join("\n") || "• no accounts switched on"}`);
+  const placed = r.results.filter((x) => x.status === "open").length;
+  const failed = r.results.filter((x) => x.status === "error").length;
+  await botNotify(`${failed ? "⚠ " : ""}${placed ? `ENTRY ${head}` : `NOT PLACED ${head}`}\n${lines.join("\n") || "• no accounts switched on"}`);
   return NextResponse.json({ ok: true });
 }

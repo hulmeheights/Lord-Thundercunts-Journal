@@ -3,7 +3,7 @@ import { db } from "../db";
 import { randomToken, sha256 } from "../crypto";
 import { bracketOk, gate, sessionOf, SESSION_LABEL, targetReached, tradingDayStart, type Alert, type BotAccount } from "./signal";
 import { runnerStatus } from "./runner";
-import { telegram } from "./notify";
+import { botNotify } from "./notify";
 import { newsBlock } from "./news";
 import { newsAround, refreshNews } from "./newsFeed";
 
@@ -30,7 +30,7 @@ export async function switchOff(acct: Pick<BotAccount, "id" | "label" | "profitT
   const r = await sql`update bot_accounts set enabled = false, passed_at = now() where id = ${acct.id} and enabled returning id`;
   if (!r.length) return;
   await logEvent("info", `${acct.label} reached its $${acct.profitTarget} profit target (${money(profit)}): switched off`);
-  await telegram(`🎯 ${acct.label} reached its profit target (${money(profit)}). Switched off: no more trades on it until you switch it back on.`);
+  await botNotify(`🎯 ${acct.label} reached its profit target (${money(profit)}). Switched off: no more trades on it until you switch it back on.`);
 }
 
 /** Paper profit per card since it was added: the paper book's stand-in for a balance. */
@@ -79,7 +79,7 @@ export async function handleAlert(raw: string, a: Alert, now = new Date()): Prom
 
   if (d.event === "flatten") {
     await logEvent("warn", "Flatten alert received: Autopilot can't close positions, so nothing was done. Check TopstepX.");
-    await telegram("FLATTEN received — Autopilot can't close positions. Check TopstepX.");
+    await botNotify("FLATTEN received — Autopilot can't close positions. Check TopstepX.");
     return { status: "ignored" };
   }
 
@@ -94,7 +94,7 @@ export async function handleAlert(raw: string, a: Alert, now = new Date()): Prom
     if (closed.length) {
       const total = closed.reduce((s, r) => s + r.pnl, 0);
       await logEvent("info", `Exit ${d.dir} @ ${a.price}: ${closed.length} closed, ${money(total)}`);
-      await telegram(`EXIT ${d.dir} @ ${a.price}\n${closed.map((r) => `• ${r.account_label}: ${money(r.pnl)}`).join("\n")}\nTotal: ${money(total)}`);
+      await botNotify(`EXIT ${d.dir} @ ${a.price}\n${closed.map((r) => `• ${r.account_label}: ${money(r.pnl)}`).join("\n")}\nTotal: ${money(total)}`);
     } else await logEvent("info", `Exit ${d.dir} @ ${a.price}: nothing open to close`);
     if (mode === "paper") {
       const profit = await paperProfit();
@@ -111,6 +111,13 @@ export async function handleAlert(raw: string, a: Alert, now = new Date()): Prom
   if (mode === "live") {
     const runner = await runnerStatus();
     await logEvent(runner.online ? "info" : "error", runner.online ? `Entry handed to your Mac: ${head}` : `Entry handed to your Mac, but it isn't connected: if it doesn't pick it up within 20 seconds, nothing is placed. ${head}`);
+    // If the Mac is off it never asks, so check here too: still waiting after 21 seconds = missed.
+    await new Promise((r) => setTimeout(r, 21_000));
+    const missed = await sql`update bot_signals set handoff = 'missed' where id = ${signalId} and handoff = 'waiting' returning id`;
+    if (missed.length) {
+      await logEvent("error", `Your Mac didn't pick up a live signal within 20 seconds: nothing placed. ${head}`);
+      await botNotify(`⚠ Your Mac missed a signal\n${head}\nNothing was placed. Check the Mac is on and online.`);
+    }
     return { status: "handed-to-mac" };
   }
 
@@ -118,7 +125,7 @@ export async function handleAlert(raw: string, a: Alert, now = new Date()): Prom
   let accts = rows.map(toAccount);
   if (!accts.length) {
     await logEvent("warn", `Entry skipped, no accounts switched on: ${head}`);
-    await telegram(`SKIPPED (no accounts on): ${head}`);
+    await botNotify(`SKIPPED (no accounts on): ${head}`);
     return { status: "no-accounts" };
   }
   const record = (acct: BotAccount, status: "open" | "skipped", reason: string | null) => sql`
@@ -129,7 +136,7 @@ export async function handleAlert(raw: string, a: Alert, now = new Date()): Prom
   if (mode === "off") {
     for (const acct of accts) await record(acct, "skipped", "Autopilot is off");
     await logEvent("info", `Entry skipped, Autopilot is off: ${head}`);
-    await telegram(`SKIPPED (Autopilot off): ${head}`);
+    await botNotify(`SKIPPED (Autopilot off): ${head}`, { push: false });
     return { status: "off" };
   }
 
@@ -153,7 +160,7 @@ export async function handleAlert(raw: string, a: Alert, now = new Date()): Prom
       accts = accts.filter((x) => !x.newsRule);
       if (!accts.length) {
         await logEvent("info", `Entry skipped, ${why}: ${head}`);
-        await telegram(`SKIPPED (${why}): ${head}`);
+        await botNotify(`SKIPPED (${why}): ${head}`);
         return { status: "news" };
       }
     }
@@ -180,6 +187,6 @@ export async function handleAlert(raw: string, a: Alert, now = new Date()): Prom
     }
   }
   await logEvent("info", `Entry (paper) ${head}`);
-  await telegram(`ENTRY (PAPER) ${head}\n${lines.join("\n")}`);
+  await botNotify(`ENTRY (PAPER) ${head}\n${lines.join("\n")}`);
   return { status: "entry" };
 }

@@ -8,6 +8,7 @@ import { Note, SRow } from "./ui";
 import type { NotifySettings } from "@/lib/types";
 
 const KINDS: { k: keyof NotifySettings; name: string; hint: string }[] = [
+  { k: "autopilot", name: "Autopilot trades", hint: "Every time the bot acts, any time of day: trades placed (and on which accounts), exits with the P&L, anything skipped or failed and why, a missed signal, and a profit target reached." },
   { k: "morning", name: "Prayer, gratitude and quotes", hint: "Every day at 9:00, and again at 15:00 on weekends: a moment to pray (to God or the universe), something to be thankful for, a picture to manifest, or a psychology quote. Never market talk at weekends." },
   { k: "checkin", name: "12:00 check-in", hint: "Trading days at noon: your window, no orders before it, today's plan (or a nudge to write one) and where your goals stand." },
   { k: "preSession", name: "Before your window", hint: "In the 90 minutes before it opens: how long to go, what's missing from your pre-session journal (plan, readiness, ritual) and your streak." },
@@ -172,7 +173,7 @@ export function Notifications({ initial, scheduled, recent = [], timezone }: { i
       </SRow>
       {KINDS.map(({ k, name, hint }) => (
         <SRow key={k} name={name} hint={hint}>
-          <Toggle checked={prefs[k]} onChange={(v) => save({ ...prefs, [k]: v })} label={name} />
+          <Toggle checked={prefs[k] ?? true} onChange={(v) => save({ ...prefs, [k]: v })} label={name} />
         </SRow>
       ))}
       <p className="mt-4 font-mono text-[10.5px] leading-[1.8] text-ink-4">It checks every hour from 07:00 to 22:30 and sends what's due; each one goes at most once a day. A normal trading day is about four (noon, before the window, after it, evening) plus any alerts. Nothing overnight. Times use your timezone in Profile.</p>

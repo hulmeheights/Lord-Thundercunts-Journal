@@ -121,6 +121,8 @@ export type NotifySettings = {
   capsules: boolean;
   goals: boolean;
   ruleAlerts: boolean;
+  /** Autopilot trades: entries, exits, skips and failures. */
+  autopilot?: boolean;
 };
 
 export type Settings = {

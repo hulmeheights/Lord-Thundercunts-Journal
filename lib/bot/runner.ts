@@ -68,7 +68,10 @@ export async function claimAlerts(): Promise<HandedAlert[]> {
     update bot_signals set handoff = 'missed' where handoff = 'waiting' and received_at < now() - interval '20 seconds' returning id
   `;
   if (missed.length) {
-    await sql`insert into bot_events (level, message) values ('error', ${`${missed.length} live ${missed.length === 1 ? "signal was" : "signals were"} not picked up by your Mac within 20 seconds: nothing placed`})`;
+    const msg = `${missed.length} live ${missed.length === 1 ? "signal was" : "signals were"} not picked up by your Mac within 20 seconds: nothing placed`;
+    await sql`insert into bot_events (level, message) values ('error', ${msg})`;
+    const { botNotify } = await import("./notify");
+    await botNotify(`⚠ Your Mac missed a signal\n${msg}. Check it's on and online.`);
   }
   const rows = await sql<{ id: string; dir: "LONG" | "SHORT"; price: number; stop: number; target: number; received_at: Date; age_ms: number }[]>`
     update bot_signals set handoff = 'claimed', claimed_at = now()
