@@ -32,7 +32,7 @@ import urllib.error
 import urllib.request
 from datetime import datetime
 
-VERSION = "2.0"
+VERSION = "2.1"
 TOPSTEP = os.environ.get("THUNDER_TOPSTEP_URL", "https://api.topstepx.com")  # override only for testing
 TICKET_TTL_MS = 20_000  # never place a ticket older than this: a late entry is a different trade
 HOME = os.path.expanduser("~")
@@ -148,6 +148,40 @@ class Topstep:
             },
         )
         return str(d.get("orderId", ""))
+
+    def snap(self, account_id, contract_id, direction, stop, target):
+        """
+        Moves the attached stop and target onto your script's exact prices, so a
+        late fill only changes the entry, never the levels. They stay Topstep's
+        own linked bracket (one cancels the other). A level already passed is
+        left where Topstep put it. Returns what moved, or why it couldn't.
+        """
+        fill = None
+        for _ in range(10):  # the fill and its bracket can take a moment to show
+            pos = [p for p in self.positions(account_id) if p.get("contractId") in (None, contract_id)]
+            orders = [o for o in (self.call("/api/Order/searchOpen", {"accountId": account_id}).get("orders") or []) if o.get("contractId") in (None, contract_id)]
+            fill = pos[0].get("averagePrice") if pos else None
+            stop_o = next((o for o in orders if o.get("type") == 4), None)
+            tp_o = next((o for o in orders if o.get("type") == 1), None)
+            if fill and stop_o and tp_o:
+                break
+            time.sleep(0.3)
+        else:
+            return "bracket not found at Topstep, left as placed"
+        long = direction == "LONG"
+        tick = lambda x: round(round(x * TICKS_PER_POINT) / TICKS_PER_POINT, 2)
+        done = []
+        if (stop < fill) if long else (stop > fill):
+            self.call("/api/Order/modify", {"accountId": account_id, "orderId": stop_o["id"], "size": stop_o.get("size"), "stopPrice": tick(stop)})
+            done.append(f"SL {tick(stop)}")
+        else:
+            done.append("SL left (fill already past it)")
+        if (target > fill) if long else (target < fill):
+            self.call("/api/Order/modify", {"accountId": account_id, "orderId": tp_o["id"], "size": tp_o.get("size"), "limitPrice": tick(target)})
+            done.append(f"TP {tick(target)}")
+        else:
+            done.append("TP left (fill already past it)")
+        return f"filled {fill}, " + ", ".join(done)
 
 
 # ── The rules (the same ones the journal shows you) ─────────────────────────
@@ -365,6 +399,10 @@ def handle(base, auth, ts, alert, ctx):
         try:
             oid = ts.place(m["id"], contract, alert["dir"], c["contracts"], stop_ticks, target_ticks, tag)
             log(f"PLACED {alert['dir']} {c['contracts']} MNQ on {c['label']} (order {oid})")
+            try:
+                log(f"  {c['label']}: {ts.snap(m['id'], contract, alert['dir'], alert['stop'], alert['target'])}")
+            except Exception as e:  # the bracket is still on, just at the fill's distance
+                log(f"  {c['label']}: couldn't move SL/TP to the script's prices ({e}); bracket kept as placed")
             return {"cardId": c["id"], "status": "open", "orderId": oid, "qty": c["contracts"]}
         except Exception as e:
             log(f"FAILED {alert['dir']} on {c['label']}: {e}")
