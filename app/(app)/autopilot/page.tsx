@@ -17,6 +17,11 @@ import { NewsMinutes } from "@/components/autopilot/NewsMinutes";
 import { newsAround, newsFreshness, refreshNews } from "@/lib/bot/newsFeed";
 import { windows } from "@/lib/bot/news";
 import { todayKey } from "@/lib/analytics/time";
+import { Seg } from "@/components/m/Seg";
+import { historyStats, tally, type Tally } from "@/lib/bot/history";
+import { liveRecord, trackRecord } from "@/lib/data/history";
+import { TrackImport } from "@/components/autopilot/TrackImport";
+import { WinRateChart } from "@/components/autopilot/WinRateChart";
 
 export const metadata = { title: "Autopilot" };
 
@@ -43,8 +48,38 @@ function book(trades: BotTradeView[]) {
   return { n: closed.length, winRate: closed.length ? won.length / closed.length : null, net: gw - gl, pf: gl > 0 ? gw / gl : closed.length ? Infinity : null };
 }
 
-export default async function AutopilotPage() {
-  const [settings, s, h] = await Promise.all([getSettings(), autopilotState(), headers()]);
+const pct = (x: number | null) => (x === null ? "—" : `${Math.round(x * 100)}%`);
+const pfText = (x: number | null) => (x === null ? "—" : Number.isFinite(x) ? x.toFixed(2) : "∞");
+
+/** One breakdown: name · trades · win rate (with a bar) · PF · net. */
+function Breakdown({ title, rows }: { title: string; rows: (Tally & { key: string; label?: string })[] }) {
+  return (
+    <div>
+      <div className="mb-2 font-mono text-[9.5px] tracking-[0.3em] text-ink-4 uppercase">{title}</div>
+      <ul>
+        {rows.map((r) => (
+          <li key={r.key} className={cn("grid grid-cols-[5.5rem_3.2rem_minmax(0,1fr)_3.2rem_5.5rem] items-center gap-x-3 border-b border-line py-1.5 font-mono text-[11px]", !r.n && "opacity-45")}>
+            <span className="truncate text-ink-2">{r.label ?? r.key}</span>
+            <span className="text-ink-4">{r.n}</span>
+            <span className="flex items-center gap-2">
+              <span className="relative h-[2px] flex-1 bg-line">
+                <i className={cn("absolute top-0 left-0 block h-[2px]", (r.winRate ?? 0) >= 0.5 ? "bg-pos" : "bg-gold")} style={{ width: `${(r.winRate ?? 0) * 100}%` }} />
+              </span>
+              <span className="w-9 text-right text-ink">{pct(r.winRate)}</span>
+            </span>
+            <span className="text-right text-ink-4">{pfText(r.pf)}</span>
+            <span className={cn("num text-right", r.net > 0 ? "text-pos" : r.net < 0 ? "text-neg" : "text-ink-4")}>{r.n ? fmtMoney(r.net, { sign: true }) : "—"}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+export default async function AutopilotPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
+  const sp = await searchParams;
+  const track: "tv" | "live" = sp.track === "live" ? "live" : "tv";
+  const [settings, s, h, record] = await Promise.all([getSettings(), autopilotState(), headers(), track === "tv" ? trackRecord("tv").then((r) => ({ ...r, perAccount: [] })) : liveRecord().then((r) => ({ ...r, imports: [] }))]);
   const setup = botSetup();
   const runner = await runnerStatus();
   await refreshNews();
@@ -72,7 +107,7 @@ export default async function AutopilotPage() {
 
   return (
     <>
-      <SectionIndex ids={["switch", "mac", "accounts", "news", "ledger", "setup", "log"]} />
+      <SectionIndex ids={["switch", "mac", "accounts", "news", "ledger", "record", "setup", "log"]} />
       <PageHead
         eyebrow="07 — Autopilot"
         title={
@@ -186,7 +221,65 @@ export default async function AutopilotPage() {
         </ul>
       </Section>
 
-      <Section id="setup" n={6} label="Setup" lead={<>Five minutes, <em>once</em>.</>}>
+      <Section id="record" n={6} label="Track record" lead={<>Every trade, <em>kept</em>.</>}>
+        <Seg
+          className="mb-6"
+          value={track}
+          options={[
+            { value: "tv", label: "Strategy · TradingView", href: "/autopilot?track=tv#record" },
+            { value: "live", label: "Live · your accounts", href: "/autopilot?track=live#record" },
+          ]}
+        />
+        {track === "tv" ? (
+          <TrackImport tz={tz} imports={record.imports} />
+        ) : (
+          <p className="max-w-2xl font-mono text-[11px] leading-[1.8] text-ink-4">Filled in by itself: every trade the bot takes on your Topstep accounts, from the moment it closes. One signal counts as one trade (P&amp;L added across accounts); each account is broken down below.</p>
+        )}
+        {record.trades.length === 0 ? (
+          <p className="mt-8 font-mono text-[11.5px] text-ink-3">{track === "tv" ? "No strategy trades yet. Import your first TradingView export above." : "No live trades closed yet. They appear here by themselves."}</p>
+        ) : (
+          (() => {
+            const st = historyStats(record.trades, tz);
+            const d = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString("en-GB", { timeZone: tz, day: "numeric", month: "short", year: "numeric" }) : "");
+            return (
+              <div className="mt-10">
+                <div className="flex flex-wrap items-baseline gap-x-8 gap-y-2 font-mono text-[12px]">
+                  <span className="num text-[28px] text-ink">{pct(st.all.winRate)}</span>
+                  <span className={cn("num text-[20px]", st.all.net > 0 ? "text-pos" : st.all.net < 0 ? "text-neg" : "text-ink")}>{fmtMoney(st.all.net, { sign: true })}</span>
+                  <span className="text-ink-3">
+                    {st.all.n} trades · {st.all.won} won · PF {pfText(st.all.pf)}
+                    {st.all.avgWin !== null && ` · avg win ${fmtMoney(st.all.avgWin)}`}
+                    {st.all.avgLoss !== null && ` · avg loss ${fmtMoney(st.all.avgLoss)}`}
+                  </span>
+                  <span className="text-ink-4">
+                    {d(st.first)} – {d(st.last)}
+                  </span>
+                </div>
+                {st.all.n >= 2 && (
+                  <div className="mt-8">
+                    <div className="mb-2 font-mono text-[9.5px] tracking-[0.3em] text-ink-4 uppercase">
+                      Win rate over time · <span className="text-pos">all trades</span> · <span className="text-gold">last 20</span>
+                    </div>
+                    <WinRateChart {...st.over} />
+                  </div>
+                )}
+                <div className="mt-10 grid gap-x-12 gap-y-10 lg:grid-cols-2">
+                  <Breakdown title="By session (New York time)" rows={st.sessions.map((r) => ({ ...r, label: SESSION_LABEL[r.key] }))} />
+                  <Breakdown title="By hour (your time)" rows={st.hours} />
+                  <Breakdown title="By day (your time)" rows={st.weekdays} />
+                  <Breakdown title="Long or short" rows={st.dirs.map((r) => ({ ...r, label: r.key === "LONG" ? "Long" : "Short" }))} />
+                  <Breakdown title="By month" rows={st.months.map((r) => ({ ...r, label: new Date(`${r.key}-01T12:00:00Z`).toLocaleDateString("en-GB", { month: "short", year: "2-digit" }) }))} />
+                  <Breakdown title="By week (starting Monday)" rows={st.weeks.slice(0, 12).map((r) => ({ ...r, label: new Date(`${r.key}T12:00:00Z`).toLocaleDateString("en-GB", { day: "numeric", month: "short" }) }))} />
+                  {track === "live" && record.perAccount.length > 0 && <Breakdown title="By account" rows={[...new Set(record.perAccount.map((t) => t.account ?? "—"))].map((a) => ({ key: a, ...tally(record.perAccount.filter((t) => (t.account ?? "—") === a)) }))} />}
+                </div>
+                <p className="mt-6 font-mono text-[10px] text-ink-4">Columns: trades · win rate · profit factor · net P&amp;L{track === "live" ? " (from your real fill to the exit, before Topstep fees)" : " (after the strategy's commission)"}.</p>
+              </div>
+            );
+          })()
+        )}
+      </Section>
+
+      <Section id="setup" n={7} label="Setup" lead={<>Five minutes, <em>once</em>.</>}>
         <div className="grid gap-12 lg:grid-cols-2">
           <div>
             <ul className="space-y-2.5">
@@ -217,7 +310,7 @@ export default async function AutopilotPage() {
         </div>
       </Section>
 
-      <Section id="log" n={7} label="Log">
+      <Section id="log" n={8} label="Log">
         <ul>
           {s.events.length === 0 && <li className="font-mono text-[11.5px] text-ink-3">Quiet so far.</li>}
           {s.events.map((e, i) => (

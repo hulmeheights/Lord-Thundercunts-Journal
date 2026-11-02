@@ -617,4 +617,37 @@ export const MIGRATIONS: { version: number; sql: string }[] = [
       alter table bot_settings add column if not exists balances_due timestamptz;
     `,
   },
+  {
+    version: 30,
+    sql: /* sql */ `
+      -- Track record: imported TradingView and TopstepX trade lists, kept for good (repeats ignored).
+      create table if not exists bot_history (
+        id text primary key,
+        source text not null check (source in ('tv', 'topstep')),
+        import_id text,
+        account text,
+        symbol text,
+        dir text not null check (dir in ('LONG', 'SHORT')),
+        qty float8 not null default 1,
+        entry_at timestamptz not null,
+        exit_at timestamptz,
+        entry_price float8,
+        exit_price float8,
+        pnl float8 not null,
+        session text not null,
+        signal text,
+        created_at timestamptz not null default now()
+      );
+      create index if not exists bot_history_source_idx on bot_history (source, entry_at);
+      create table if not exists bot_history_imports (
+        id text primary key,
+        source text not null,
+        file_name text,
+        account text,
+        rows int not null default 0,
+        added int not null default 0,
+        created_at timestamptz not null default now()
+      );
+    `,
+  },
 ];

@@ -32,7 +32,7 @@ import urllib.error
 import urllib.request
 from datetime import datetime
 
-VERSION = "2.1"
+VERSION = "2.2"
 TOPSTEP = os.environ.get("THUNDER_TOPSTEP_URL", "https://api.topstepx.com")  # override only for testing
 TICKET_TTL_MS = 20_000  # never place a ticket older than this: a late entry is a different trade
 HOME = os.path.expanduser("~")
@@ -167,7 +167,7 @@ class Topstep:
                 break
             time.sleep(0.3)
         else:
-            return "bracket not found at Topstep, left as placed"
+            return fill, "bracket not found at Topstep, left as placed"
         long = direction == "LONG"
         tick = lambda x: round(round(x * TICKS_PER_POINT) / TICKS_PER_POINT, 2)
         done = []
@@ -181,7 +181,7 @@ class Topstep:
             done.append(f"TP {tick(target)}")
         else:
             done.append("TP left (fill already past it)")
-        return f"filled {fill}, " + ", ".join(done)
+        return fill, f"filled {fill}, " + ", ".join(done)
 
 
 # ── The rules (the same ones the journal shows you) ─────────────────────────
@@ -399,11 +399,16 @@ def handle(base, auth, ts, alert, ctx):
         try:
             oid = ts.place(m["id"], contract, alert["dir"], c["contracts"], stop_ticks, target_ticks, tag)
             log(f"PLACED {alert['dir']} {c['contracts']} MNQ on {c['label']} (order {oid})")
+            fill = None
             try:
-                log(f"  {c['label']}: {ts.snap(m['id'], contract, alert['dir'], alert['stop'], alert['target'])}")
+                fill, note = ts.snap(m["id"], contract, alert["dir"], alert["stop"], alert["target"])
+                log(f"  {c['label']}: {note}")
             except Exception as e:  # the bracket is still on, just at the fill's distance
                 log(f"  {c['label']}: couldn't move SL/TP to the script's prices ({e}); bracket kept as placed")
-            return {"cardId": c["id"], "status": "open", "orderId": oid, "qty": c["contracts"]}
+            out = {"cardId": c["id"], "status": "open", "orderId": oid, "qty": c["contracts"]}
+            if isinstance(fill, (int, float)) and fill > 0:
+                out["fill"] = float(fill)
+            return out
         except Exception as e:
             log(f"FAILED {alert['dir']} on {c['label']}: {e}")
             return {"cardId": c["id"], "status": "error", "reason": str(e)[:400], "qty": c["contracts"]}

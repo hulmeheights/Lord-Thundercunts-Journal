@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { assertSession } from "../auth/session";
 import { db } from "../db";
-import { randomToken } from "../crypto";
+import { randomToken, sha256 } from "../crypto";
 import { botSetup } from "../bot/config";
 import { logEvent } from "../bot/engine";
 import { createRunnerToken, runnerStatus } from "../bot/runner";
@@ -133,4 +133,75 @@ export async function newRunnerKey(): Promise<{ key?: string; error?: string }> 
   } catch (e) {
     return { error: e instanceof Error ? e.message : String(e) };
   }
+}
+
+// ── Track record imports ────────────────────────────────────────────────────
+
+const HistImportId = z.string().regex(/^bh_[A-Za-z0-9_-]{6,40}$/);
+const HistRow = z.object({
+  key: z.string().min(1).max(400),
+  entryAt: z.string().datetime({ offset: true }),
+  exitAt: z.string().datetime({ offset: true }).nullable(),
+  dir: z.enum(["LONG", "SHORT"]),
+  entry: z.number().finite().nullable(),
+  exit: z.number().finite().nullable(),
+  qty: z.number().positive().max(10_000),
+  pnl: z.number().finite(),
+  session: z.enum(["NYAM", "NYPM", "LON", "ASIA", "OTHER"]),
+  account: z.string().max(120).nullable(),
+  symbol: z.string().max(40).nullable(),
+  signal: z.string().max(120).nullable(),
+});
+const HistChunk = z.object({
+  importId: HistImportId,
+  source: z.literal("tv"),
+  fileName: z.string().max(200).nullish(),
+  account: z.string().max(120).nullish(),
+  trades: z.array(HistRow).min(1).max(1000),
+});
+
+/** One chunk of an imported trade list. Trades already kept are ignored, so the same export can go in again safely. */
+export async function importHistory(input: z.input<typeof HistChunk>) {
+  await assertSession();
+  return safely(async () => {
+    const p = HistChunk.parse(input);
+    const sql = await db();
+    const rows = p.trades.map((t) => ({
+      id: `bh:${p.source}:${sha256(t.key).slice(0, 28)}`,
+      source: p.source,
+      import_id: p.importId,
+      account: t.account,
+      symbol: t.symbol,
+      dir: t.dir,
+      qty: t.qty,
+      entry_at: new Date(t.entryAt),
+      exit_at: t.exitAt ? new Date(t.exitAt) : null,
+      entry_price: t.entry,
+      exit_price: t.exit,
+      pnl: t.pnl,
+      session: t.session,
+      signal: t.signal,
+    }));
+    const added = await sql`insert into bot_history ${sql(rows)} on conflict (id) do nothing returning id`;
+    await sql`
+      insert into bot_history_imports (id, source, file_name, account, rows, added)
+      values (${p.importId}, ${p.source}, ${p.fileName ?? null}, ${p.account ?? null}, ${rows.length}, ${added.length})
+      on conflict (id) do update set rows = bot_history_imports.rows + excluded.rows, added = bot_history_imports.added + excluded.added
+    `;
+    done();
+    return { ok: true as const, added: added.length, repeats: rows.length - added.length };
+  });
+}
+
+/** Undo one import: the trades it added leave the track record (only the journal changes). */
+export async function deleteHistoryImport(id: string) {
+  await assertSession();
+  return safely(async () => {
+    const importId = HistImportId.parse(id);
+    const sql = await db();
+    const gone = await sql`delete from bot_history where import_id = ${importId} returning id`;
+    await sql`delete from bot_history_imports where id = ${importId}`;
+    done();
+    return { ok: true as const, removed: gone.length };
+  });
 }

@@ -63,6 +63,8 @@ const Result = z.object({
   status: z.enum(["open", "skipped", "error"]),
   reason: z.string().max(500).nullish(),
   orderId: z.string().max(40).nullish(),
+  /** The real fill price at Topstep (bot 2.2+), so the book's P&L starts from where you actually got in. */
+  fill: z.number().finite().positive().nullish(),
   qty: z.number().int().min(1).max(50),
 });
 const Passed = z.object({ cardId: z.string().max(60), profit: z.number() });
@@ -103,7 +105,7 @@ export async function POST(req: Request) {
     const label = cards.get(x.cardId)?.label ?? "account";
     await sql`
       insert into bot_trades (id, signal_id, account_id, account_label, mode, session, dir, qty, entry_price, stop_price, target_price, status, reason, order_id, entered_at)
-      values (${`bt_${randomToken(10)}`}, ${sig.id}, ${cards.has(x.cardId) ? x.cardId : null}, ${label}, 'live', ${sig.session}, ${sig.dir}, ${x.qty}, ${sig.price}, ${sig.stop}, ${sig.target}, ${x.status}, ${x.reason ?? null}, ${x.orderId ?? null}, ${sig.received_at})
+      values (${`bt_${randomToken(10)}`}, ${sig.id}, ${cards.has(x.cardId) ? x.cardId : null}, ${label}, 'live', ${sig.session}, ${sig.dir}, ${x.qty}, ${x.fill ?? sig.price}, ${sig.stop}, ${sig.target}, ${x.status}, ${x.reason ?? null}, ${x.orderId ?? null}, ${sig.received_at})
     `;
     lines.push(x.status === "open" ? `• ${label}: ${x.qty} MNQ ✓` : `• ${label}: ${x.status === "error" ? "FAILED" : "skipped"} (${x.reason ?? "no reason"})`);
     if (x.status === "error") await logEvent("error", `Order failed on ${label} (from your Mac): ${x.reason ?? "unknown"}`);
