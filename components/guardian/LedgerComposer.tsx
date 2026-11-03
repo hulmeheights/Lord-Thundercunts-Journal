@@ -42,7 +42,7 @@ const preset = "inline-flex h-9 items-center border px-3.5 font-mono text-[9.5px
 const firmChip = "border-b pb-1 font-mono text-[9px] tracking-[0.18em] uppercase transition-colors duration-300";
 
 /** "+ Add an entry": a calm, collapsible form with quick presets. */
-export function LedgerComposer({ count, today, firms, accounts }: { count: number; today: string; firms: string[]; accounts: string[] }) {
+export function LedgerComposer({ count, today, firms, accounts, book = "manual" }: { count: number; today: string; firms: string[]; accounts: string[]; book?: "manual" | "autopilot" }) {
   const uid = useId().replace(/:/g, "");
   const amountRef = useRef<HTMLInputElement>(null);
   const firmRef = useRef<HTMLInputElement>(null);
@@ -81,7 +81,7 @@ export function LedgerComposer({ count, today, firms, accounts }: { count: numbe
     }
     start(async () => {
       try {
-        const r = await addLedgerEntry({ day: f.day, firm: f.firm, account: f.account || null, kind: f.kind, amount: result ? 0 : amount!, qty, note: f.note || null });
+        const r = await addLedgerEntry({ day: f.day, firm: f.firm, account: f.account || null, kind: f.kind, amount: result ? 0 : amount!, qty, note: f.note || null, book });
         if (r.ok) {
           const what = result
             ? `${qty} ${KIND_LABEL[f.kind].toLowerCase()}`
@@ -105,7 +105,7 @@ export function LedgerComposer({ count, today, firms, accounts }: { count: numbe
               Nothing on the books <em>yet</em>.
             </p>
             <p className="mt-5 max-w-[46ch] font-mono text-[12px] leading-[1.9] text-ink-3">
-              Log every evaluation, reset, activation and data fee, every payout — and mark each account passed or blown. Guardian keeps the
+              Log every evaluation, reset, activation and data fee, every payout — and mark each account passed or blown. {book === "autopilot" ? "This is the bot's own ledger, kept apart from Guardian's: it" : "Guardian"} keeps the
               scoreboard and the running sum, so you always know your pass rate and whether the evals are paying for themselves.
             </p>
           </div>

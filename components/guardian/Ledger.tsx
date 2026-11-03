@@ -168,12 +168,18 @@ export function LedgerSection({
   n,
   today,
   firms,
+  id = "ledger",
+  book = "manual",
+  label = "The ledger",
 }: {
   entries: LedgerEntry[];
   summary: LedgerSummary;
   n: number;
   today: string;
   firms: string[];
+  id?: string;
+  book?: "manual" | "autopilot";
+  label?: string;
 }) {
   const s = summary;
   const groups = groupByMonth(entries);
@@ -200,9 +206,9 @@ export function LedgerSection({
 
   return (
     <Section
-      id="ledger"
+      id={id}
       n={n}
-      label="The ledger"
+      label={label}
       aside={s.count ? <span className="eyebrow max-sm:hidden">since {monthLabel(s.firstDay!.slice(0, 7), true)}</span> : null}
       lead={
         <>
@@ -357,8 +363,8 @@ export function LedgerSection({
         </>
       )}
 
-      <div id="ledger-entries" className={cn("scroll-mt-24", s.count > 0 && "mt-[clamp(4.5rem,11vh,8rem)]")}>
-        <LedgerComposer count={s.count} today={today} firms={firms} accounts={accounts} />
+      <div id={`${id}-entries`} className={cn("scroll-mt-24", s.count > 0 && "mt-[clamp(4.5rem,11vh,8rem)]")}>
+        <LedgerComposer count={s.count} today={today} firms={firms} accounts={accounts} book={book} />
 
         {recent.map((g, i) => (
           <Month key={g.month} month={g.month} net={g.net} entries={g.entries} first={i === 0} />

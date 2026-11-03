@@ -21,6 +21,9 @@ import { Seg } from "@/components/m/Seg";
 import { historyStats, tally, type Tally } from "@/lib/bot/history";
 import { liveRecord, trackRecord } from "@/lib/data/history";
 import { TrackImport } from "@/components/autopilot/TrackImport";
+import { listLedger } from "@/lib/data/ledger";
+import { FIRM_SUGGESTIONS, summarizeLedger } from "@/lib/analytics/ledger";
+import { LedgerSection } from "@/components/guardian/Ledger";
 import { WinRateChart } from "@/components/autopilot/WinRateChart";
 
 export const metadata = { title: "Autopilot" };
@@ -79,7 +82,7 @@ function Breakdown({ title, rows }: { title: string; rows: (Tally & { key: strin
 export default async function AutopilotPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const sp = await searchParams;
   const track: "tv" | "live" = sp.track === "live" ? "live" : "tv";
-  const [settings, s, h, record] = await Promise.all([getSettings(), autopilotState(), headers(), track === "tv" ? trackRecord("tv").then((r) => ({ ...r, perAccount: [] })) : liveRecord().then((r) => ({ ...r, imports: [] }))]);
+  const [settings, s, h, ledger, record] = await Promise.all([getSettings(), autopilotState(), headers(), listLedger("autopilot"), track === "tv" ? trackRecord("tv").then((r) => ({ ...r, perAccount: [] })) : liveRecord().then((r) => ({ ...r, imports: [] }))]);
   const setup = botSetup();
   const runner = await runnerStatus();
   await refreshNews();
@@ -107,7 +110,7 @@ export default async function AutopilotPage({ searchParams }: { searchParams: Pr
 
   return (
     <>
-      <SectionIndex ids={["switch", "mac", "accounts", "news", "ledger", "record", "setup", "log"]} />
+      <SectionIndex ids={["switch", "mac", "accounts", "news", "ledger", "record", "evals", "setup", "log"]} />
       <PageHead
         eyebrow="07 — Autopilot"
         title={
@@ -279,7 +282,9 @@ export default async function AutopilotPage({ searchParams }: { searchParams: Pr
         )}
       </Section>
 
-      <Section id="setup" n={7} label="Setup" lead={<>Five minutes, <em>once</em>.</>}>
+      <LedgerSection id="evals" book="autopilot" label="Evals & payouts" n={7} entries={ledger} summary={summarizeLedger(ledger)} today={todayKey(tz)} firms={[...new Set(["Topstep", ...ledger.map((e) => e.firm), ...FIRM_SUGGESTIONS])]} />
+
+      <Section id="setup" n={8} label="Setup" lead={<>Five minutes, <em>once</em>.</>}>
         <div className="grid gap-12 lg:grid-cols-2">
           <div>
             <ul className="space-y-2.5">
@@ -310,7 +315,7 @@ export default async function AutopilotPage({ searchParams }: { searchParams: Pr
         </div>
       </Section>
 
-      <Section id="log" n={8} label="Log">
+      <Section id="log" n={9} label="Log">
         <ul>
           {s.events.length === 0 && <li className="font-mono text-[11.5px] text-ink-3">Quiet so far.</li>}
           {s.events.map((e, i) => (

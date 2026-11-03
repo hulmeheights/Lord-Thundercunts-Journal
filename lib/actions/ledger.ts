@@ -29,6 +29,7 @@ const Entry = z
     .pipe(z.string().max(80))
     .transform((s) => s || null),
   kind: z.enum(LEDGER_KINDS),
+  book: z.enum(["manual", "autopilot"]).default("manual"),
   amount: z
     .number()
     .finite()
@@ -59,6 +60,7 @@ export async function addLedgerEntry(input: LedgerInput): Promise<LedgerResult> 
   }
   const saved = await insertLedgerEntry(parsed.data);
   revalidatePath("/guardian");
+  revalidatePath("/autopilot");
   return { ok: true, id: saved.id };
 }
 
@@ -67,5 +69,6 @@ export async function deleteLedgerEntry(id: string): Promise<{ ok: boolean }> {
   const safe = z.string().regex(/^led_[A-Za-z0-9_-]{1,40}$/).parse(id);
   const ok = await removeEntry(safe);
   revalidatePath("/guardian");
+  revalidatePath("/autopilot");
   return { ok };
 }

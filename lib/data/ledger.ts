@@ -29,26 +29,32 @@ function rowToEntry(r: LedgerRow): LedgerEntry {
   };
 }
 
-/** Every ledger entry, newest first. A single owner keeps hundreds at most, so no paging. */
-export async function listLedger(): Promise<LedgerEntry[]> {
+export type LedgerBook = "manual" | "autopilot";
+
+/**
+ * Ledger entries, newest first. Guardian keeps "manual", Autopilot keeps its
+ * own; goals, letters and totals read "all". Hundreds at most, so no paging.
+ */
+export async function listLedger(book: LedgerBook | "all" = "all"): Promise<LedgerEntry[]> {
   const sql = await db();
   const rows = await sql<LedgerRow[]>`
     select id, day, firm, account, kind, amount, qty, note, created_at
     from prop_ledger
+    where ${book === "all"} or book = ${book}
     order by day desc, created_at desc
     limit 2000
   `;
   return rows.map(rowToEntry);
 }
 
-export type NewLedgerEntry = Omit<LedgerEntry, "id" | "createdAt">;
+export type NewLedgerEntry = Omit<LedgerEntry, "id" | "createdAt"> & { book?: LedgerBook };
 
 export async function insertLedgerEntry(e: NewLedgerEntry): Promise<LedgerEntry> {
   const sql = await db();
   const id = `led_${randomToken(12)}`;
   const rows = await sql<LedgerRow[]>`
-    insert into prop_ledger (id, day, firm, account, kind, amount, qty, note)
-    values (${id}, ${e.day}, ${e.firm}, ${e.account}, ${e.kind}, ${e.amount.toFixed(2)}, ${e.qty}, ${e.note})
+    insert into prop_ledger (id, day, firm, account, kind, amount, qty, note, book)
+    values (${id}, ${e.day}, ${e.firm}, ${e.account}, ${e.kind}, ${e.amount.toFixed(2)}, ${e.qty}, ${e.note}, ${e.book ?? "manual"})
     returning id, day, firm, account, kind, amount, qty, note, created_at
   `;
   return rowToEntry(rows[0]!);

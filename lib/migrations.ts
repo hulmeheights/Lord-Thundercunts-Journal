@@ -676,4 +676,13 @@ export const MIGRATIONS: { version: number; sql: string }[] = [
         and extract(day from t.exit_time at time zone 'UTC') <= 12;
     `,
   },
+  {
+    version: 33,
+    sql: /* sql */ `
+      -- Autopilot keeps its own eval ledger (evals, passes, payouts), apart from Guardian's.
+      alter table prop_ledger add column if not exists book text not null default 'manual';
+      alter table prop_ledger drop constraint if exists prop_ledger_book_check;
+      alter table prop_ledger add constraint prop_ledger_book_check check (book in ('manual', 'autopilot'));
+    `,
+  },
 ];

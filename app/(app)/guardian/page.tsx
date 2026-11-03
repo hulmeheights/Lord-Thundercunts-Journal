@@ -34,7 +34,7 @@ export default async function GuardianPage() {
   const [trades, accounts, ledger, history, journals] = await Promise.all([
     prop.enabled ? listTrades({ since: new Date(`${addDays(prop.startDate, -1)}T00:00:00Z`) }) : Promise.resolve([]),
     listBrokerAccounts(),
-    listLedger(),
+    listLedger("manual"),
     listTrades({ since: new Date(`${from}T00:00:00Z`) }),
     listJournalDays(from, today),
   ]);
