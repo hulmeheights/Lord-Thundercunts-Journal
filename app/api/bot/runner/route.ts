@@ -115,5 +115,17 @@ export async function POST(req: Request) {
   const placed = r.results.filter((x) => x.status === "open").length;
   const failed = r.results.filter((x) => x.status === "error").length;
   await botNotify(`${placed ? `Trade placed · ${head}` : `Not placed · ${head}`}${failed ? " (some failed)" : ""}\n${lines.join("\n") || "• no accounts switched on"}`);
+  // A card that's switched on but couldn't place is the one thing (besides a close) worth a phone push.
+  if (failed) {
+    const why = r.results
+      .filter((x) => x.status === "error")
+      .map((x) => {
+        const label = cards.get(x.cardId)?.label ?? "a card";
+        const fix = /Auto OCO/i.test(x.reason ?? "") ? "turn on Auto OCO Brackets for this account in TopstepX settings" : (x.reason ?? "unknown").slice(0, 120);
+        return `${label}: ${fix}`;
+      })
+      .join("\n");
+    await botNotify(`⚠ Order failed on ${failed} ${failed === 1 ? "account" : "accounts"}\n${why}`, { push: true, telegram: false });
+  }
   return NextResponse.json({ ok: true });
 }

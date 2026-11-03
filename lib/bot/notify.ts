@@ -25,8 +25,8 @@ export const telegramConfigured = () => !!(process.env.TELEGRAM_TOKEN?.trim() &&
  * is the title. Phone pushes follow the "Autopilot trades" switch in
  * Settings → Notifications. Never throws.
  */
-export async function botNotify(text: string, opts: { push?: boolean } = {}): Promise<void> {
-  await telegram(text);
+export async function botNotify(text: string, opts: { push?: boolean; telegram?: boolean } = {}): Promise<void> {
+  if (opts.telegram !== false) await telegram(text);
   if (!opts.push) return;
   try {
     const [{ getSettings }, { pushAll }] = await Promise.all([import("../data/settings"), import("../push")]);
