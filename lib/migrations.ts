@@ -685,4 +685,22 @@ export const MIGRATIONS: { version: number; sql: string }[] = [
       alter table prop_ledger add constraint prop_ledger_book_check check (book in ('manual', 'autopilot'));
     `,
   },
+  {
+    version: 34,
+    sql: /* sql */ `
+      -- One-off repair: imported trades whose day and month were read the wrong way round. A trade is moved only
+      -- when the swapped date is within 2 days of its import and the stored one is weeks away from it.
+      with bad as (
+        select t.id from trades t join imports i on i.id = t.import_id
+        where t.source = 'import' and i.created_at >= '2026-11-01'
+          and extract(day from t.entry_time at time zone 'UTC') <= 12 and extract(day from t.exit_time at time zone 'UTC') <= 12
+          and abs((t.entry_time at time zone 'UTC')::date - (i.created_at at time zone 'UTC')::date) > 20
+          and abs(make_date(extract(year from t.entry_time at time zone 'UTC')::int, extract(day from t.entry_time at time zone 'UTC')::int, extract(month from t.entry_time at time zone 'UTC')::int) - (i.created_at at time zone 'UTC')::date) <= 2
+      )
+      update trades t set
+        entry_time = t.entry_time + (make_date(extract(year from t.entry_time at time zone 'UTC')::int, extract(day from t.entry_time at time zone 'UTC')::int, extract(month from t.entry_time at time zone 'UTC')::int) - (t.entry_time at time zone 'UTC')::date) * interval '1 day',
+        exit_time = t.exit_time + (make_date(extract(year from t.exit_time at time zone 'UTC')::int, extract(day from t.exit_time at time zone 'UTC')::int, extract(month from t.exit_time at time zone 'UTC')::int) - (t.exit_time at time zone 'UTC')::date) * interval '1 day'
+      from bad where t.id = bad.id;
+    `,
+  },
 ];

@@ -77,10 +77,24 @@ export function ImportSheet({ tz, accounts, onDone }: { tz: string; accounts: st
     setDateOrder(guessDateOrder(parsed) ?? "MDY");
   };
 
-  const preview = useMemo(() => {
-    if (!rows || !mapping) return null;
-    return mapRows(rows, { tz, dateOrder, mapping, feePerContract: feeResolver(feeMode, Number(fee) || 0) });
+  // The order actually used: if the chosen one puts the trades weeks away while the other puts them in
+  // the last few days, the file is almost certainly the other way round (02/11 = 2 Nov, not 11 Feb).
+  const { preview, flipped } = useMemo(() => {
+    if (!rows || !mapping) return { preview: null, flipped: false };
+    const opts = { tz, mapping, feePerContract: feeResolver(feeMode, Number(fee) || 0) };
+    const chosen = mapRows(rows, { ...opts, dateOrder });
+    const other = mapRows(rows, { ...opts, dateOrder: dateOrder === "MDY" ? "DMY" : "MDY" });
+    const newest = (r: typeof chosen) => Math.max(...r.items.map((i) => Date.parse(i.kind === "trade" ? i.exitTime : i.time)).filter(Number.isFinite));
+    const away = (t: number) => (Number.isFinite(t) ? Math.abs(Date.now() - t) / 86_400_000 : Infinity);
+    const wrong = away(newest(chosen)) > 20 && away(newest(other)) <= 3;
+    return { preview: wrong ? other : chosen, flipped: wrong };
   }, [rows, mapping, tz, dateOrder, fee, feeMode]);
+  const range = useMemo(() => {
+    const ts = (preview?.items ?? []).map((i) => (i.kind === "trade" ? i.entryTime : i.time)).sort();
+    if (!ts.length) return null;
+    const d = (iso: string) => new Date(iso).toLocaleDateString("en-GB", { timeZone: tz, day: "numeric", month: "short", year: "numeric" });
+    return d(ts[0]!) === d(ts.at(-1)!) ? d(ts[0]!) : `${d(ts[0]!)} – ${d(ts.at(-1)!)}`;
+  }, [preview, tz]);
 
   const fileAccounts = useMemo(() => [...new Set((preview?.items ?? []).map((i) => i.account).filter(Boolean) as string[])], [preview]);
   const shape = mapping ? detectShape(mapping) : "unknown";
@@ -312,6 +326,12 @@ export function ImportSheet({ tz, accounts, onDone }: { tz: string; accounts: st
               { value: "DMY", label: "DD/MM · UK" },
             ]}
           />
+          {range && (
+            <span className={cn("mt-2 block font-mono text-[10.5px]", flipped ? "text-gold" : "text-ink-3")}>
+              Trades on {range}
+              {flipped && ` · read the other way round (${dateOrder === "MDY" ? "DD/MM" : "MM/DD"}): the dates you picked put them weeks from today`}
+            </span>
+          )}
         </div>
       </div>
 
