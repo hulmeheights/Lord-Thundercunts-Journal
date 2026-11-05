@@ -12,3 +12,12 @@ Laura's reply (word for word):
 Setup it refers to: TradingView alert → journal stores it → the bot on Haydon's own Mac (Haydons-Mini) places the order at TopstepX. The website never contacts Topstep.
 
 Screenshot: [2026-11-02-topstep-support-api-approval.png](2026-11-02-topstep-support-api-approval.png)
+
+---
+
+## 5 November 2026: automation at other firms
+
+**Where:** Topstep dashboard chat, "Windy" (Topstep's AI agent).
+**Answer:** "You're not restricted to using your automated strategy only at Topstep… There's no published rule that prevents you from running the same strategy on accounts at other firms." Still applies on Topstep: no coordinated trading with others, no cross-account hedging, no unfair technology or platform exploitation.
+
+Screenshot: [2026-11-05-topstep-automation-other-firms.png](2026-11-05-topstep-automation-other-firms.png)
