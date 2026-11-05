@@ -101,7 +101,7 @@ export default async function GuardianPage({ searchParams }: { searchParams: Pro
       <LedgerSection entries={ledger} summary={summary} n={++n} today={today} firms={firms} />
       <RoadSection road={road} n={++n} />
       <PlanSection n={++n} initial={settings.plan} pooled={pooled} firms={planFirms} />
-      <ScaleSection n={++n} edge={edge} year={year} view={{ window: useWindow, grades: grades && grades.length ? grades : null, risk: sr, days: sdKey }} windowLabel={win ? `${settings.rules.sessionStart}–${settings.rules.sessionEnd}` : null} />
+      <ScaleSection n={++n} tz={tz} edge={edge} year={year} view={{ window: useWindow, grades: grades && grades.length ? grades : null, risk: sr, days: sdKey }} windowLabel={win ? `${settings.rules.sessionStart}–${settings.rules.sessionEnd}` : null} />
       <MindSection rows={mind} summary={mood} n={++n} today={today} />
 
       <Section

@@ -27,6 +27,8 @@ export type Edge = {
   noRisk: number;
   funnel: { period: number; inWindow: number | null; gradedAny: number; aplusAnyTime: number; aplusOutsideWindow: number | null; matching: number };
   rs: number[];
+  /** The measured trades themselves (copies folded), for the breakdowns. */
+  trades: { at: string; usd: number; r: number }[];
   /** Each trade's real net P&L in dollars (copies averaged). */
   usd: number[];
   netUsd: number;
@@ -69,7 +71,8 @@ export function measureEdge(trades: Trade[], basis: RiskBasis, tz: string, f: Sc
       twin.copies++;
     } else rows.push({ ...x, usd: x.t.netPnl, copies: 1 });
   }
-  const rs = rows.map((x) => Math.max(-3, Math.min(10, x.r))); // a fat-finger outlier can't run the whole projection
+  // Real R, big losses included (only absurd values from a mistyped risk are reined in), so $X risk matches your actual results.
+  const rs = rows.map((x) => Math.max(-20, Math.min(40, x.r)));
   const wins = rs.filter((r) => r > 0);
   const losses = rs.filter((r) => r < 0);
   const gw = wins.reduce((s, r) => s + r, 0);
@@ -116,6 +119,7 @@ export function measureEdge(trades: Trade[], basis: RiskBasis, tz: string, f: Sc
     avgWinUsd: usd.some((v) => v > 0) ? uw / usd.filter((v) => v > 0).length : null,
     avgLossUsd: usd.some((v) => v < 0) ? -ul / usd.filter((v) => v < 0).length : null,
     perDay: [...days.values()],
+    trades: rows.map((x) => ({ at: x.t.entryTime, usd: x.usd, r: x.r })),
     ready: { ok: checks.every((c) => c.ok), checks },
   };
 }
@@ -195,4 +199,53 @@ export function simulateAccountYear(edge: Edge, o: ScaleOpts): AccountYear | nul
   nets.sort((a, b) => a - b);
   const pct = (p: number) => Math.round(nets[Math.floor(p * (nets.length - 1))]!);
   return { median: pct(0.5), low10: pct(0.1), high90: pct(0.9), bustChance: bustRuns / sims, avgBusts: busts / sims, avgPayouts: payouts / sims };
+}
+
+// ── Breakdowns: when and how your trading makes its money ───────────────────
+
+export type Row = { key: string; n: number; winRate: number | null; net: number; pf: number | null; avg: number | null };
+const tallyRows = (key: string, xs: number[]): Row => {
+  const w = xs.filter((v) => v > 0).reduce((s, v) => s + v, 0);
+  const l = -xs.filter((v) => v < 0).reduce((s, v) => s + v, 0);
+  return { key, n: xs.length, winRate: xs.length ? xs.filter((v) => v > 0).length / xs.length : null, net: Math.round((w - l) * 100) / 100, pf: l > 0 ? w / l : w > 0 ? Infinity : null, avg: xs.length ? (w - l) / xs.length : null };
+};
+const WD = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+/** By entry time (15-minute slots), weekday, which trade of the day, how many trades the day had, and the best and worst days. */
+export function edgeBreakdowns(edge: Edge, tz: string, slot = 15) {
+  const byTime = new Map<number, number[]>();
+  const byWd = new Map<number, number[]>();
+  const byNth = new Map<number, number[]>();
+  const byDay = new Map<string, number[]>();
+  const sorted = [...edge.trades].sort((a, b) => a.at.localeCompare(b.at));
+  for (const t of sorted) {
+    const m = minuteOfDay(t.at, tz);
+    const s = Math.floor(m / slot) * slot;
+    byTime.set(s, [...(byTime.get(s) ?? []), t.usd]);
+    const d = dayKey(t.at, tz);
+    const wd = (new Date(`${d}T12:00:00Z`).getUTCDay() + 6) % 7;
+    byWd.set(wd, [...(byWd.get(wd) ?? []), t.usd]);
+    const today = byDay.get(d) ?? [];
+    const nth = Math.min(today.length + 1, 3);
+    byNth.set(nth, [...(byNth.get(nth) ?? []), t.usd]);
+    byDay.set(d, [...today, t.usd]);
+  }
+  const hhmm = (m: number) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+  const counts = new Map<number, number[]>();
+  for (const xs of byDay.values()) {
+    const c = Math.min(xs.length, 4);
+    counts.set(c, [...(counts.get(c) ?? []), xs.reduce((s, v) => s + v, 0)]);
+  }
+  const days = [...byDay].map(([day, xs]) => ({ day, n: xs.length, net: Math.round(xs.reduce((s, v) => s + v, 0) * 100) / 100 }));
+  return {
+    byTime: [...byTime].sort(([a], [b]) => a - b).map(([m, xs]) => tallyRows(`${hhmm(m)}–${hhmm(m + slot)}`, xs)),
+    byWeekday: [...byWd].sort(([a], [b]) => a - b).map(([d, xs]) => tallyRows(WD[d]!, xs)),
+    byTradeOfDay: [...byNth].sort(([a], [b]) => a - b).map(([k, xs]) => tallyRows(k === 1 ? "1st trade of the day" : k === 2 ? "2nd trade" : "3rd trade or later", xs)),
+    // Per day: how days with 1, 2, 3 or 4+ trades turned out (win rate here = green days).
+    byDayCount: [...counts].sort(([a], [b]) => a - b).map(([k, xs]) => tallyRows(k >= 4 ? "4+ trades that day" : `${k} trade${k === 1 ? "" : "s"} that day`, xs)),
+    bestDays: [...days].sort((a, b) => b.net - a.net).slice(0, 5),
+    worstDays: [...days].sort((a, b) => a.net - b.net).slice(0, 5),
+    greenDays: days.length ? days.filter((d) => d.net > 0).length / days.length : null,
+    tradingDays: days.length,
+  };
 }

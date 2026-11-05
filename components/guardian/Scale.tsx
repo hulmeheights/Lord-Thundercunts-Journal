@@ -2,7 +2,8 @@ import { Section, Stat, Stats } from "@/components/m";
 import { Seg } from "@/components/m/Seg";
 import { cn } from "@/lib/cn";
 import { fmtMoney } from "@/lib/format";
-import type { AccountYear, Edge } from "@/lib/analytics/scale";
+import type { AccountYear, Edge, Row } from "@/lib/analytics/scale";
+import { edgeBreakdowns } from "@/lib/analytics/scale";
 
 /** Which grades count: a set of grades, or null for every trade (graded or not). */
 export type ScaleView = { window: boolean; grades: string[] | null; risk: number | "actual"; days: "90" | "365" | "all" };
@@ -17,7 +18,34 @@ const r2 = (x: number | null) => (x === null ? "—" : `${x >= 0 ? "+" : ""}${x.
 const pct = (x: number | null) => (x === null ? "—" : `${Math.round(x * 100)}%`);
 
 /** Guardian → Scale: is your own edge ready to copy across accounts, and what a year of it could look like. */
-export function ScaleSection({ n, edge, year, view, windowLabel }: { n: number; edge: Edge; year: AccountYear | null; view: ScaleView; windowLabel: string | null }) {
+/** One breakdown table: name · trades · win rate (bar) · PF · net. */
+function Table({ title, rows, unit = "trades" }: { title: string; rows: Row[]; unit?: string }) {
+  if (!rows.length) return null;
+  return (
+    <div>
+      <div className="mb-2 font-mono text-[9.5px] tracking-[0.3em] text-ink-4 uppercase">{title}</div>
+      <ul>
+        {rows.map((r) => (
+          <li key={r.key} className="grid grid-cols-[minmax(0,8.5rem)_2.6rem_minmax(0,1fr)_3rem_5.2rem] items-center gap-x-2 border-b border-line py-1.5 font-mono text-[10.5px]">
+            <span className="truncate text-ink-2">{r.key}</span>
+            <span className="text-ink-4" title={unit}>{r.n}</span>
+            <span className="flex items-center gap-2">
+              <span className="relative h-[2px] flex-1 bg-line">
+                <i className={cn("absolute top-0 left-0 block h-[2px]", (r.winRate ?? 0) >= 0.5 ? "bg-pos" : "bg-gold")} style={{ width: `${(r.winRate ?? 0) * 100}%` }} />
+              </span>
+              <span className="w-8 text-right text-ink">{pct(r.winRate)}</span>
+            </span>
+            <span className="text-right text-ink-4">{r.pf === null ? "—" : Number.isFinite(r.pf) ? r.pf.toFixed(2) : "∞"}</span>
+            <span className={cn("num text-right", r.net > 0 ? "text-pos" : r.net < 0 ? "text-neg" : "text-ink-4")}>{fmtMoney(r.net, { sign: true })}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+export function ScaleSection({ n, edge, year, view, windowLabel, tz }: { n: number; edge: Edge; year: AccountYear | null; view: ScaleView; windowLabel: string | null; tz: string }) {
+  const bd = edgeBreakdowns(edge, tz);
   const risk = view.risk;
   const sd = view.days;
   const go = (p: Partial<ScaleView>) => scaleHref({ ...view, ...p });
@@ -102,6 +130,47 @@ export function ScaleSection({ n, edge, year, view, windowLabel }: { n: number; 
         {!edge.ready.ok && <p className="mt-2 text-[10.5px] text-ink-4">Keep the size small until all three are ticked. Scaling an edge that isn&apos;t there just loses money faster, on every account at once.</p>}
       </div>
 
+      {edge.n > 0 && (
+        <div className="mt-12">
+          <div className="mb-4 font-mono text-[9.5px] tracking-[0.3em] text-ink-4 uppercase">
+            Where the money comes from · {bd.tradingDays} trading days · {pct(bd.greenDays)} green
+          </div>
+          <div className="grid gap-x-12 gap-y-10 lg:grid-cols-2">
+            <Table title="By entry time (your time, 15 min)" rows={bd.byTime} />
+            <Table title="By day of the week" rows={bd.byWeekday} />
+            <Table title="Which trade of the day" rows={bd.byTradeOfDay} />
+            <Table title="How many trades the day had (win rate = green days)" rows={bd.byDayCount} unit="days" />
+            <div>
+              <div className="mb-2 font-mono text-[9.5px] tracking-[0.3em] text-ink-4 uppercase">Best days</div>
+              <ul>
+                {bd.bestDays.map((d) => (
+                  <li key={d.day} className="flex justify-between border-b border-line py-1.5 font-mono text-[10.5px]">
+                    <span className="text-ink-2">
+                      {new Date(`${d.day}T12:00:00Z`).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" })} · {d.n} {d.n === 1 ? "trade" : "trades"}
+                    </span>
+                    <span className={cn("num", d.net > 0 ? "text-pos" : "text-neg")}>{fmtMoney(d.net, { sign: true })}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div>
+              <div className="mb-2 font-mono text-[9.5px] tracking-[0.3em] text-ink-4 uppercase">Worst days</div>
+              <ul>
+                {bd.worstDays.map((d) => (
+                  <li key={d.day} className="flex justify-between border-b border-line py-1.5 font-mono text-[10.5px]">
+                    <span className="text-ink-2">
+                      {new Date(`${d.day}T12:00:00Z`).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" })} · {d.n} {d.n === 1 ? "trade" : "trades"}
+                    </span>
+                    <span className={cn("num", d.net > 0 ? "text-pos" : "text-neg")}>{fmtMoney(d.net, { sign: true })}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+          <p className="mt-4 font-mono text-[10px] text-ink-4">Columns: trades · win rate · profit factor · net P&amp;L (your real results, copies counted once).</p>
+        </div>
+      )}
+
       <div className="mt-10">
         <div className="mb-3 flex flex-wrap items-baseline justify-between gap-4">
           <span className="font-mono text-[9.5px] tracking-[0.3em] text-ink-4 uppercase">A year, copied across funded accounts</span>
@@ -111,6 +180,11 @@ export function ScaleSection({ n, edge, year, view, windowLabel }: { n: number; 
           <p className="font-mono text-[11px] text-ink-3">Needs at least 10 measured trades to project.</p>
         ) : (
           <>
+            {edge.n < 40 && (
+              <p className="mb-3 border border-gold/50 px-3 py-2 font-mono text-[10.5px] leading-[1.7] text-gold">
+                Only {edge.n} trades: far too few to trust. A handful of good trades makes every number below look huge. Treat it as a rough sketch until you have 40+, ideally 100.
+              </p>
+            )}
             <ul>
               <li className="grid grid-cols-[5rem_1fr_1fr_1fr] gap-x-3 pb-1 font-mono text-[9px] tracking-[0.2em] text-ink-4 uppercase">
                 <span>accounts</span>
@@ -128,7 +202,7 @@ export function ScaleSection({ n, edge, year, view, windowLabel }: { n: number; 
               ))}
             </ul>
             <p className="mt-3 font-mono text-[10.5px] leading-[1.8] text-ink-3">
-              Per account: about {year.avgPayouts.toFixed(1)} payouts a year · {pct(year.bustChance)} chance it busts at least once ({year.avgBusts.toFixed(1)} times on average) {risk === "actual" ? "at the size you really traded" : `at $${risk} a trade`}.
+              {risk === "actual" ? "At the size you really traded" : `At $${risk} per 1R (your usual full loss), each trade's result is scaled to that size`}. Per account: about {year.avgPayouts.toFixed(1)} payouts a year · {pct(year.bustChance)} chance it busts at least once ({year.avgBusts.toFixed(1)} times on average) {risk === "actual" ? "at the size you really traded" : `at $${risk} a trade`}.
             </p>
             <p className="mt-2 font-mono text-[10px] leading-[1.8] text-ink-4">
               Your own trades, resampled 2,000 times over a year. $2,000 trailing max loss (stops at the start once $2,000 up); $2,000 payout (90% to you) every time it&apos;s $4,000 up; a bust costs a $150 replacement eval and 4 weeks off. Copied accounts take the same trades, so they win and lose together: N accounts = N × one. Most firms allow 5 funded accounts each, so 10+ means more than one firm (always the same direction, never opposite). It&apos;s a projection from your past trades, not a promise: it only holds if you keep trading the same way.
