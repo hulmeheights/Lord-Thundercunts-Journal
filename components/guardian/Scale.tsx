@@ -43,7 +43,7 @@ export function ScaleSection({ n, edge, year, filter, risk, windowLabel }: { n: 
       )}
 
       <Stats cols={4} className="mt-8">
-        <Stat value={`${edge.n}`} label="Trades measured" sub={edge.tradesPerDay ? `${edge.tradesPerDay.toFixed(1)} a day · ${edge.daysPerMonth} days a month` : "none yet"} />
+        <Stat value={`${edge.n}`} label="Trades measured" sub={edge.tradesPerDay ? `${edge.tradesPerDay.toFixed(1)} a day · ${edge.daysPerMonth} days a month${edge.copiesFolded ? ` · ${edge.copiesFolded} copies folded in` : ""}` : "none yet"} />
         <Stat value={pct(edge.winRate)} label="Win rate" sub={edge.avgWinR !== null ? `avg win ${r2(edge.avgWinR)} · loss ${r2(edge.avgLossR)}` : undefined} />
         <Stat value={edge.pf === null ? "—" : Number.isFinite(edge.pf) ? edge.pf.toFixed(2) : "∞"} label="Profit factor" tone={edge.pf !== null && edge.pf >= 1.3 ? "pos" : edge.pf !== null && edge.pf < 1 ? "neg" : null} />
         <Stat value={r2(edge.expectancyR)} label="Per trade, on average" sub={`worst losing run: ${edge.worstStreak}`} tone={edge.expectancyR !== null && edge.expectancyR > 0 ? "pos" : edge.expectancyR !== null ? "neg" : null} />

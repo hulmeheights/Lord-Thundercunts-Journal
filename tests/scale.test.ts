@@ -33,3 +33,11 @@ test("the year simulation is repeatable, and a losing edge never projects a prof
   assert.ok(c!.median <= 0);
   assert.ok(c!.bustChance > 0.5);
 });
+
+test("a trade copied to several accounts counts once", () => {
+  const base = Array.from({ length: 20 }, (_, i) => t(i, i % 5 < 2 ? 400 : -200));
+  const copies = base.map((x) => ({ ...x, id: `${x.id}c`, accountId: "a2" }));
+  const e = measureEdge([...base, ...copies], null, "UTC", { window: null, grades: null });
+  assert.equal(e.n, 20);
+  assert.equal(e.copiesFolded, 20);
+});

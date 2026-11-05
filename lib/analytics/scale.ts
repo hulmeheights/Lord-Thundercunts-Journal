@@ -21,6 +21,8 @@ export type Edge = {
   tradesPerDay: number | null;
   daysPerMonth: number;
   worstStreak: number;
+  /** Trades that were copies of another account's trade, folded into it. */
+  copiesFolded: number;
   rs: number[];
   perDay: number[];
   ready: { ok: boolean; checks: { label: string; ok: boolean; value: string }[] };
@@ -34,7 +36,18 @@ export function measureEdge(trades: Trade[], basis: RiskBasis, tz: string, f: Sc
     .filter((t) => !f.window || ((m) => m >= f.window!.start && m < f.window!.end)(minuteOfDay(t.entryTime, tz)))
     .filter((t) => !f.grades || (t.grade != null && f.grades.includes(t.grade)))
     .sort((a, b) => a.entryTime.localeCompare(b.entryTime));
-  const rows = keep.map((t) => ({ t, r: rMultiple(t, defaultRisk, risks.get(t.accountId ?? t.source) ?? null) })).filter((x): x is { t: Trade; r: number } => x.r !== null && Number.isFinite(x.r));
+  const each = keep.map((t) => ({ t, r: rMultiple(t, defaultRisk, risks.get(t.accountId ?? t.source) ?? null) })).filter((x): x is { t: Trade; r: number } => x.r !== null && Number.isFinite(x.r));
+  // One decision copied to several accounts (Tradecopia, group trading) is one trade, not five: same market and
+  // side, entered within a minute on different accounts, counts once at its average R.
+  const rows: { t: Trade; r: number; copies: number }[] = [];
+  for (const x of each) {
+    const at = Date.parse(x.t.entryTime);
+    const twin = rows.find((y) => y.t.root === x.t.root && y.t.direction === x.t.direction && Math.abs(Date.parse(y.t.entryTime) - at) <= 60_000 && (y.t.accountId ?? y.t.source) !== (x.t.accountId ?? x.t.source));
+    if (twin) {
+      twin.r = (twin.r * twin.copies + x.r) / (twin.copies + 1);
+      twin.copies++;
+    } else rows.push({ ...x, copies: 1 });
+  }
   const rs = rows.map((x) => Math.max(-3, Math.min(10, x.r))); // a fat-finger outlier can't run the whole projection
   const wins = rs.filter((r) => r > 0);
   const losses = rs.filter((r) => r < 0);
@@ -69,6 +82,7 @@ export function measureEdge(trades: Trade[], basis: RiskBasis, tz: string, f: Sc
     tradesPerDay: days.size ? n / days.size : null,
     daysPerMonth,
     worstStreak: worst,
+    copiesFolded: each.length - rows.length,
     rs,
     perDay: [...days.values()],
     ready: { ok: checks.every((c) => c.ok), checks },
