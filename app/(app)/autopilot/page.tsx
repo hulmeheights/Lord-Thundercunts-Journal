@@ -20,7 +20,8 @@ import { todayKey } from "@/lib/analytics/time";
 import { Seg } from "@/components/m/Seg";
 import { historyStats, tally, type Tally } from "@/lib/bot/history";
 import { liveRecord, sinceBacktest, trackRecord } from "@/lib/data/history";
-import { BACKTEST_SOURCE, backtestTrades, combineSim, payoutSim } from "@/lib/bot/backtest";
+import { BACKTEST_SOURCE, backtestTrades, combineSim, payoutSim, setsRun, setsYear, worse, type BtTrade } from "@/lib/bot/backtest";
+import { tradingDay } from "@/lib/bot/drycheck";
 import type { HistTrade } from "@/lib/bot/history";
 import { TrackImport } from "@/components/autopilot/TrackImport";
 import { listLedger } from "@/lib/data/ledger";
@@ -82,6 +83,18 @@ function Breakdown({ title, rows }: { title: string; rows: (Tally & { key: strin
   );
 }
 
+/** Backtest trades plus the bot's own since, for both account types, ready for the sets-of-5 run. */
+async function setsOfFive(by: number) {
+  const out = {} as Record<"eval" | "funded", BtTrade[]>;
+  for (const mode of ["eval", "funded"] as const) {
+    const bt = backtestTrades(mode);
+    const since = await sinceBacktest(mode, bt.at(-1)!.day);
+    const extra: BtTrade[] = since.map((t) => ({ ...t, mode, day: tradingDay(t.entryAt), quiet: false, capped: false, reason: "other" }));
+    out[mode] = worse([...bt, ...extra], by);
+  }
+  return { run: setsRun(out.eval, out.funded), year: setsYear(out.eval, out.funded) };
+}
+
 export default async function AutopilotPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const sp = await searchParams;
   // The 2-year backtest is what most people want to see first; the other tabs are a click away.
@@ -101,6 +114,9 @@ export default async function AutopilotPage({ searchParams }: { searchParams: Pr
         : sinceBacktest(btMode, btLast).then((since) => ({ trades: [...btTrades, ...since], perAccount: [] as HistTrade[], imports: [] })),
   ]);
   const sim = track === "bt" ? (btMode === "eval" ? combineSim(btTrades) : payoutSim(btTrades)) : null;
+  // Sets of 5 on Topstep, along the real two years plus the bot's own trades since; "realistic" = every trade $50 worse.
+  const btCase = sp.bc === "50" ? 50 : 0;
+  const sets = track === "bt" ? await setsOfFive(btCase) : null;
   const setup = botSetup();
   const runner = await runnerStatus();
   await refreshNews();
@@ -275,6 +291,68 @@ export default async function AutopilotPage({ searchParams }: { searchParams: Pr
             <p className="max-w-2xl font-mono text-[11px] leading-[1.8] text-ink-4">
               Every trade the strategy would have taken from {btTrades[0]?.day} to {btLast} ({BACKTEST_SOURCE}), 5 MNQ, after commission. The bot&apos;s own {btMode} trades (dry run or live) are added after it as they close, so the record keeps growing.
             </p>
+            {sets && (
+              <div className="mt-6 border border-gold/40 p-4 font-mono text-[11px]">
+                <div className="flex flex-wrap items-baseline justify-between gap-3">
+                  <span className="text-[9.5px] tracking-[0.3em] text-gold uppercase">Sets of 5 · Topstep 50K · new set only when the whole set fails or busts</span>
+                  <Seg
+                    value={btCase === 50 ? "50" : "0"}
+                    options={[
+                      { value: "0", label: "As tested", href: `/autopilot?track=bt&bt=${btMode}#record` },
+                      { value: "50", label: "Realistic (−$50 a trade)", href: `/autopilot?track=bt&bt=${btMode}&bc=50#record` },
+                    ]}
+                  />
+                </div>
+                <div className="mt-4 text-[9.5px] tracking-[0.3em] text-ink-4 uppercase">Any 12 months ({sets.year.starts} start days)</div>
+                <div className="mt-2 grid gap-x-8 gap-y-1 sm:grid-cols-2">
+                  <span className="text-ink-2">
+                    Net after eval fees: <span className="num text-[16px] text-pos">{fmtMoney(sets.year.net.avg)}</span> average · typical {fmtMoney(sets.year.net.typical)}
+                  </span>
+                  <span className="text-ink-3">
+                    1 year in 10 below {fmtMoney(sets.year.net.low10)} · worst {fmtMoney(sets.year.net.worst)} · best {fmtMoney(sets.year.net.best)}
+                  </span>
+                  <span className="text-ink-3">
+                    Payout days ($9,000 each): {sets.year.payoutDays.avg.toFixed(1)} average ({sets.year.payoutDays.fewest}–{sets.year.payoutDays.most})
+                  </span>
+                  <span className="text-ink-3">
+                    Eval fees: {fmtMoney(sets.year.fees.avg)} average · worst {fmtMoney(sets.year.fees.worst)} · {sets.year.sets.toFixed(1)} sets bought
+                  </span>
+                </div>
+                <div className="mt-6 text-[9.5px] tracking-[0.3em] text-ink-4 uppercase">
+                  Started {sets.run.events[0]?.day} and run to today · {sets.run.sets} sets · {sets.run.payoutDays} payout days · fees {fmtMoney(sets.run.fees)} · paid {fmtMoney(sets.run.paid)} ·{" "}
+                  <span className={sets.run.net >= 0 ? "text-pos" : "text-neg"}>net {fmtMoney(sets.run.net, { sign: true })}</span> · lowest point {fmtMoney(sets.run.lowest, { sign: true })}
+                </div>
+                <div className="mt-3 grid gap-x-10 gap-y-6 lg:grid-cols-2">
+                  <ul>
+                    {sets.run.months.map((m) => (
+                      <li key={m.month} className="grid grid-cols-[4.5rem_1fr_1fr_1fr] gap-x-3 border-b border-line py-1 text-[10.5px]">
+                        <span className="text-ink-2">{new Date(`${m.month}-01T12:00:00Z`).toLocaleDateString("en-GB", { month: "short", year: "2-digit" })}</span>
+                        <span className="text-right text-ink-4">{m.fees ? `−${fmtMoney(m.fees)}` : ""}</span>
+                        <span className="text-right text-pos">{m.paid ? `+${fmtMoney(m.paid)}` : ""}</span>
+                        <span className={cn("num text-right", m.total >= 0 ? "text-ink" : "text-neg")}>{fmtMoney(m.total, { sign: true })}</span>
+                      </li>
+                    ))}
+                    <li className="grid grid-cols-[4.5rem_1fr_1fr_1fr] gap-x-3 pt-1 text-[9px] tracking-[0.2em] text-ink-4 uppercase">
+                      <span>month</span>
+                      <span className="text-right">eval fees</span>
+                      <span className="text-right">payouts</span>
+                      <span className="text-right">running total</span>
+                    </li>
+                  </ul>
+                  <ul>
+                    {sets.run.events.map((ev, i) => (
+                      <li key={i} className="grid grid-cols-[5.5rem_minmax(0,1fr)] gap-x-3 border-b border-line py-1 text-[10.5px]">
+                        <span className="text-ink-4">{new Date(`${ev.day}T12:00:00Z`).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "2-digit" })}</span>
+                        <span className={ev.kind === "payout" ? "text-pos" : ev.kind === "failed" || ev.kind === "busted" ? "text-neg" : ev.kind === "live" ? "text-gold" : "text-ink-2"}>{ev.note}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                <p className="mt-3 text-[10px] leading-[1.7] text-ink-4">
+                  5 copied Combines pass, bust and pay out together. Evals $120 a month each until passed; payouts $2,000 per account ($1,800 to you) every 5 winning days of $150+ at $4,000 profit, until the set busts; after the 4th payout Topstep is assumed to call you up to Live and close the Express accounts (the bot can&apos;t trade Live), so a new set is bought. Not included: activation, data and API fees, tax. The settings were tuned on these two years.
+                </p>
+              </div>
+            )}
             {sim && (
               <div className="mt-6 border border-line-2 p-4 font-mono text-[11px]">
                 <div className="text-[9.5px] tracking-[0.3em] text-ink-4 uppercase">{btMode === "eval" ? "Topstep 50K Combine, started on every trading day" : "Funded 50K, first $2,000 payout, started on every trading day"}</div>
@@ -336,7 +414,7 @@ export default async function AutopilotPage({ searchParams }: { searchParams: Pr
                   <Breakdown title="By hour (your time)" rows={st.hours} />
                   <Breakdown title="By day (your time)" rows={st.weekdays} />
                   <Breakdown title="Long or short" rows={st.dirs.map((r) => ({ ...r, label: r.key === "LONG" ? "Long" : "Short" }))} />
-                  <Breakdown title="By month" rows={st.months.map((r) => ({ ...r, label: new Date(`${r.key}-01T12:00:00Z`).toLocaleDateString("en-GB", { month: "short", year: "2-digit" }) }))} />
+                  <Breakdown title="By month (one account, 5 MNQ)" rows={st.months.map((r) => ({ ...r, label: new Date(`${r.key}-01T12:00:00Z`).toLocaleDateString("en-GB", { month: "short", year: "2-digit" }) }))} />
                   <Breakdown title="By week (starting Monday)" rows={st.weeks.slice(0, 12).map((r) => ({ ...r, label: new Date(`${r.key}T12:00:00Z`).toLocaleDateString("en-GB", { day: "numeric", month: "short" }) }))} />
                   {track === "bt" && st.accounts.length > 1 && <Breakdown title="Backtest vs since" rows={st.accounts} />}
                   {track === "live" && record.perAccount.length > 0 && <Breakdown title="By account" rows={[...new Set(record.perAccount.map((t) => t.account ?? "—"))].map((a) => ({ key: a, ...tally(record.perAccount.filter((t) => (t.account ?? "—") === a)) }))} />}
