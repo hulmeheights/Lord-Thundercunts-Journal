@@ -36,7 +36,11 @@ export function measureEdge(trades: Trade[], basis: RiskBasis, tz: string, f: Sc
     .filter((t) => !f.window || ((m) => m >= f.window!.start && m < f.window!.end)(minuteOfDay(t.entryTime, tz)))
     .filter((t) => !f.grades || (t.grade != null && f.grades.includes(t.grade)))
     .sort((a, b) => a.entryTime.localeCompare(b.entryTime));
-  const each = keep.map((t) => ({ t, r: rMultiple(t, defaultRisk, risks.get(t.accountId ?? t.source) ?? null) })).filter((x): x is { t: Trade; r: number } => x.r !== null && Number.isFinite(x.r));
+  // An account with too few losses to know its usual 1R borrows the typical 1R of your other accounts,
+  // so its winners still count (otherwise only its losses would, which skews everything).
+  const known = [...risks.values()].sort((a, b) => a - b);
+  const fallback = known.length ? known[Math.floor((known.length - 1) / 2)]! : null;
+  const each = keep.map((t) => ({ t, r: rMultiple(t, defaultRisk, risks.get(t.accountId ?? t.source) ?? fallback) })).filter((x): x is { t: Trade; r: number } => x.r !== null && Number.isFinite(x.r));
   // One decision copied to several accounts (Tradecopia, group trading) is one trade, not five: same market and
   // side, entered within a minute on different accounts, counts once at its average R.
   const rows: { t: Trade; r: number; copies: number }[] = [];

@@ -18,8 +18,9 @@ const r2 = (x: number | null) => (x === null ? "—" : `${x >= 0 ? "+" : ""}${x.
 const pct = (x: number | null) => (x === null ? "—" : `${Math.round(x * 100)}%`);
 
 /** Guardian → Scale: is your own edge ready to copy across accounts, and what a year of it could look like. */
-export function ScaleSection({ n, edge, year, filter, risk, windowLabel }: { n: number; edge: Edge; year: AccountYear | null; filter: ScaleFilterKey; risk: number; windowLabel: string | null }) {
-  const href = (f: ScaleFilterKey, r: number) => `/guardian?sf=${f}&sr=${r}#scale`;
+export function ScaleSection({ n, edge, year, filter, risk, windowLabel, days }: { n: number; edge: Edge; year: AccountYear | null; filter: ScaleFilterKey; risk: number; windowLabel: string | null; days: number }) {
+  const sd = days === 365 ? "365" : days > 365 ? "all" : "90";
+  const href = (f: ScaleFilterKey, r: number, d = sd) => `/guardian?sf=${f}&sr=${r}&sd=${d}#scale`;
   return (
     <Section
       id="scale"
@@ -33,9 +34,17 @@ export function ScaleSection({ n, edge, year, filter, risk, windowLabel }: { n: 
     >
       <div className="flex flex-wrap items-center gap-x-10 gap-y-4">
         <Seg value={filter} options={SCALE_FILTERS.map((o) => ({ ...o, href: href(o.value, risk) }))} />
+        <Seg
+          value={sd}
+          options={[
+            { value: "90", label: "90 days", href: href(filter, risk, "90") },
+            { value: "365", label: "1 year", href: href(filter, risk, "365") },
+            { value: "all", label: "All", href: href(filter, risk, "all") },
+          ]}
+        />
       </div>
       <p className="mt-3 max-w-2xl font-mono text-[10.5px] leading-[1.8] text-ink-4">
-        Your own trades from the last 90 days{filter === "aplusw" || filter === "window" ? ` inside ${windowLabel ?? "your trading window (set it in Settings → Trading rules)"}` : ""}
+        Your own trades {sd === "all" ? "from the last 3 years" : sd === "365" ? "from the last year" : "from the last 90 days"}{filter === "aplusw" || filter === "window" ? ` inside ${windowLabel ?? "your trading window (set it in Settings → Trading rules)"}` : ""}
         {filter === "aplusw" || filter === "aplus" ? ", graded A+" : ""}, measured in R (each account&apos;s own 1R). Grade every trade so this stays honest.
       </p>
       {edge.n === 0 && (filter === "aplusw" || filter === "aplus") && (

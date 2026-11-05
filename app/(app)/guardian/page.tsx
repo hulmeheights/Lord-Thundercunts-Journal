@@ -71,7 +71,8 @@ export default async function GuardianPage({ searchParams }: { searchParams: Pro
   const ws = parseHHMM(settings.rules.sessionStart);
   const we = parseHHMM(settings.rules.sessionEnd);
   const win = ws !== null && we !== null ? { start: ws, end: we } : null;
-  const recent = history.filter((t) => t.entryTime >= `${addDays(today, -90)}T00:00:00Z`);
+  const sd = sp.sd === "365" ? 365 : sp.sd === "all" ? 1100 : 90;
+  const recent = history.filter((t) => t.entryTime >= `${addDays(today, -sd)}T00:00:00Z`);
   const edge = measureEdge(recent, riskBasis(settings.rules), tz, { window: sf === "aplusw" || sf === "window" ? win : null, grades: sf === "aplusw" || sf === "aplus" ? ["A+"] : null });
   const year = simulateAccountYear(edge, { risk: sr });
 
@@ -95,7 +96,7 @@ export default async function GuardianPage({ searchParams }: { searchParams: Pro
       <LedgerSection entries={ledger} summary={summary} n={++n} today={today} firms={firms} />
       <RoadSection road={road} n={++n} />
       <PlanSection n={++n} initial={settings.plan} pooled={pooled} firms={planFirms} />
-      <ScaleSection n={++n} edge={edge} year={year} filter={sf} risk={sr} windowLabel={win ? `${settings.rules.sessionStart}–${settings.rules.sessionEnd}` : null} />
+      <ScaleSection n={++n} edge={edge} year={year} filter={sf} risk={sr} days={sd} windowLabel={win ? `${settings.rules.sessionStart}–${settings.rules.sessionEnd}` : null} />
       <MindSection rows={mind} summary={mood} n={++n} today={today} />
 
       <Section
