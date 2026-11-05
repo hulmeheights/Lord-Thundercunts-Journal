@@ -20,11 +20,16 @@ import { RoadSection } from "@/components/guardian/Road";
 import { MindSection } from "@/components/guardian/Mind";
 import { PlanSection, type PlanFirm } from "@/components/guardian/Plan";
 import { MyRule } from "@/components/guardian/MyRule";
+import { SCALE_FILTERS, SCALE_RISKS, ScaleSection, type ScaleFilterKey } from "@/components/guardian/Scale";
+import { measureEdge, simulateAccountYear } from "@/lib/analytics/scale";
+import { riskBasis } from "@/lib/analytics/stats";
+import { parseHHMM } from "@/lib/analytics/time";
 import { PropForm } from "@/components/guardian/PropForm";
 
 export const metadata = { title: "Guardian" };
 
-export default async function GuardianPage() {
+export default async function GuardianPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
+  const sp = await searchParams;
   const settings = await getSettings();
   const prop = settings.prop;
   const tz = settings.profile.timezone;
@@ -60,8 +65,18 @@ export default async function GuardianPage() {
   // The firm being tracked leads the form's suggestions, then firms already in the ledger.
   const firms = [...new Map([prop.firm, ...summary.byFirm.map((f) => f.firm), ...FIRM_SUGGESTIONS].filter(Boolean).map((f) => [firmKey(f), f])).values()];
 
+  // Scale: your own edge from the last 90 days, copied across accounts.
+  const sf = (SCALE_FILTERS.find((f) => f.value === sp.sf)?.value ?? "aplusw") as ScaleFilterKey;
+  const sr = SCALE_RISKS.includes(Number(sp.sr)) ? Number(sp.sr) : 150;
+  const ws = parseHHMM(settings.rules.sessionStart);
+  const we = parseHHMM(settings.rules.sessionEnd);
+  const win = ws !== null && we !== null ? { start: ws, end: we } : null;
+  const recent = history.filter((t) => t.entryTime >= `${addDays(today, -90)}T00:00:00Z`);
+  const edge = measureEdge(recent, riskBasis(settings.rules), tz, { window: sf === "aplusw" || sf === "window" ? win : null, grades: sf === "aplusw" || sf === "aplus" ? ["A+"] : null });
+  const year = simulateAccountYear(edge, { risk: sr });
+
   let n = 0;
-  const ids = st ? ["top", "status", "odds", "ledger", "road", "plan", "mind", "rules"] : ["top", "watch", "ledger", "road", "plan", "mind", "rules"];
+  const ids = st ? ["top", "status", "odds", "ledger", "road", "plan", "scale", "mind", "rules"] : ["top", "watch", "ledger", "road", "plan", "scale", "mind", "rules"];
 
   return (
     <>
@@ -80,6 +95,7 @@ export default async function GuardianPage() {
       <LedgerSection entries={ledger} summary={summary} n={++n} today={today} firms={firms} />
       <RoadSection road={road} n={++n} />
       <PlanSection n={++n} initial={settings.plan} pooled={pooled} firms={planFirms} />
+      <ScaleSection n={++n} edge={edge} year={year} filter={sf} risk={sr} windowLabel={win ? `${settings.rules.sessionStart}–${settings.rules.sessionEnd}` : null} />
       <MindSection rows={mind} summary={mood} n={++n} today={today} />
 
       <Section

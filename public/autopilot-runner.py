@@ -41,7 +41,7 @@ try:
 except Exception:  # very old Python: fixed offsets are close enough for the logs, never used to place
     NY = None
 
-VERSION = "3.1"
+VERSION = "3.2"
 TOPSTEP = os.environ.get("THUNDER_TOPSTEP_URL", "https://api.topstepx.com")  # override only for testing
 TICKET_TTL_MS = 20_000  # never place a ticket older than this: a late entry is a different trade
 HOME = os.path.expanduser("~")
@@ -529,7 +529,7 @@ def report(base, auth, alert, results, head):
     post(base, auth, {"type": "results", "signalId": alert["signalId"], "results": results, "passed": []})
 
 
-def watch(base, auth, ts, ctx, now=None):
+def watch(base, auth, ts, ctx, now=None, sweep=True):
     """Every loop: follow open trades to their close (dry run: on the 1-minute bars), clean up leftover orders, report the result."""
     now = now or datetime.now(timezone.utc)
     accts = None
@@ -569,6 +569,8 @@ def watch(base, auth, ts, ctx, now=None):
         except Exception as e:
             log(f"Couldn't check open trade on {t.get('label', '')} ({e}); trying again next time")
     # Leftover orders on a flat account (e.g. it closed while TradingView or the journal was down) never get to open a new position.
+    if not sweep:  # Autopilot is Off: leave the accounts alone beyond the bot's own open trades
+        return
     open_cards = {t["cardId"] for t in ctx.get("openTrades", [])}
     for c in ctx.get("cards", []):
         if c.get("dry", True) or c["id"] in open_cards:
@@ -616,8 +618,10 @@ def run():
                     handle_signal(base, auth, ts, alert, ctx)
                 else:
                     handle(base, auth, ts, alert, ctx)
-            if ctx.get("mode") in ("live", "paper") and (ctx.get("openTrades") or time.time() - last_watch > 60):
-                watch(base, auth, ts, ctx)
+            # Open trades are followed to their close even with Autopilot switched Off (Off only stops new entries).
+            on = ctx.get("mode") in ("live", "paper")
+            if ctx.get("openTrades") or (on and time.time() - last_watch > 60):
+                watch(base, auth, ts, ctx, sweep=on)
                 last_watch = time.time()
             # Your accounts and balances for the journal (and the profit targets): at start, after exits, and every 10 minutes.
             if ctx.get("balancesDue") or time.time() - last_accounts > 600:
