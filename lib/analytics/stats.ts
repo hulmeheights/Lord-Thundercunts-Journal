@@ -280,7 +280,7 @@ export const byEmotion = (trades: Trade[]) =>
 export const byDirection = (trades: Trade[]) =>
   bucketize(trades, (t) => ({ key: t.direction, label: t.direction === "long" ? "Long" : "Short", sort: t.direction === "long" ? 0 : 1 }));
 
-const HOLD_BUCKETS: [number, string][] = [
+export const HOLD_BUCKETS: [number, string][] = [
   [1, "< 1m"], [5, "1–5m"], [15, "5–15m"], [60, "15–60m"], [240, "1–4h"], [Infinity, "4h+"],
 ];
 
@@ -291,7 +291,11 @@ export const byHoldTime = (trades: Trade[]) =>
     return { key: String(i), label: HOLD_BUCKETS[i]![1], sort: i };
   });
 
-/** Performance of the 1st, 2nd, 3rd… trade of each day. */
+/**
+ * Performance of the 1st, 2nd, 3rd… trade of each day. A trade copied to
+ * other accounts (same market and side, entered within a minute on another
+ * account) is the same decision, so its copies share its number.
+ */
 export function byTradeNumber(trades: Trade[], tz: string): Bucket[] {
   const perDay = new Map<string, Trade[]>();
   for (const t of trades) {
@@ -300,7 +304,16 @@ export function byTradeNumber(trades: Trade[], tz: string): Bucket[] {
   }
   const indexOf = new Map<string, number>();
   for (const list of perDay.values()) {
-    sortByEntry(list).forEach((t, i) => indexOf.set(t.id, i + 1));
+    const decisions: Trade[] = [];
+    for (const t of sortByEntry(list)) {
+      const at = Date.parse(t.entryTime);
+      const i = decisions.findIndex((d) => d.root === t.root && d.direction === t.direction && Math.abs(Date.parse(d.entryTime) - at) <= 60_000 && (d.accountId ?? d.source) !== (t.accountId ?? t.source));
+      if (i >= 0) indexOf.set(t.id, i + 1);
+      else {
+        decisions.push(t);
+        indexOf.set(t.id, decisions.length);
+      }
+    }
   }
   return bucketize(trades, (t) => {
     const n = Math.min(indexOf.get(t.id) ?? 1, 5);

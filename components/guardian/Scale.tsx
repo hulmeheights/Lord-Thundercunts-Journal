@@ -15,6 +15,7 @@ export const SCALE_RISKS = [100, 150, 200, 250, 300, 600];
 export const SCALE_ACCOUNTS = [1, 5, 10, 15];
 
 const r2 = (x: number | null) => (x === null ? "—" : `${x >= 0 ? "+" : ""}${x.toFixed(2)}R`);
+const mins = (m: number) => (m < 1 ? `${Math.round(m * 60)}s` : m < 60 ? `${Math.round(m)} min` : `${(m / 60).toFixed(1)} h`);
 const pct = (x: number | null) => (x === null ? "—" : `${Math.round(x * 100)}%`);
 
 /** Guardian → Scale: is your own edge ready to copy across accounts, and what a year of it could look like. */
@@ -139,6 +140,14 @@ export function ScaleSection({ n, edge, year, view, windowLabel, tz }: { n: numb
             <Table title="By entry time (your time, 15 min)" rows={bd.byTime} />
             <Table title="By day of the week" rows={bd.byWeekday} />
             <Table title="Which trade of the day" rows={bd.byTradeOfDay} />
+            <div>
+              <Table title="How long you were in the trade" rows={bd.byHold} />
+              {bd.holdWin !== null && (
+                <p className="mt-2 font-mono text-[10px] text-ink-4">
+                  Winners last {mins(bd.holdWin)} on average · losers {bd.holdLoss === null ? "—" : mins(bd.holdLoss)}
+                </p>
+              )}
+            </div>
             <Table title="How many trades the day had (win rate = green days)" rows={bd.byDayCount} unit="days" />
             <div>
               <div className="mb-2 font-mono text-[9.5px] tracking-[0.3em] text-ink-4 uppercase">Best days</div>

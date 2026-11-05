@@ -6,7 +6,7 @@
  * Pure (seeded randomness), so it's unit-tested.
  */
 import type { Trade } from "../types";
-import { accountRisks, rMultiple, type RiskBasis } from "./stats";
+import { accountRisks, HOLD_BUCKETS, rMultiple, type RiskBasis } from "./stats";
 import { dayKey, minuteOfDay } from "./time";
 
 export type ScaleFilter = { window: { start: number; end: number } | null; grades: string[] | null };
@@ -28,7 +28,7 @@ export type Edge = {
   funnel: { period: number; inWindow: number | null; gradedAny: number; aplusAnyTime: number; aplusOutsideWindow: number | null; matching: number };
   rs: number[];
   /** The measured trades themselves (copies folded), for the breakdowns. */
-  trades: { at: string; usd: number; r: number }[];
+  trades: { at: string; out: string; usd: number; r: number }[];
   /** Each trade's real net P&L in dollars (copies averaged). */
   usd: number[];
   netUsd: number;
@@ -119,7 +119,7 @@ export function measureEdge(trades: Trade[], basis: RiskBasis, tz: string, f: Sc
     avgWinUsd: usd.some((v) => v > 0) ? uw / usd.filter((v) => v > 0).length : null,
     avgLossUsd: usd.some((v) => v < 0) ? -ul / usd.filter((v) => v < 0).length : null,
     perDay: [...days.values()],
-    trades: rows.map((x) => ({ at: x.t.entryTime, usd: x.usd, r: x.r })),
+    trades: rows.map((x) => ({ at: x.t.entryTime, out: x.t.exitTime, usd: x.usd, r: x.r })),
     ready: { ok: checks.every((c) => c.ok), checks },
   };
 }
@@ -237,12 +237,28 @@ export function edgeBreakdowns(edge: Edge, tz: string, slot = 15) {
     counts.set(c, [...(counts.get(c) ?? []), xs.reduce((s, v) => s + v, 0)]);
   }
   const days = [...byDay].map(([day, xs]) => ({ day, n: xs.length, net: Math.round(xs.reduce((s, v) => s + v, 0) * 100) / 100 }));
+  // How long you were in the trade.
+  const byHold = new Map<number, number[]>();
+  const holds: number[] = [];
+  for (const t of sorted) {
+    const m = Math.max(0, (Date.parse(t.out) - Date.parse(t.at)) / 60_000);
+    holds.push(m);
+    const i = HOLD_BUCKETS.findIndex(([max]) => m < max);
+    byHold.set(i, [...(byHold.get(i) ?? []), t.usd]);
+  }
+  const avgHold = (pred: (usd: number) => boolean) => {
+    const xs = sorted.map((t, i) => [t.usd, holds[i]!] as const).filter(([u]) => pred(u)).map(([, m]) => m);
+    return xs.length ? xs.reduce((s, v) => s + v, 0) / xs.length : null;
+  };
   return {
     byTime: [...byTime].sort(([a], [b]) => a - b).map(([m, xs]) => tallyRows(`${hhmm(m)}–${hhmm(m + slot)}`, xs)),
     byWeekday: [...byWd].sort(([a], [b]) => a - b).map(([d, xs]) => tallyRows(WD[d]!, xs)),
     byTradeOfDay: [...byNth].sort(([a], [b]) => a - b).map(([k, xs]) => tallyRows(k === 1 ? "1st trade of the day" : k === 2 ? "2nd trade" : "3rd trade or later", xs)),
     // Per day: how days with 1, 2, 3 or 4+ trades turned out (win rate here = green days).
     byDayCount: [...counts].sort(([a], [b]) => a - b).map(([k, xs]) => tallyRows(k >= 4 ? "4+ trades that day" : `${k} trade${k === 1 ? "" : "s"} that day`, xs)),
+    byHold: [...byHold].sort(([a], [b]) => a - b).map(([i, xs]) => tallyRows(HOLD_BUCKETS[i]![1], xs)),
+    holdWin: avgHold((u) => u > 0),
+    holdLoss: avgHold((u) => u < 0),
     bestDays: [...days].sort((a, b) => b.net - a.net).slice(0, 5),
     worstDays: [...days].sort((a, b) => a.net - b.net).slice(0, 5),
     greenDays: days.length ? days.filter((d) => d.net > 0).length / days.length : null,
