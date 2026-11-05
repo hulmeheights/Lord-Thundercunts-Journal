@@ -88,6 +88,10 @@ export type BotAccount = {
   newsRule: boolean;
   /** Eval (Combine) takes every trade; funded (Express) skips quiet-market trades. */
   phase: Phase;
+  /** SOR v2: log the decision, place nothing. On until the card has been tested. */
+  dryRun?: boolean;
+  /** SOR v2: the card's own rules (signal set, sessions, windows, quiet, limits). */
+  rules?: import("./sor").CardRules;
 };
 export type Phase = "eval" | "funded";
 

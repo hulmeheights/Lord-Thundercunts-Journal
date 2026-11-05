@@ -28,11 +28,20 @@ import subprocess
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
+import math
 import urllib.error
 import urllib.request
-from datetime import datetime
+from collections import Counter, defaultdict
+from datetime import datetime, timedelta, timezone
 
-VERSION = "2.3"
+try:
+    from zoneinfo import ZoneInfo
+
+    NY = ZoneInfo("America/New_York")
+except Exception:  # very old Python: fixed offsets are close enough for the logs, never used to place
+    NY = None
+
+VERSION = "3.0"
 TOPSTEP = os.environ.get("THUNDER_TOPSTEP_URL", "https://api.topstepx.com")  # override only for testing
 TICKET_TTL_MS = 20_000  # never place a ticket older than this: a late entry is a different trade
 HOME = os.path.expanduser("~")
@@ -149,6 +158,23 @@ class Topstep:
         )
         return str(d.get("orderId", ""))
 
+    def open_orders(self, account_id):
+        return self.call("/api/Order/searchOpen", {"accountId": account_id}).get("orders") or []
+
+    def cancel(self, account_id, order_id):
+        self.call("/api/Order/cancel", {"accountId": account_id, "orderId": order_id})
+
+    def trades(self, account_id, since):
+        return [t for t in (self.call("/api/Trade/search", {"accountId": account_id, "startTimestamp": since}).get("trades") or []) if not t.get("voided")]
+
+    def bars(self, contract_id, start, end):
+        """1-minute bars (read-only market data) for following a dry-run trade to its stop or target."""
+        d = self.call(
+            "/api/History/retrieveBars",
+            {"contractId": contract_id, "live": False, "startTime": start, "endTime": end, "unit": 2, "unitNumber": 1, "limit": 1000, "includePartialBar": False},
+        )
+        return sorted(d.get("bars") or [], key=lambda b: b["t"])
+
     def snap(self, account_id, contract_id, direction, stop, target):
         """
         Moves the attached stop and target onto your script's exact prices, so a
@@ -247,6 +273,321 @@ def target_reached(card, balance):
     return card.get("profitTarget") is not None and balance is not None and balance - card["startBalance"] >= card["profitTarget"]
 
 
+# ── MNQ SOR v2: one alert, every possible trade; each account decides (spec "Decision rules") ─────────
+
+COMMISSION_PER_CONTRACT = 1.24  # $0.62 a side, as tested
+TICK = 0.25
+
+
+def rnd(x):
+    """Nearest 0.25 (halves round up, never banker's rounding)."""
+    return math.floor(x / TICK + 0.5) * TICK
+
+
+def trading_date(t):
+    """The trading day a moment belongs to: 18:00 New York starts the next one (Sunday evening is Monday)."""
+    ny = t.astimezone(NY) if NY else t - timedelta(hours=5)
+    d = ny.date()
+    return d + timedelta(days=1) if ny.hour >= 18 else d
+
+
+def week_start(d):
+    """The Monday of a trading day's week (the week starts Sunday 18:00 New York)."""
+    return d - timedelta(days=d.weekday())
+
+
+def card_stats(ledger, now):
+    """Rebuilt from the ledger every time, never from memory: today's P&L, trades and sessions, losing days this week, and whether a trade is open."""
+    today = trading_date(now)
+    wk = week_start(today)
+    realized, sessions, trades_today, by_day, open_now = 0.0, Counter(), 0, defaultdict(float), False
+    for r in ledger:
+        if r.get("status") == "open":
+            open_now = True
+        if r.get("status") in ("open", "closed") and trading_date(iso(r["enteredAt"])) == today:
+            trades_today += 1
+            sessions[r.get("session")] += 1
+        if r.get("status") == "closed" and r.get("exitedAt") and r.get("pnl") is not None:
+            day = trading_date(iso(r["exitedAt"]))  # a trade open over 18:00 counts on the day it closes
+            if day == today:
+                realized += r["pnl"]
+            elif wk <= day < today:
+                by_day[day] += r["pnl"]
+    return {
+        "realized": round(realized, 2),
+        "tradesToday": trades_today,
+        "sessions": dict(sessions),
+        "losingDays": sum(1 for v in by_day.values() if v < 0),
+        "inTrade": open_now,
+    }
+
+
+def decide(sig, card, stats, is_flat=None):
+    """Steps 1-12 for one account. Stops at the first failed step. is_flat is only asked at step 8."""
+    r = card["rules"]
+    no = lambda step, why: {"take": False, "step": step, "reason": why}
+    if not card.get("enabled", True):
+        return no(1, "account switched off")
+    if sig["swing"] != r["swing"]:
+        return no(2, f"signal set {sig['swing']}: this account follows {r['swing']}")
+    if sig["session"] not in r["sessions"]:
+        return no(3, f"{sig['session']} isn't one of this account's sessions")
+    if sig["dow"] in r["skipDays"]:
+        return no(4, f"this account skips {sig['dow']}")
+    window = r["windows"].get(sig["session"], 0)
+    if not sig["mins_in"] < window:
+        return no(5, f"{sig['mins_in']} min into {sig['session']}: window is {window}")
+    entry, stop, long = sig["entry"], sig["stop"], sig["dir"] == "LONG"
+    risk = abs(entry - stop)
+    if sig["quiet"]:
+        if r["quietMode"] == "skip":
+            return no(6, "quiet market: this account skips quiet signals")
+        target, min_reward = sig.get("quiet_target"), 0.0
+        if target is None:
+            return no(6, "quiet signal without a quiet target")
+    else:
+        target = sig.get("target")
+        if target is None:
+            return no(7, "no valid normal target")
+        min_reward = r["minRR"] * risk
+    if stats["inTrade"] or (is_flat is not None and not is_flat()):
+        return no(8, "already in a trade (one at a time)")
+    if stats["sessions"].get(sig["session"], 0) >= r["maxTradesSession"]:
+        return no(9, f"already traded {sig['session']} today")
+    day_target = card.get("maxDailyWin")
+    day_loss = -abs(card.get("maxDailyLoss") or 500)
+    if stats["tradesToday"] >= r["maxTradesDay"]:
+        return no(10, f"{stats['tradesToday']} trades today (max {r['maxTradesDay']})")
+    if stats["realized"] <= day_loss:
+        return no(10, f"daily loss limit (${stats['realized']:,.2f} today)")
+    if day_target is not None and stats["realized"] >= day_target:
+        return no(10, f"daily target reached (${stats['realized']:,.2f} today)")
+    if stats["losingDays"] >= r["weekRedDaysStop"]:
+        return no(11, f"{stats['losingDays']} losing days this week")
+    capped = False
+    if day_target is not None:
+        cap = entry + (day_target - stats["realized"]) / (card["contracts"] * 2) * (1 if long else -1)
+        if (long and target > cap) or (not long and target < cap):
+            target, capped = cap, True
+    reward = abs(target - entry)
+    if capped and reward < min_reward and reward < 0.5 * risk:
+        return no(12, f"day target too close: {reward:.2f} pts left (needs {min_reward:.2f} or {0.5 * risk:.2f})")
+    return {"take": True, "step": None, "reason": None, "target": rnd(target), "capped": capped}
+
+
+def simulate_exit(trade, bars):
+    """Dry run: the first 1-minute bar after the signal candle that reaches the stop or the target. Both in one bar = stop (as tested)."""
+    long = trade["dir"] == "LONG"
+    for b in bars:
+        hit_stop = b["l"] <= trade["stop"] if long else b["h"] >= trade["stop"]
+        hit_tgt = b["h"] >= trade["target"] if long else b["l"] <= trade["target"]
+        if hit_stop:
+            px = trade["stop"] - TICK if long else trade["stop"] + TICK  # a stop fills a tick worse
+            return px, "stop", b["t"]
+        if hit_tgt:
+            return trade["target"], "target", b["t"]
+    return None
+
+
+def dry_pnl(trade, exit_px):
+    pts = (exit_px - trade["entry"]) * (1 if trade["dir"] == "LONG" else -1)
+    return round(pts * 2 * trade["qty"] - COMMISSION_PER_CONTRACT * trade["qty"], 2)
+
+
+RECENT_PLACE = {}  # account id -> when this Mac last placed there (so a fresh bracket is never mistaken for a leftover)
+
+
+def handle_signal(base, auth, ts, alert, ctx, now=None):
+    """One SOR v2 signal: steps 1-12 per account, then the orders (or the dry run), then report every decision."""
+    sig = alert["signal"]
+    now = now or datetime.now(timezone.utc)
+    results = []
+    head = f"{sig['swing']} {sig['dir']} {sig['session']} {sig['dow']} +{sig['mins_in']}m{' quiet' if sig['quiet'] else ''} @ {sig['entry']}"
+    if ctx.get("mode") not in ("live", "paper"):
+        return
+    if alert.get("ageMs", 0) > TICKET_TTL_MS:
+        for c in ctx.get("cards", []):
+            results.append({"cardId": c["id"], "status": "skipped", "step": 0, "reason": "signal too old (valid only on its own candle)", "qty": c["contracts"], "dry": c.get("dry", True)})
+        return report(base, auth, alert, results, head)
+
+    accts, contract, held = None, None, {}
+
+    def topstep():
+        nonlocal accts, contract
+        if accts is None:
+            accts = ts.accounts()
+            contract = ts.mnq()
+        return accts
+
+    def position_of(acct_id):
+        if acct_id not in held:
+            held[acct_id] = ts.positions(acct_id)
+        return held[acct_id]
+
+    takes = []
+    for c in ctx.get("cards", []):
+        stats = card_stats(c.get("ledger", []), now)
+        base_row = {"cardId": c["id"], "qty": c["contracts"], "dry": c.get("dry", True), "phase": c.get("phase")}
+        m = None
+        if not c.get("dry", True):
+            try:
+                m = match_account(topstep(), c.get("topstepAccountId"))
+            except Exception as e:
+                results.append({**base_row, "status": "error", "step": 8, "reason": f"couldn't reach TopstepX: {e}"})
+                continue
+
+        def flat():
+            if c.get("dry", True):
+                return True
+            if not m:
+                return True  # decided below: no account means no order
+            return not position_of(m["id"])
+
+        d = decide(sig, c, stats, flat)
+        if not d["take"]:
+            results.append({**base_row, "status": "skipped", "step": d["step"], "reason": d["reason"]})
+            continue
+        # The bot's own safety checks, after the spec's 12 (logged as step 13).
+        why = None
+        if c.get("newsRule") and news_block({"receivedAt": alert["receivedAt"]}, ctx):
+            why = news_block({"receivedAt": alert["receivedAt"]}, ctx)
+        elif not c.get("dry", True) and not m:
+            why = f"Topstep account \"{c.get('topstepAccountId')}\" not found" if c.get("topstepAccountId") else "no Topstep account set on this card"
+        elif not c.get("dry", True) and target_reached(c, m.get("balance")):
+            why = "profit target reached: card switches off"
+        elif not c.get("dry", True) and any(m["id"] == t[1]["id"] for t in takes if t[1]):
+            why = "another card already trades this Topstep account"
+        if why:
+            results.append({**base_row, "status": "skipped", "step": 13, "reason": why})
+            continue
+        takes.append((c, m, d, base_row))
+        c.setdefault("ledger", []).append({"status": "open", "enteredAt": now.isoformat(), "session": sig["session"], "pnl": None})
+
+    # Topstep forbids hedging across accounts: if any watched account holds the other side, no live order anywhere.
+    live = [t for t in takes if t[1]]
+    if live:
+        against = 2 if sig["dir"] == "LONG" else 1
+        watched = {}
+        for c in ctx.get("cards", []):
+            mm = match_account(accts or [], c.get("topstepAccountId")) if not c.get("dry", True) else None
+            if mm:
+                watched[mm["id"]] = c["label"]
+        opposite = []
+        for aid, label in watched.items():
+            try:
+                if any(p.get("type") == against for p in position_of(aid)):
+                    opposite.append(label)
+            except Exception as e:
+                log(f"Couldn't check {label} at Topstep ({e}); carrying on")
+        if opposite:
+            why = f"{', '.join(opposite)} still holds the other side: no live order, so nothing is hedged"
+            for c, m, d, row in live:
+                results.append({**row, "status": "skipped", "step": 13, "reason": why})
+            takes = [t for t in takes if not t[1]]
+
+    def place(t):
+        c, m, d, row = t
+        if c.get("dry", True):
+            fill = sig["entry"] + (TICK if sig["dir"] == "LONG" else -TICK)  # as tested: entries fill a tick worse
+            log(f"DRY RUN {sig['dir']} {c['contracts']} MNQ on {c['label']}: SL {sig['stop']} TP {d['target']}{' (capped)' if d['capped'] else ''}")
+            return {**row, "status": "open", "fill": fill, "target": d["target"], "capped": d["capped"]}
+        stop_ticks = max(1, round(abs(sig["entry"] - sig["stop"]) * TICKS_PER_POINT))
+        target_ticks = max(1, round(abs(d["target"] - sig["entry"]) * TICKS_PER_POINT))
+        tag = f"ltj-{alert['signalId'][4:14]}-{c['id'][-6:]}"
+        try:
+            RECENT_PLACE[m["id"]] = time.time()
+            oid = ts.place(m["id"], contract, sig["dir"], c["contracts"], stop_ticks, target_ticks, tag)
+            log(f"PLACED {sig['dir']} {c['contracts']} MNQ on {c['label']} (order {oid})")
+        except Exception as e:  # rejected: logged, not retried, not counted
+            log(f"FAILED {sig['dir']} on {c['label']}: {e}")
+            return {**row, "status": "error", "step": None, "reason": str(e)[:400]}
+        out = {**row, "status": "open", "orderId": oid, "target": d["target"], "capped": d["capped"]}
+        try:
+            fill, note = ts.snap(m["id"], contract, sig["dir"], sig["stop"], d["target"])
+            log(f"  {c['label']}: {note}")
+            if isinstance(fill, (int, float)) and fill > 0:
+                out["fill"] = float(fill)
+        except Exception as e:
+            log(f"  {c['label']}: couldn't set SL/TP to the exact prices ({e}); bracket kept as placed")
+        return out
+
+    if takes:
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            results.extend(pool.map(place, takes))
+    report(base, auth, alert, results, head)
+
+
+def report(base, auth, alert, results, head):
+    taken = [r for r in results if r["status"] == "open"]
+    log(f"{head}: {len(taken)} taken ({sum(1 for r in taken if r.get('dry'))} dry run), {len(results)} accounts")
+    for r in results:
+        if r["status"] == "skipped":
+            log(f"  skip {r['cardId'][-6:]} at step {r.get('step')}: {r.get('reason')}")
+    post(base, auth, {"type": "results", "signalId": alert["signalId"], "results": results, "passed": []})
+
+
+def watch(base, auth, ts, ctx, now=None):
+    """Every loop: follow open trades to their close (dry run: on the 1-minute bars), clean up leftover orders, report the result."""
+    now = now or datetime.now(timezone.utc)
+    accts = None
+    for t in ctx.get("openTrades", []):
+        try:
+            if t["dry"]:
+                if t.get("target") is None:
+                    continue
+                start = iso(t["barTime"]) + timedelta(minutes=1) if t.get("barTime") else iso(t["enteredAt"]).replace(second=0, microsecond=0)
+                if now - start < timedelta(minutes=1):
+                    continue
+                bars = ts.bars(ts.mnq(), start.isoformat(), now.isoformat())
+                hit = simulate_exit(t, [b for b in bars if iso(b["t"]) >= start])
+                if hit:
+                    px, why, at = hit
+                    post(base, auth, {"type": "closed", "tradeId": t["id"], "exitPrice": px, "pnl": dry_pnl(t, px), "fees": 0, "reason": why, "exitedAt": iso(at).isoformat()})
+                continue
+            if now - iso(t["enteredAt"]) < timedelta(seconds=25):
+                continue
+            accts = accts if accts is not None else ts.accounts()
+            m = match_account(accts, t.get("account"))
+            if not m or ts.positions(m["id"]):
+                continue
+            # Flat: the bracket (or Topstep, or you) closed it. Its P&L from Topstep, then nothing left behind.
+            since = (iso(t["enteredAt"]) - timedelta(minutes=2)).isoformat()
+            fills = ts.trades(m["id"], since)
+            closing = [f for f in fills if f.get("profitAndLoss") is not None]
+            pnl = sum(f["profitAndLoss"] for f in closing) - sum(f.get("fees") or 0 for f in fills)
+            px = closing[-1]["price"] if closing else None
+            reason = "other"
+            if px is not None and abs(px - t["stop"]) <= 1:
+                reason = "stop"
+            elif px is not None and t.get("target") is not None and abs(px - t["target"]) <= 1:
+                reason = "target"
+            cleanup(ts, m, t.get("label", ""))
+            post(base, auth, {"type": "closed", "tradeId": t["id"], "exitPrice": px, "pnl": round(pnl, 2), "fees": round(sum(f.get("fees") or 0 for f in fills), 2), "reason": reason, "exitedAt": now.isoformat()})
+        except Exception as e:
+            log(f"Couldn't check open trade on {t.get('label', '')} ({e}); trying again next time")
+    # Leftover orders on a flat account (e.g. it closed while TradingView or the journal was down) never get to open a new position.
+    open_cards = {t["cardId"] for t in ctx.get("openTrades", [])}
+    for c in ctx.get("cards", []):
+        if c.get("dry", True) or c["id"] in open_cards:
+            continue
+        try:
+            accts = accts if accts is not None else ts.accounts()
+            m = match_account(accts, c.get("topstepAccountId"))
+            if m and time.time() - RECENT_PLACE.get(m["id"], 0) > 30 and not ts.positions(m["id"]):
+                cleanup(ts, m, c["label"])
+        except Exception as e:
+            log(f"Couldn't check {c['label']} for leftover orders ({e})")
+
+
+def cleanup(ts, m, label):
+    for o in ts.open_orders(m["id"]):
+        try:
+            ts.cancel(m["id"], o["id"])
+            log(f"CLEAN-UP {label}: cancelled leftover order {o['id']}")
+        except Exception as e:
+            log(f"CLEAN-UP {label}: couldn't cancel order {o['id']} ({e})")
+
+
 def run():
     cfg = load_config()
     base = cfg["url"].rstrip("/")
@@ -254,6 +595,7 @@ def run():
     ts = Topstep(cfg["user"], cfg["key"])
     log(f"Autopilot bot {VERSION} started for {base}")
     last_accounts = 0
+    last_watch = 0
     failures = 0
     while True:
         try:
@@ -267,7 +609,13 @@ def run():
             failures = 0
             ctx = d.get("context") or {}
             for alert in d.get("alerts", []):
-                handle(base, auth, ts, alert, ctx)
+                if alert.get("signal"):
+                    handle_signal(base, auth, ts, alert, ctx)
+                else:
+                    handle(base, auth, ts, alert, ctx)
+            if ctx.get("mode") in ("live", "paper") and (ctx.get("openTrades") or time.time() - last_watch > 60):
+                watch(base, auth, ts, ctx)
+                last_watch = time.time()
             # Your accounts and balances for the journal (and the profit targets): at start, after exits, and every 10 minutes.
             if ctx.get("balancesDue") or time.time() - last_accounts > 600:
                 send_accounts(base, auth, ts, ctx)

@@ -59,7 +59,7 @@ export function napSeconds(now: Date): number {
   return next <= 5 ? 0 : Math.min(900, (next - 5) * 60);
 }
 
-export type HandedAlert = { signalId: string; dir: "LONG" | "SHORT"; price: number; stop: number; target: number; receivedAt: string; ageMs: number; mode: string | null; quiet: boolean | null };
+export type HandedAlert = { signalId: string; dir: "LONG" | "SHORT"; price: number; stop: number; target: number; receivedAt: string; ageMs: number; mode: string | null; quiet: boolean | null; signal: unknown };
 
 /** Live entry alerts waiting for the Mac (each handed over exactly once). Stale ones are marked missed. */
 export async function claimAlerts(): Promise<HandedAlert[]> {
@@ -73,10 +73,10 @@ export async function claimAlerts(): Promise<HandedAlert[]> {
     const { botNotify } = await import("./notify");
     await botNotify(`⚠ Your Mac missed a signal\n${msg}. Check it's on and online.`);
   }
-  const rows = await sql<{ id: string; dir: "LONG" | "SHORT"; price: number; stop: number; target: number; received_at: Date; age_ms: number; alert_mode: string | null; quiet: boolean | null }[]>`
+  const rows = await sql<{ id: string; dir: "LONG" | "SHORT"; price: number; stop: number; target: number; received_at: Date; age_ms: number; alert_mode: string | null; quiet: boolean | null; payload: unknown }[]>`
     update bot_signals set handoff = 'claimed', claimed_at = now()
     where handoff = 'waiting' and received_at >= now() - interval '20 seconds'
-    returning id, dir, price, stop, target, received_at, alert_mode, quiet, (extract(epoch from (now() - received_at)) * 1000)::int as age_ms
+    returning id, dir, price, stop, target, received_at, alert_mode, quiet, payload, (extract(epoch from (now() - received_at)) * 1000)::int as age_ms
   `;
-  return rows.map((r) => ({ signalId: r.id, dir: r.dir, price: r.price, stop: r.stop, target: r.target, receivedAt: r.received_at.toISOString(), ageMs: r.age_ms, mode: r.alert_mode, quiet: r.quiet }));
+  return rows.map((r) => ({ signalId: r.id, dir: r.dir, price: r.price, stop: r.stop, target: r.target, receivedAt: r.received_at.toISOString(), ageMs: r.age_ms, mode: r.alert_mode, quiet: r.quiet, signal: r.payload ?? null }));
 }

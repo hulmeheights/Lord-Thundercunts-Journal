@@ -6,6 +6,7 @@ import { assertSession } from "../auth/session";
 import { db } from "../db";
 import { randomToken, sha256 } from "../crypto";
 import { botSetup } from "../bot/config";
+import { CardRulesSchema, PHASE_DEFAULTS } from "../bot/sor";
 import { logEvent } from "../bot/engine";
 import { createRunnerToken, runnerStatus } from "../bot/runner";
 
@@ -52,6 +53,8 @@ const Fields = z.object({
   startBalance: z.number().positive("Set the account's starting balance").max(100_000_000),
   newsRule: z.boolean(),
   phase: z.enum(["eval", "funded"]).default("eval"),
+  dryRun: z.boolean().default(true),
+  rules: CardRulesSchema.optional(),
   enabled: z.boolean(),
 });
 
@@ -77,7 +80,8 @@ export async function saveBotAccount(id: string, v: z.input<typeof Fields>) {
     await sql`
       update bot_accounts set label = ${f.label}, topstep_account = ${f.topstepAccount || null}, contracts = ${f.contracts},
         max_daily_loss = ${f.maxDailyLoss}, max_daily_win = ${f.maxDailyWin}, enabled = ${f.enabled},
-        profit_target = ${f.profitTarget}, start_balance = ${f.startBalance}, news_rule = ${f.newsRule}, phase = ${f.phase},
+        profit_target = ${f.profitTarget}, start_balance = ${f.startBalance}, news_rule = ${f.newsRule}, phase = ${f.phase}, dry_run = ${f.dryRun},
+        rules = ${sql.json((f.rules ?? PHASE_DEFAULTS[f.phase]) as never)},
         passed_at = case when ${f.enabled} then null else passed_at end
       where id = ${Id.parse(id)}
     `;
@@ -204,5 +208,36 @@ export async function deleteHistoryImport(id: string) {
     await sql`delete from bot_history_imports where id = ${importId}`;
     done();
     return { ok: true as const, removed: gone.length };
+  });
+}
+
+// ── Dry-run check ───────────────────────────────────────────────────────────
+
+/** Compares every card's decisions (dry run and live) with an expected-trades file. Reads only; changes nothing. */
+export async function checkExpected(csvText: string) {
+  await assertSession();
+  return safely(async () => {
+    const [{ parseCsv }, { compareDryRun, parseExpected, tradingDay }] = await Promise.all([import("../import/csv"), import("../bot/drycheck")]);
+    if (csvText.length > 2_000_000) return { error: "That file is too big." };
+    const parsed = parseExpected(parseCsv(z.string().parse(csvText)));
+    if (parsed.error) return { error: parsed.error };
+    const sql = await db();
+    const [cards, rows, signals] = await Promise.all([
+      sql<{ id: string; label: string; phase: string }[]>`select id, label, phase from bot_accounts order by created_at`,
+      sql<{ account_id: string; status: string; session: string; dir: string; stop_price: number; target_price: number | null; entered_at: Date; step: number | null; reason: string | null }[]>`
+        select account_id, status, session, dir, stop_price, target_price, entered_at, step, reason from bot_trades where tv_id is not null and account_id is not null order by entered_at
+      `,
+      sql<{ received_at: Date }[]>`select received_at from bot_signals where event = 'signal'`,
+    ]);
+    const days = new Set(signals.map((s) => tradingDay(s.received_at.toISOString())));
+    const result = compareDryRun(
+      parsed.rows,
+      rows.map((r) => ({ cardId: r.account_id, status: r.status, session: r.session, dir: r.dir, stop: r.stop_price, target: r.target_price, enteredAt: r.entered_at.toISOString(), step: r.step, reason: r.reason })),
+      cards.map((c) => ({ id: c.id, label: c.label, phase: c.phase === "funded" ? ("funded" as const) : ("eval" as const) })),
+      days,
+    );
+    const first = parsed.rows[0]?.day ?? null;
+    const last = parsed.rows.at(-1)?.day ?? null;
+    return { ok: true as const, file: { rows: parsed.rows.length, first, last }, signalDays: [...days].filter((d) => (!first || d >= first) && (!last || d <= last)).length, cards: result };
   });
 }

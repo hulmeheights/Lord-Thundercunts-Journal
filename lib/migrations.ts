@@ -714,4 +714,30 @@ export const MIGRATIONS: { version: number; sql: string }[] = [
       alter table bot_signals add column if not exists quiet boolean;
     `,
   },
+  {
+    version: 36,
+    sql: /* sql */ `
+      -- MNQ SOR v2: one alert sends every possible trade; each card decides with its own rules.
+      alter table bot_accounts add column if not exists dry_run boolean not null default true;
+      alter table bot_accounts add column if not exists rules jsonb not null default '{}';
+      -- Every signal kept as it came (never the secret), for the dry-run check and replays.
+      alter table bot_signals add column if not exists tv_id text;
+      alter table bot_signals add column if not exists payload jsonb;
+      create unique index if not exists bot_signals_tv_id_idx on bot_signals (tv_id) where tv_id is not null;
+      -- The ledger, per account: dry runs are their own book; the step a skip failed at; how each trade ended.
+      alter table bot_trades drop constraint if exists bot_trades_mode_check;
+      alter table bot_trades add constraint bot_trades_mode_check check (mode in ('paper', 'live', 'dry'));
+      alter table bot_trades add column if not exists tv_id text;
+      alter table bot_trades add column if not exists swing text;
+      alter table bot_trades add column if not exists phase text;
+      alter table bot_trades add column if not exists quiet boolean;
+      alter table bot_trades add column if not exists capped boolean;
+      alter table bot_trades add column if not exists step int;
+      alter table bot_trades add column if not exists bar_time timestamptz;
+      alter table bot_trades add column if not exists exit_reason text;
+      alter table bot_trades add column if not exists fees float8;
+      create index if not exists bot_trades_account_idx on bot_trades (account_id, mode, entered_at);
+      alter table bot_trades alter column target_price drop not null;
+    `,
+  },
 ];

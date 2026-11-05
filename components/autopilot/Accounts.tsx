@@ -7,17 +7,89 @@ import type { BotAccountView } from "@/lib/data/bot";
 import { cn } from "@/lib/cn";
 import { Button } from "@/components/ui/Button";
 import { Toggle } from "@/components/ui/Toggle";
+import { PHASE_DEFAULTS, type CardRules, type SorSession, type Weekday } from "@/lib/bot/sor";
+
+const SESS: SorSession[] = ["NYAM", "NYPM", "LON", "ASIA"];
+const DAYS: Weekday[] = ["Mon", "Tue", "Wed", "Thu", "Fri"];
+
+/** The card's own rules (spec: Account settings). Flipping the phase puts back that phase's tested defaults. */
+function RulesEditor({ rules, onChange }: { rules: CardRules; onChange: (r: CardRules) => void }) {
+  const set = (p: Partial<CardRules>) => onChange({ ...rules, ...p });
+  const chip = (on: boolean) => cn("border px-2 py-1 font-mono text-[10px]", on ? "border-gold/60 text-ink" : "border-line text-ink-4");
+  const n = "field num h-8 w-14 px-1 py-0 text-center";
+  const int = (v: string, lo: number, hi: number) => Math.max(lo, Math.min(hi, Math.round(Number(v.replace(/[^0-9]/g, "")) || lo)));
+  return (
+    <div className="space-y-3 pt-3 font-mono text-[10.5px] text-ink-3">
+      <div className="flex flex-wrap items-center gap-2">
+        Signal set
+        {(["3/3", "3/2"] as const).map((s) => (
+          <button key={s} type="button" className={chip(rules.swing === s)} onClick={() => set({ swing: s })}>
+            {s} {s === "3/3" ? "(eval)" : "(funded)"}
+          </button>
+        ))}
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        Sessions
+        {SESS.map((s) => (
+          <button key={s} type="button" className={chip(rules.sessions.includes(s))} onClick={() => set({ sessions: rules.sessions.includes(s) ? rules.sessions.filter((x) => x !== s) : [...rules.sessions, s] })}>
+            {s}
+          </button>
+        ))}
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        Skip days
+        {DAYS.map((d) => (
+          <button key={d} type="button" className={chip(rules.skipDays.includes(d))} onClick={() => set({ skipDays: rules.skipDays.includes(d) ? rules.skipDays.filter((x) => x !== d) : [...rules.skipDays, d] })}>
+            {d}
+          </button>
+        ))}
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        Entry window (min)
+        {SESS.map((s) => (
+          <label key={s} className="flex items-center gap-1">
+            {s}
+            <input className={n} inputMode="numeric" value={rules.windows[s]} onChange={(e) => set({ windows: { ...rules.windows, [s]: int(e.target.value, 1, 240) } })} />
+          </label>
+        ))}
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        Quiet signals
+        <button type="button" className={chip(rules.quietMode === "target15")} onClick={() => set({ quietMode: "target15" })}>
+          take (15 pt target)
+        </button>
+        <button type="button" className={chip(rules.quietMode === "skip")} onClick={() => set({ quietMode: "skip" })}>
+          skip
+        </button>
+      </div>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        <label className="flex items-center gap-1">
+          Min RR <input className={n} inputMode="decimal" value={rules.minRR} onChange={(e) => set({ minRR: Math.max(0, Math.min(10, Number(e.target.value.replace(/[^0-9.]/g, "")) || 0)) })} />
+        </label>
+        <label className="flex items-center gap-1">
+          Trades a day <input className={n} inputMode="numeric" value={rules.maxTradesDay} onChange={(e) => set({ maxTradesDay: int(e.target.value, 1, 20) })} />
+        </label>
+        <label className="flex items-center gap-1">
+          a session <input className={n} inputMode="numeric" value={rules.maxTradesSession} onChange={(e) => set({ maxTradesSession: int(e.target.value, 1, 10) })} />
+        </label>
+        <label className="flex items-center gap-1">
+          Stop the week after <input className={n} inputMode="numeric" value={rules.weekRedDaysStop} onChange={(e) => set({ weekRedDaysStop: int(e.target.value, 1, 5) })} /> losing days
+        </label>
+      </div>
+    </div>
+  );
+}
 
 const lab = "mb-1.5 block font-mono text-[9px] tracking-[0.24em] text-ink-4 uppercase";
 const money = (n: number) => `${n >= 0 ? "+" : "−"}$${Math.abs(n).toLocaleString("en-GB", { maximumFractionDigits: 0 })}`;
 
 function Card({ a, live, options }: { a: BotAccountView; live: boolean; options: { id: number; name: string }[] }) {
   const router = useRouter();
-  const initial = { label: a.label, topstepAccount: a.topstepAccount, contracts: String(a.contracts), maxDailyLoss: String(a.maxDailyLoss), maxDailyWin: a.maxDailyWin ? String(a.maxDailyWin) : "", profitTarget: a.profitTarget ? String(a.profitTarget) : "", startBalance: String(a.startBalance), newsRule: a.newsRule, phase: a.phase, enabled: a.enabled };
+  const initial = { label: a.label, topstepAccount: a.topstepAccount, contracts: String(a.contracts), maxDailyLoss: String(a.maxDailyLoss), maxDailyWin: a.maxDailyWin ? String(a.maxDailyWin) : "", profitTarget: a.profitTarget ? String(a.profitTarget) : "", startBalance: String(a.startBalance), newsRule: a.newsRule, phase: a.phase, dryRun: a.dryRun, rules: a.rules, enabled: a.enabled };
   const [f, setF] = useState(initial);
   const [msg, setMsg] = useState<string | null>(null);
   const [pending, start] = useTransition();
-  const dirty = (Object.keys(initial) as (keyof typeof initial)[]).some((k) => k !== "enabled" && k !== "newsRule" && k !== "phase" && f[k] !== initial[k]);
+  const dirty = (Object.keys(initial) as (keyof typeof initial)[]).some((k) => k !== "enabled" && k !== "newsRule" && k !== "phase" && k !== "dryRun" && f[k] !== initial[k]);
   const save = (next = f) =>
     start(async () => {
       setMsg(null);
@@ -31,6 +103,8 @@ function Card({ a, live, options }: { a: BotAccountView; live: boolean; options:
         startBalance: Number(next.startBalance),
         newsRule: next.newsRule,
         phase: next.phase,
+        dryRun: next.dryRun,
+        rules: next.rules,
         enabled: next.enabled,
       });
       if ("error" in r && r.error) return setMsg(r.error);
@@ -53,7 +127,7 @@ function Card({ a, live, options }: { a: BotAccountView; live: boolean; options:
         />
       </div>
       <div className="mt-1.5 font-mono text-[10px] text-ink-4">
-        {f.enabled ? (live ? "On · real orders" : "On · paper") : "Off · skipped"} · today <span className={a.today > 0 ? "text-pos" : a.today < 0 ? "text-neg" : ""}>{money(a.today)}</span>
+        {f.enabled ? (f.dryRun ? "On · dry run" : live ? "On · real orders" : "On · paper") : "Off · skipped"} · today <span className={a.today > 0 ? "text-pos" : a.today < 0 ? "text-neg" : ""}>{money(a.today)}</span>
       </div>
       <div className="mt-4 grid grid-cols-2 gap-3">
         <label className="col-span-2">
@@ -87,18 +161,44 @@ function Card({ a, live, options }: { a: BotAccountView; live: boolean; options:
         <div className="col-span-2 flex items-center justify-between gap-4 border-t border-line py-2.5">
           <span className="font-mono text-[10.5px] leading-[1.6] text-ink-2">
             {f.phase === "funded" ? "Funded / Express" : "Eval / Combine"}
-            <span className="block text-[9.5px] text-ink-4">{f.phase === "funded" ? "Skips quiet-market trades (each loss eats the buffer; the small wins don't count towards payouts)" : "Takes every trade, quiet ones too (15 pt target). Flip to Funded when it passes."}</span>
+            <span className="block text-[9.5px] text-ink-4">{f.phase === "funded" ? "Follows the 3/2 signals, all sessions, every weekday, 150 min windows, skips quiet signals." : "Follows the 3/3 signals: NY AM, NY PM, London, skips Thursday, quiet signals take a 15 pt target. Flip to Funded when it passes."}</span>
           </span>
           <Toggle
             checked={f.phase === "funded"}
             label={`${f.label} is funded`}
             onChange={(v) => {
-              const next = { ...f, phase: (v ? "funded" : "eval") as "eval" | "funded" };
+              const phase = (v ? "funded" : "eval") as "eval" | "funded";
+              const next = { ...f, phase, rules: PHASE_DEFAULTS[phase] };
               setF(next);
               save(next);
             }}
           />
         </div>
+        <div className="col-span-2 flex items-center justify-between gap-4 border-t border-line py-2.5">
+          <span className="font-mono text-[10.5px] leading-[1.6] text-ink-2">
+            {f.dryRun ? "Dry run" : <span className="text-neg">Real orders</span>}
+            <span className="block text-[9.5px] text-ink-4">{f.dryRun ? "Logs every decision with prices and follows it to its stop or target. Places nothing." : "Places real orders when Autopilot is Live."}</span>
+          </span>
+          <Toggle
+            checked={!f.dryRun}
+            label={`Real orders on ${f.label}`}
+            onChange={(v) => {
+              if (v && !window.confirm(`Switch ${f.label} to REAL orders? Only do this once its dry run has matched the expected trades (Autopilot → Dry-run check).`)) return;
+              const next = { ...f, dryRun: !v };
+              setF(next);
+              save(next);
+            }}
+          />
+        </div>
+        <details className="col-span-2 border-t border-line pt-2.5">
+          <summary className="cursor-pointer font-mono text-[10.5px] text-ink-2">
+            Rules <span className="text-ink-4">· {f.rules.swing} · {f.rules.sessions.join(" ")} · {f.rules.skipDays.length ? `skips ${f.rules.skipDays.join(" ")}` : "every day"} · quiet {f.rules.quietMode === "skip" ? "skipped" : "15 pt"}</span>
+          </summary>
+          <RulesEditor rules={f.rules} onChange={(rules) => setF({ ...f, rules })} />
+          <button type="button" className="mt-3 font-mono text-[9.5px] tracking-[0.2em] text-ink-4 uppercase hover:text-ink" onClick={() => setF({ ...f, rules: PHASE_DEFAULTS[f.phase] })}>
+            Back to the tested {f.phase} defaults
+          </button>
+        </details>
         <div className="col-span-2 flex items-center justify-between gap-4 border-y border-line py-2.5">
           <span className="font-mono text-[10.5px] leading-[1.6] text-ink-2">
             Follows the news blackout

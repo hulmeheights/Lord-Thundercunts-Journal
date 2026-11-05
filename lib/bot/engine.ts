@@ -6,6 +6,7 @@ import { runnerStatus } from "./runner";
 import { botNotify } from "./notify";
 import { newsBlock } from "./news";
 import { newsAround, refreshNews } from "./newsFeed";
+import { rulesFor, withoutSecret, type SorSignal } from "./sor";
 
 /**
  * The website side of Autopilot. It has NO connection to Topstep: it stores
@@ -15,8 +16,8 @@ import { newsAround, refreshNews } from "./newsFeed";
  * Topstep requires, then reports back what it did.
  */
 export type BotMode = "off" | "paper" | "live";
-export type AccountRow = { id: string; label: string; topstep_account: string | null; contracts: number; max_daily_loss: number; max_daily_win: number | null; enabled: boolean; profit_target: number | null; start_balance: number; news_rule: boolean; phase: Phase; created_at: Date };
-export const toAccount = (r: AccountRow): BotAccount => ({ id: r.id, label: r.label, topstepAccountId: r.topstep_account, contracts: r.contracts, maxDailyLoss: r.max_daily_loss, maxDailyWin: r.max_daily_win, enabled: r.enabled, profitTarget: r.profit_target, startBalance: r.start_balance, newsRule: r.news_rule, phase: r.phase === "funded" ? "funded" : "eval" });
+export type AccountRow = { id: string; label: string; topstep_account: string | null; contracts: number; max_daily_loss: number; max_daily_win: number | null; enabled: boolean; profit_target: number | null; start_balance: number; news_rule: boolean; phase: Phase; dry_run?: boolean; rules?: unknown; created_at: Date };
+export const toAccount = (r: AccountRow): BotAccount => ({ id: r.id, label: r.label, topstepAccountId: r.topstep_account, contracts: r.contracts, maxDailyLoss: r.max_daily_loss, maxDailyWin: r.max_daily_win, enabled: r.enabled, profitTarget: r.profit_target, startBalance: r.start_balance, newsRule: r.news_rule, phase: r.phase === "funded" ? "funded" : "eval", dryRun: r.dry_run !== false, rules: rulesFor(r.phase === "funded" ? "funded" : "eval", r.rules) });
 export const money = (n: number) => `${n >= 0 ? "+" : "−"}$${Math.abs(n).toFixed(2)}`;
 
 export async function logEvent(level: "info" | "warn" | "error", message: string) {
@@ -199,4 +200,43 @@ export async function handleAlert(raw: string, a: Alert, now = new Date()): Prom
   await logEvent("info", `Entry (paper) ${head}`);
   await botNotify(`Trade placed (paper) · ${head}\n${lines.join("\n")}`);
   return { status: "entry" };
+}
+
+/** The id a TradingView signal is kept under: a repeat of the same id is the same signal. */
+export const signalKey = (id: string) => `sig_${sha256(`tv|${id}`).slice(0, 24)}`;
+
+/**
+ * MNQ SOR v2: one signal, already checked for its secret. It's kept (without
+ * the secret) and handed to your Mac, which runs the 12 checks for every card
+ * and places only where all pass. A repeated id is ignored. Paper = every card
+ * runs as a dry run. Off = kept for the record only.
+ */
+export async function handleSignal(sig: SorSignal, now = new Date()): Promise<{ status: string }> {
+  const sql = await db();
+  const [{ mode }] = await sql<{ mode: BotMode }[]>`select mode from bot_settings where id = 1`;
+  const key = signalKey(sig.id);
+  const stored = withoutSecret(sig);
+  const fresh = await sql`
+    insert into bot_signals (id, event, dir, price, stop, target, session, mode, received_at, handoff, tv_id, payload, quiet)
+    values (${key}, 'signal', ${sig.dir}, ${sig.entry}, ${sig.stop}, ${sig.target}, ${sig.session}, ${mode}, ${now}, ${mode === "off" ? null : "waiting"}, ${sig.id}, ${sql.json(stored as never)}, ${sig.quiet})
+    on conflict do nothing returning id
+  `;
+  const head = `${sig.swing} ${sig.dir} ${sig.session} ${sig.dow} +${sig.mins_in}m${sig.quiet ? " quiet" : ""} @ ${sig.entry} · SL ${sig.stop} · TP ${sig.target ?? "none"}${sig.quiet ? ` · quiet TP ${sig.quiet_target ?? "none"}` : ""}`;
+  if (!fresh.length) {
+    await logEvent("warn", `Repeat of signal ${sig.id} ignored`);
+    return { status: "duplicate" };
+  }
+  if (mode === "off") {
+    await logEvent("info", `Signal kept, Autopilot is off: ${head}`);
+    return { status: "off" };
+  }
+  const runner = await runnerStatus();
+  await logEvent(runner.online ? "info" : "error", `Signal handed to your Mac: ${head}${runner.online ? "" : " (your Mac isn't connected: if it doesn't pick it up within 20 seconds, nothing happens)"}`);
+  await new Promise((r) => setTimeout(r, 21_000));
+  const missed = await sql`update bot_signals set handoff = 'missed' where id = ${key} and handoff = 'waiting' returning id`;
+  if (missed.length) {
+    await logEvent("error", `Your Mac didn't pick up signal ${sig.id} within 20 seconds: nothing placed. ${head}`);
+    await botNotify(`⚠ Your Mac missed a signal\n${head}\nNothing was placed. Check the Mac is on and online.`);
+  }
+  return { status: "handed-to-mac" };
 }

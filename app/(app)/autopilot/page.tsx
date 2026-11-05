@@ -25,6 +25,7 @@ import { listLedger } from "@/lib/data/ledger";
 import { FIRM_SUGGESTIONS, summarizeLedger } from "@/lib/analytics/ledger";
 import { LedgerSection } from "@/components/guardian/Ledger";
 import { WinRateChart } from "@/components/autopilot/WinRateChart";
+import { DryCheck } from "@/components/autopilot/DryCheck";
 
 export const metadata = { title: "Autopilot" };
 
@@ -98,7 +99,7 @@ export default async function AutopilotPage({ searchParams }: { searchParams: Pr
   const on = s.accounts.filter((a) => a.enabled).length;
   const live = s.mode === "live";
   const shown = s.trades.filter((t) => t.mode === (live ? "live" : "paper") || t.status !== "skipped").slice(0, 60);
-  const books = { live: s.trades.filter((t) => t.mode === "live"), paper: s.trades.filter((t) => t.mode === "paper") };
+  const books = { live: s.trades.filter((t) => t.mode === "live"), paper: s.trades.filter((t) => t.mode === "paper" || t.mode === "dry") };
   const steps = [
     { ok: setup.secret, text: "Webhook secret set in Vercel (BOT_WEBHOOK_SECRET, at least 16 characters)" },
     { ok: setup.telegram, text: "Telegram receipts (optional: TELEGRAM_TOKEN + TELEGRAM_CHAT_ID)" },
@@ -110,7 +111,7 @@ export default async function AutopilotPage({ searchParams }: { searchParams: Pr
 
   return (
     <>
-      <SectionIndex ids={["switch", "mac", "accounts", "news", "ledger", "record", "evals", "setup", "log"]} />
+      <SectionIndex ids={["switch", "mac", "accounts", "news", "ledger", "drycheck", "record", "evals", "setup", "log"]} />
       <PageHead
         eyebrow="07 — Autopilot"
         title={
@@ -144,7 +145,7 @@ export default async function AutopilotPage({ searchParams }: { searchParams: Pr
       <Section id="accounts" n={3} label="Accounts" lead={<>Mirrored to <em>{on}</em>.</>}>
         <Accounts accounts={s.accounts} live={live} macAccounts={runner.accounts} macAccountsAt={runner.accountsAt ? when(runner.accountsAt) : null} />
         <p className="mt-6 max-w-3xl font-mono text-[10.5px] leading-[1.8] text-ink-4">
-          Every trade uses your script&apos;s stop and target exactly. The only thing a card changes is how many contracts it trades, and it stops taking new trades for the day once its loss limit or max win is reached (counted from 18:00 New York, like Topstep). Two cards on the same TopstepX account: the second is skipped. One account failing doesn&apos;t stop the others.
+          For every signal, each card runs the 12 checks in order and stops at the first that fails (logged as &quot;step N&quot; in the book): signal set, session, weekday, entry window, quiet rule, target, flat, one trade a session, trades a day and the day&apos;s limits (counted from 18:00 New York), losing days this week, and the daily cap on the target. The bot&apos;s own safety checks come after (step 13): news blackout if switched on, profit target, the right Topstep account, and no hedging across accounts. Orders use the script&apos;s stop and the target exactly as decided.
         </p>
       </Section>
 
@@ -177,7 +178,7 @@ export default async function AutopilotPage({ searchParams }: { searchParams: Pr
             const b = book(books[k]);
             return (
               <div key={k} className="border-t border-line-2 pt-4">
-                <div className="font-mono text-[9.5px] tracking-[0.3em] text-ink-4 uppercase">{k === "live" ? "Live" : "Paper"}</div>
+                <div className="font-mono text-[9.5px] tracking-[0.3em] text-ink-4 uppercase">{k === "live" ? "Live" : "Dry run / paper"}</div>
                 <div className="mt-2 flex flex-wrap items-baseline gap-x-6 gap-y-1 font-mono text-[12px]">
                   <span className={cn("num text-[20px]", b.net > 0 ? "text-pos" : b.net < 0 ? "text-neg" : "text-ink")}>{fmtMoney(b.net, { sign: true })}</span>
                   <span className="text-ink-3">
@@ -209,7 +210,7 @@ export default async function AutopilotPage({ searchParams }: { searchParams: Pr
             <li key={t.id} className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-0.5 border-b border-line py-3 font-mono text-[11px]">
               <span className="text-ink">
                 <span className={t.dir === "LONG" ? "text-pos" : "text-neg"}>{t.dir}</span> {SESSION_LABEL[t.session]} · {t.qty} MNQ · {t.accountLabel}
-                {t.mode === "paper" && <span className="ml-2 text-[9px] tracking-[0.2em] text-gold uppercase">paper</span>}
+                {t.mode !== "live" && <span className="ml-2 text-[9px] tracking-[0.2em] text-gold uppercase">{t.mode === "dry" ? "dry run" : "paper"}</span>}
               </span>
               <span className={cn("num text-right", t.pnl === null ? "text-ink-4" : t.pnl > 0 ? "text-pos" : t.pnl < 0 ? "text-neg" : "text-ink-3")}>
                 {t.status === "closed" && t.pnl !== null ? fmtMoney(t.pnl, { sign: true }) : t.status === "open" ? "open" : t.status === "error" ? "failed" : "skipped"}
@@ -217,14 +218,24 @@ export default async function AutopilotPage({ searchParams }: { searchParams: Pr
               <span className="col-span-2 text-[10px] text-ink-4">
                 {when(t.enteredAt)} · in {t.entry} · SL {t.stop} · TP {t.target}
                 {t.exit !== null && ` · out ${t.exit}`}
-                {t.reason && <span className={t.status === "error" ? "text-neg" : ""}> · {t.reason}</span>}
+                {t.reason && (
+                  <span className={t.status === "error" ? "text-neg" : ""}>
+                    {" "}
+                    · {t.step != null ? `step ${t.step}: ` : ""}
+                    {t.reason}
+                  </span>
+                )}
               </span>
             </li>
           ))}
         </ul>
       </Section>
 
-      <Section id="record" n={6} label="Track record" lead={<>Every trade, <em>kept</em>.</>}>
+      <Section id="drycheck" n={6} label="Dry-run check" lead={<>Decisions against the <em>expected</em> trades.</>}>
+        <DryCheck />
+      </Section>
+
+      <Section id="record" n={7} label="Track record" lead={<>Every trade, <em>kept</em>.</>}>
         <Seg
           className="mb-6"
           value={track}
@@ -282,9 +293,9 @@ export default async function AutopilotPage({ searchParams }: { searchParams: Pr
         )}
       </Section>
 
-      <LedgerSection id="evals" book="autopilot" label="Evals & payouts" n={7} entries={ledger} summary={summarizeLedger(ledger)} today={todayKey(tz)} firms={[...new Set(["Topstep", ...ledger.map((e) => e.firm), ...FIRM_SUGGESTIONS])]} />
+      <LedgerSection id="evals" book="autopilot" label="Evals & payouts" n={8} entries={ledger} summary={summarizeLedger(ledger)} today={todayKey(tz)} firms={[...new Set(["Topstep", ...ledger.map((e) => e.firm), ...FIRM_SUGGESTIONS])]} />
 
-      <Section id="setup" n={8} label="Setup" lead={<>Five minutes, <em>once</em>.</>}>
+      <Section id="setup" n={9} label="Setup" lead={<>Five minutes, <em>once</em>.</>}>
         <div className="grid gap-12 lg:grid-cols-2">
           <div>
             <ul className="space-y-2.5">
@@ -297,25 +308,24 @@ export default async function AutopilotPage({ searchParams }: { searchParams: Pr
             </ul>
             <ol className="mt-8 list-decimal space-y-2 pl-5 font-mono text-[11px] leading-[1.8] text-ink-3 marker:text-ink-4">
               <li>In Vercel, add BOT_WEBHOOK_SECRET, then redeploy. Your TopstepX login lives only on your Mac: the website has no Topstep connection, so don&apos;t add TopstepX keys to Vercel.</li>
-              <li>In TradingView, open your strategy&apos;s Settings → Automation and paste the same webhook secret.</li>
-              <li>Delete your old alert (pointing at mnq-bot) so only one alert trades. Then create one alert on MNQ1! 1m with the strategy as its condition, the message and webhook URL here.</li>
-              <li>Recreate the alert whenever you change a strategy setting, ideally with no trade open. Renew it before it expires.</li>
+              <li>On an MNQ1! 1-minute chart, add &quot;MNQ Session Open Reversal - Signals [1m]&quot; and paste the same secret into its Webhook Secret setting. Leave everything else on the defaults.</li>
+              <li>Create one alert: Condition = the script → &quot;Any alert() function call&quot;, open-ended, webhook URL here. Leave the message box as it is: the script writes the message itself.</li>
+              <li>Delete every older alert and remove the old strategy scripts from the chart, so nothing else sends here. Renew the alert before it expires.</li>
               <li>At Topstep, on every account: Auto OCO Brackets on, Topstep&apos;s own trade copier off, Personal Daily Profit Target &quot;Do Nothing&quot; or above the script&apos;s.</li>
-              <li>Run on Paper first. Go Live only after Topstep has OK&apos;d automated trading on your accounts.</li>
+              <li>Every card starts as a dry run: it logs each decision with prices and places nothing. Run at least a week, check it in Dry-run check, then switch cards to real orders one at a time.</li>
             </ol>
           </div>
           <div>
             <AlertExpiry initial={s.alertExpires} />
             <Copy label="Webhook URL" value={`${origin}/api/bot/webhook`} />
-            <Copy label="Alert message (exactly)" value={ALERT_MESSAGE} />
             <p className="mt-4 font-mono text-[10.5px] leading-[1.8] text-ink-4">
-              The secret lives only in Vercel and TradingView: it&apos;s never shown here or stored in the database. Anyone without it is turned away, and a repeat of the same alert within 90 seconds is ignored, so a retry can&apos;t double a trade.
+              The secret lives only in Vercel and TradingView: it&apos;s never shown here, logged or stored in the database. Anyone without it is turned away, and a repeat of a signal id already handled is ignored, so a retry can&apos;t double a trade. (Older strategy scripts used this message instead: {ALERT_MESSAGE})
             </p>
           </div>
         </div>
       </Section>
 
-      <Section id="log" n={9} label="Log">
+      <Section id="log" n={10} label="Log">
         <ul>
           {s.events.length === 0 && <li className="font-mono text-[11.5px] text-ink-3">Quiet so far.</li>}
           {s.events.map((e, i) => (

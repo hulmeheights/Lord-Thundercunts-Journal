@@ -6,7 +6,8 @@ import { claimAlerts, napSeconds, runnerAuthed } from "@/lib/bot/runner";
 import { dayPnl, logEvent, money, switchOff, toAccount, type AccountRow } from "@/lib/bot/engine";
 import { botNotify } from "@/lib/bot/notify";
 import { newsAround } from "@/lib/bot/newsFeed";
-import { SESSION_LABEL, type Session } from "@/lib/bot/signal";
+import { SESSION_LABEL, type BotAccount, type Session } from "@/lib/bot/signal";
+import { barTimeOf } from "@/lib/bot/sor";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
@@ -21,12 +22,37 @@ async function context() {
   const day = await dayPnl("live");
   const around = (s?.news_minutes ?? 0) + 5;
   const news = await newsAround(new Date(Date.now() - around * 60_000), new Date(Date.now() + around * 60_000));
+  // SOR v2: each card's own ledger for the last 9 days (its book: dry run or live), so the Mac rebuilds
+  // today's trades, session counts and losing days from records, never from memory.
+  const paper = s?.mode === "paper";
+  const rows = await sql<{ id: string; account_id: string; mode: string; session: string; status: string; pnl: number | null; entered_at: Date; exited_at: Date | null; dir: string; qty: number; entry_price: number; stop_price: number; target_price: number | null; bar_time: Date | null; order_id: string | null }[]>`
+    select id, account_id, mode, session, status, pnl, entered_at, exited_at, dir, qty, entry_price, stop_price, target_price, bar_time, order_id from bot_trades
+    where mode in ('live', 'dry') and status in ('open', 'closed') and account_id is not null and (entered_at > now() - interval '9 days' or status = 'open')
+    order by entered_at
+  `;
+  const dryOf = (c: (typeof cards)[number]) => paper || c.dryRun !== false;
+  // Open trades are watched even if their card has since been switched off.
+  const every = await sql<{ id: string; label: string; topstep_account: string | null }[]>`select id, label, topstep_account from bot_accounts`;
+  const hints = new Map(every.map((a) => [a.id, a.topstep_account]));
+  const labels = new Map(every.map((a) => [a.id, a.label]));
   return {
     mode: s?.mode ?? "off",
     newsMinutes: s?.news_minutes ?? 0,
     news,
     balancesDue: !!s?.balances_due,
-    cards: cards.map((c) => ({ ...c, dayPnl: day.get(c.id) ?? 0 })),
+    cards: cards.map((c) => {
+      const dry = dryOf(c);
+      return {
+        ...c,
+        dayPnl: day.get(c.id) ?? 0,
+        dry,
+        ledger: rows.filter((t) => t.account_id === c.id && t.mode === (dry ? "dry" : "live")).map((t) => ({ enteredAt: t.entered_at.toISOString(), exitedAt: t.exited_at?.toISOString() ?? null, session: t.session, status: t.status, pnl: t.pnl })),
+      };
+    }),
+    // Trades still open (any card, either book): the Mac watches them close, cleans up, and reports the result.
+    openTrades: rows
+      .filter((t) => t.status === "open")
+      .map((t) => ({ id: t.id, cardId: t.account_id, account: hints.get(t.account_id) ?? null, label: labels.get(t.account_id) ?? "", dry: t.mode === "dry", dir: t.dir, qty: t.qty, entry: t.entry_price, stop: t.stop_price, target: t.target_price, barTime: t.bar_time?.toISOString() ?? null, enteredAt: t.entered_at.toISOString(), orderId: t.order_id })),
   };
 }
 
@@ -42,9 +68,13 @@ export async function GET(req: Request) {
   // Headers are plain ASCII: anything else (e.g. a "·" from an older Mac program) becomes " - ".
   const info = (req.headers.get("x-runner") ?? "").replace(/[^\x20-\x7e]+/g, " - ").replace(/\s+/g, " ").trim().slice(0, 120) || null;
   await sql`update bot_runner set last_seen = now(), info = coalesce(${info}, info) where id = 1`;
-  if (nap > 0) return NextResponse.json({ alerts: [], wait: nap, context: await context() });
+  if (nap > 0) {
+    const ctx = await context();
+    // A trade still open outside a session: keep checking every 30 seconds so its close is caught and cleaned up.
+    return NextResponse.json({ alerts: [], wait: ctx.openTrades.length ? Math.min(nap, 30) : nap, context: ctx });
+  }
   const [{ mode }] = await sql<{ mode: string }[]>`select mode from bot_settings where id = 1`;
-  if (mode !== "live") return NextResponse.json({ alerts: [], wait: 20, context: await context() });
+  if (mode !== "live" && mode !== "paper") return NextResponse.json({ alerts: [], wait: 20, context: await context() });
   for (let waited = 0; waited < 20_000; waited += 400) {
     const alerts = await claimAlerts();
     if (alerts.length) return NextResponse.json({ alerts, wait: 0, context: await context() });
@@ -66,9 +96,25 @@ const Result = z.object({
   /** The real fill price at Topstep (bot 2.2+), so the book's P&L starts from where you actually got in. */
   fill: z.number().finite().positive().nullish(),
   qty: z.number().int().min(1).max(50),
+  /** SOR v2: the step a skip failed at (1-12, or 13 for the bot's own safety checks), the target used, dry run. */
+  step: z.number().int().min(0).max(20).nullish(),
+  target: z.number().finite().positive().nullish(),
+  capped: z.boolean().nullish(),
+  dry: z.boolean().nullish(),
+  phase: z.enum(["eval", "funded"]).nullish(),
+});
+const Closed = z.object({
+  type: z.literal("closed"),
+  tradeId: z.string().regex(/^bt_[A-Za-z0-9_-]{6,40}$/),
+  exitPrice: z.number().finite().positive().nullable(),
+  pnl: z.number().finite(),
+  fees: z.number().finite().min(0).default(0),
+  reason: z.enum(["target", "stop", "other"]),
+  exitedAt: z.string().datetime({ offset: true }),
 });
 const Passed = z.object({ cardId: z.string().max(60), profit: z.number() });
 const Report = z.discriminatedUnion("type", [
+  Closed,
   z.object({ type: z.literal("results"), signalId: z.string().regex(/^sig_[a-f0-9]{24}$/), results: z.array(Result).max(50), passed: z.array(Passed).max(50).default([]) }),
   z.object({
     type: z.literal("accounts"),
@@ -86,9 +132,22 @@ export async function POST(req: Request) {
   const r = parsed.data;
   const sql = await db();
   const cards = new Map((await sql<AccountRow[]>`select * from bot_accounts`).map((c) => [c.id, toAccount(c)]));
-  for (const p of r.passed) {
+  for (const p of "passed" in r ? r.passed : []) {
     const c = cards.get(p.cardId);
     if (c) await switchOff(c, p.profit);
+  }
+  if (r.type === "closed") {
+    const [t] = await sql<{ account_label: string; mode: string; dir: string; session: string; qty: number }[]>`
+      update bot_trades set status = 'closed', exit_price = ${r.exitPrice}, pnl = ${Math.round(r.pnl * 100) / 100}, fees = ${r.fees}, exit_reason = ${r.reason}, exited_at = ${new Date(r.exitedAt)}
+      where id = ${r.tradeId} and status = 'open' returning account_label, mode, dir, session, qty
+    `;
+    if (!t) return NextResponse.json({ ok: true, already: true });
+    const dry = t.mode === "dry";
+    const line = `${t.dir} ${t.session} · ${t.account_label}: ${money(r.pnl)} (${r.reason === "target" ? "target" : r.reason === "stop" ? "stop" : "closed"}${r.exitPrice ? ` @ ${r.exitPrice}` : ""})`;
+    await logEvent("info", `${dry ? "Dry run closed" : "Trade closed"}: ${line}`);
+    await botNotify(`${dry ? "Dry run closed" : "Trade closed"} · ${money(r.pnl)}\n${line}`, { push: !dry });
+    if (!dry) await sql`update bot_settings set balances_due = now() where id = 1`;
+    return NextResponse.json({ ok: true });
   }
   if (r.type === "accounts") {
     await sql`update bot_runner set accounts = ${sql.json(r.accounts as never)}, accounts_at = now() where id = 1`;
@@ -96,10 +155,11 @@ export async function POST(req: Request) {
     await sql`update bot_settings set balances_due = null where id = 1`;
     return NextResponse.json({ ok: true });
   }
-  const [sig] = await sql<{ id: string; dir: "LONG" | "SHORT"; price: number; stop: number; target: number; session: Session; received_at: Date }[]>`
-    update bot_signals set handoff = 'done' where id = ${r.signalId} returning id, dir, price, stop, target, session, received_at
+  const [sig] = await sql<{ id: string; event: string; dir: "LONG" | "SHORT"; price: number; stop: number; target: number | null; session: Session; received_at: Date; tv_id: string | null; payload: { swing?: string; quiet?: boolean; id?: string; dow?: string; mins_in?: number } | null }[]>`
+    update bot_signals set handoff = 'done' where id = ${r.signalId} returning id, event, dir, price, stop, target, session, received_at, tv_id, payload
   `;
   if (!sig) return NextResponse.json({ error: "unknown signal" }, { status: 404 });
+  if (sig.event === "signal") return sorResults(sig, r.results, cards);
   const lines: string[] = [];
   for (const x of r.results) {
     const label = cards.get(x.cardId)?.label ?? "account";
@@ -126,6 +186,45 @@ export async function POST(req: Request) {
       })
       .join("\n");
     await botNotify(`⚠ Order failed on ${failed} ${failed === 1 ? "account" : "accounts"}\n${why}`, { push: true, telegram: false });
+  }
+  return NextResponse.json({ ok: true });
+}
+
+type SorSig = { id: string; dir: "LONG" | "SHORT"; price: number; stop: number; target: number | null; session: Session; received_at: Date; tv_id: string | null; payload: { swing?: string; quiet?: boolean; id?: string; dow?: string; mins_in?: number } | null };
+
+/**
+ * SOR v2: one ledger row per card for every signal: taken (live or dry run),
+ * skipped with the step it failed at, or failed at Topstep (not counted as a
+ * trade). Telegram once per order placed; skips go to the log only.
+ */
+async function sorResults(sig: SorSig, results: z.infer<typeof Result>[], cards: Map<string, BotAccount>) {
+  const sql = await db();
+  const p = sig.payload ?? {};
+  const bar = sig.tv_id ? barTimeOf(sig.tv_id) : null;
+  const head = `${p.swing ?? ""} ${sig.dir} ${SESSION_LABEL[sig.session]} ${p.dow ?? ""} +${p.mins_in ?? "?"}m${p.quiet ? " quiet" : ""} @ ${sig.price}`.replace(/\s+/g, " ").trim();
+  const placed: string[] = [];
+  const skipped: string[] = [];
+  for (const x of results) {
+    const card = cards.get(x.cardId);
+    const label = card?.label ?? "account";
+    const dry = x.dry ?? true;
+    await sql`
+      insert into bot_trades (id, signal_id, account_id, account_label, mode, session, dir, qty, entry_price, stop_price, target_price, status, reason, order_id, entered_at, tv_id, swing, phase, quiet, capped, step, bar_time)
+      values (${`bt_${randomToken(10)}`}, ${sig.id}, ${card ? x.cardId : null}, ${label}, ${dry ? "dry" : "live"}, ${sig.session}, ${sig.dir}, ${x.qty}, ${x.fill ?? sig.price}, ${sig.stop}, ${x.target ?? sig.target}, ${x.status}, ${x.reason ?? null}, ${x.orderId ?? null}, ${sig.received_at},
+              ${sig.tv_id}, ${p.swing ?? null}, ${x.phase ?? card?.phase ?? null}, ${p.quiet ?? null}, ${x.capped ?? null}, ${x.step ?? null}, ${bar})
+    `;
+    if (x.status === "open") placed.push(`• ${label}: ${x.qty} MNQ${dry ? " (dry run, no order)" : ""} · SL ${sig.stop} · TP ${x.target ?? sig.target}${x.capped ? " (capped)" : ""}`);
+    else if (x.status === "error") {
+      placed.push(`• ${label}: FAILED (${x.reason ?? "unknown"})`);
+      await logEvent("error", `Order failed on ${label} (from your Mac): ${x.reason ?? "unknown"}`);
+    } else skipped.push(`${label}: step ${x.step ?? "?"} (${x.reason ?? "no reason"})`);
+  }
+  await logEvent("info", `Signal ${sig.tv_id ?? ""} ${head}: ${results.filter((x) => x.status === "open").length} taken${skipped.length ? ` · skipped ${skipped.join("; ")}` : ""}`);
+  if (placed.length) await botNotify(`Trade placed · ${head}\n${placed.join("\n")}`);
+  const failed = results.filter((x) => x.status === "error");
+  if (failed.length) {
+    const why = failed.map((x) => `${cards.get(x.cardId)?.label ?? "a card"}: ${/Auto OCO/i.test(x.reason ?? "") ? "turn on Auto OCO Brackets for this account in TopstepX settings" : (x.reason ?? "unknown").slice(0, 120)}`).join("\n");
+    await botNotify(`⚠ Order failed on ${failed.length} ${failed.length === 1 ? "account" : "accounts"}\n${why}`, { push: true, telegram: false });
   }
   return NextResponse.json({ ok: true });
 }
