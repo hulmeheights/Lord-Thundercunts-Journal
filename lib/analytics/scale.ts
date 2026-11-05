@@ -23,6 +23,9 @@ export type Edge = {
   worstStreak: number;
   /** Trades that were copies of another account's trade, folded into it. */
   copiesFolded: number;
+  /** Trades left out because no 1R could be worked out for them. */
+  noRisk: number;
+  funnel: { period: number; inWindow: number | null; gradedAny: number; aplusAnyTime: number; aplusOutsideWindow: number | null; matching: number };
   rs: number[];
   /** Each trade's real net P&L in dollars (copies averaged). */
   usd: number[];
@@ -37,10 +40,18 @@ export type Edge = {
 export function measureEdge(trades: Trade[], basis: RiskBasis, tz: string, f: ScaleFilter): Edge {
   const risks = accountRisks(trades, basis);
   const defaultRisk = basis && typeof basis === "object" ? basis.defaultRisk : basis;
-  const keep = trades
-    .filter((t) => !f.window || ((m) => m >= f.window!.start && m < f.window!.end)(minuteOfDay(t.entryTime, tz)))
-    .filter((t) => !f.grades || (t.grade != null && f.grades.includes(t.grade)))
-    .sort((a, b) => a.entryTime.localeCompare(b.entryTime));
+  const inWin = (t: Trade) => !f.window || ((m) => m >= f.window!.start && m < f.window!.end)(minuteOfDay(t.entryTime, tz));
+  const graded = (t: Trade) => !f.grades || (t.grade != null && f.grades.includes(t.grade));
+  const keep = trades.filter(inWin).filter(graded).sort((a, b) => a.entryTime.localeCompare(b.entryTime));
+  // How the count got from "every trade" to what's measured, so it's never a mystery.
+  const funnel = {
+    period: trades.length,
+    inWindow: f.window ? trades.filter(inWin).length : null,
+    gradedAny: trades.filter((t) => t.grade != null).length,
+    aplusAnyTime: trades.filter((t) => t.grade === "A+").length,
+    aplusOutsideWindow: f.window ? trades.filter((t) => t.grade === "A+" && !inWin(t)).length : null,
+    matching: keep.length,
+  };
   // An account with too few losses to know its usual 1R borrows the typical 1R of your other accounts,
   // so its winners still count (otherwise only its losses would, which skews everything).
   const known = [...risks.values()].sort((a, b) => a - b);
@@ -97,6 +108,8 @@ export function measureEdge(trades: Trade[], basis: RiskBasis, tz: string, f: Sc
     daysPerMonth,
     worstStreak: worst,
     copiesFolded: each.length - rows.length,
+    noRisk: keep.length - each.length,
+    funnel,
     rs,
     usd,
     netUsd: Math.round((uw - ul) * 100) / 100,

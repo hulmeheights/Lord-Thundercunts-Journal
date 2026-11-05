@@ -47,6 +47,13 @@ export function ScaleSection({ n, edge, year, filter, risk, windowLabel, days }:
         Your own trades {sd === "all" ? "from the last 3 years" : sd === "365" ? "from the last year" : "from the last 90 days"}{filter === "aplusw" || filter === "window" ? ` inside ${windowLabel ?? "your trading window (set it in Settings → Trading rules)"}` : ""}
         {filter === "aplusw" || filter === "aplus" ? ", graded A+" : ""}, measured in R (each account&apos;s own 1R). Grade every trade so this stays honest.
       </p>
+      <p className="mt-2 font-mono text-[10.5px] leading-[1.8] text-ink-3">
+        How the count is made: {edge.funnel.period} trades in this period
+        {edge.funnel.inWindow !== null && <> · {edge.funnel.inWindow} entered inside your window</>} · {edge.funnel.gradedAny} graded at all · {edge.funnel.aplusAnyTime} graded A+
+        {edge.funnel.aplusOutsideWindow ? <> ({edge.funnel.aplusOutsideWindow} of them outside your window, left out)</> : null} · {edge.funnel.matching} match this view
+        {edge.copiesFolded ? <> · {edge.copiesFolded} were copies on other accounts, counted once</> : null}
+        {edge.noRisk ? <> · {edge.noRisk} left out with no 1R to measure</> : null} → <span className="text-ink">{edge.n} measured</span>.
+      </p>
       {edge.n === 0 && (filter === "aplusw" || filter === "aplus") && (
         <p className="mt-2 font-mono text-[10.5px] text-gold">No trades graded A+ here yet. Grade your trades (Trades → each trade), or switch to &quot;All in my window&quot; to see your edge so far.</p>
       )}
