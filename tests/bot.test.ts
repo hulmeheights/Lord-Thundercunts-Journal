@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { Alert, bracketOk, bracketTicks, gate, pnlOf, sessionOf, targetReached, tradingDayStart } from "../lib/bot/signal";
+import { Alert, bracketOk, bracketTicks, gate, phaseSkip, pnlOf, sessionOf, targetReached, tradingDayStart } from "../lib/bot/signal";
 
 test("the alert message parses exactly as the script sends it", () => {
   const entry = Alert.parse({ price: 21000.25, data: { secret: "s", event: "entry", dir: "LONG", qty: 5, stop: 20980, target: 21040.5 } });
@@ -35,7 +35,7 @@ test("bracket ticks, sanity check and P&L for MNQ", () => {
 });
 
 test("each account's own daily gates", () => {
-  const a = { id: "a", label: "A", topstepAccountId: "1", contracts: 5, maxDailyLoss: 500, maxDailyWin: 1600, enabled: true, profitTarget: 3000, startBalance: 50000, newsRule: true };
+  const a = { id: "a", label: "A", topstepAccountId: "1", contracts: 5, maxDailyLoss: 500, maxDailyWin: 1600, enabled: true, profitTarget: 3000, startBalance: 50000, newsRule: true, phase: "eval" as const };
   assert.equal(gate(a, 0), null);
   assert.match(gate(a, 1600)!, /max daily win/);
   assert.match(gate(a, -500)!, /daily loss limit/);
@@ -64,4 +64,19 @@ test("news blackout: high-impact US only, real release times, ±minutes", async 
   assert.equal(newsBlock(new Date(nfp + 11 * 60_000), events, 11).length, 2); // 08:41: blocked
   assert.equal(newsBlock(new Date(nfp + 12 * 60_000), events, 11).length, 0); // 08:42: free
   assert.equal(windows(events, 11).length, 1); // one window for both releases
+});
+
+test("script B: one eval alert serves both phases; funded accounts skip quiet trades", () => {
+  const b = Alert.parse({ price: 21000, data: { secret: "s", mode: "eval", session: "NYAM", quiet: true, event: "entry", dir: "LONG", qty: 5, stop: 20980, target: 21015 } });
+  assert.equal(b.data.event === "entry" && b.data.quiet, true);
+  assert.equal(b.data.event === "entry" && b.data.mode, "eval");
+  assert.equal(phaseSkip("eval", "eval", true), null); // Combine takes the quiet 15 pt trade
+  assert.match(phaseSkip("funded", "eval", true)!, /quiet/); // Express skips it
+  assert.equal(phaseSkip("funded", "eval", false), null); // normal trades go to both
+  assert.match(phaseSkip("eval", "funded", false)!, /eval accounts/); // a funded-chart alert never hits a Combine
+  assert.equal(phaseSkip("funded", "funded", false), null);
+  assert.equal(phaseSkip("funded", undefined, undefined), null); // old script: everyone, as before
+  assert.equal(phaseSkip("funded", "off", true), null);
+  // A garbled mode never blocks the alert itself.
+  assert.ok(Alert.safeParse({ price: 21000, data: { secret: "s", mode: "weird", event: "entry", dir: "LONG", stop: 20980, target: 21015 } }).success);
 });

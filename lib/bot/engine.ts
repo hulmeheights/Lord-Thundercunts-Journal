@@ -1,7 +1,7 @@
 import "server-only";
 import { db } from "../db";
 import { randomToken, sha256 } from "../crypto";
-import { bracketOk, gate, sessionOf, SESSION_LABEL, targetReached, tradingDayStart, type Alert, type BotAccount } from "./signal";
+import { bracketOk, gate, phaseSkip, sessionOf, SESSION_LABEL, targetReached, tradingDayStart, type Alert, type BotAccount, type Phase } from "./signal";
 import { runnerStatus } from "./runner";
 import { botNotify } from "./notify";
 import { newsBlock } from "./news";
@@ -15,8 +15,8 @@ import { newsAround, refreshNews } from "./newsFeed";
  * Topstep requires, then reports back what it did.
  */
 export type BotMode = "off" | "paper" | "live";
-export type AccountRow = { id: string; label: string; topstep_account: string | null; contracts: number; max_daily_loss: number; max_daily_win: number | null; enabled: boolean; profit_target: number | null; start_balance: number; news_rule: boolean; created_at: Date };
-export const toAccount = (r: AccountRow): BotAccount => ({ id: r.id, label: r.label, topstepAccountId: r.topstep_account, contracts: r.contracts, maxDailyLoss: r.max_daily_loss, maxDailyWin: r.max_daily_win, enabled: r.enabled, profitTarget: r.profit_target, startBalance: r.start_balance, newsRule: r.news_rule });
+export type AccountRow = { id: string; label: string; topstep_account: string | null; contracts: number; max_daily_loss: number; max_daily_win: number | null; enabled: boolean; profit_target: number | null; start_balance: number; news_rule: boolean; phase: Phase; created_at: Date };
+export const toAccount = (r: AccountRow): BotAccount => ({ id: r.id, label: r.label, topstepAccountId: r.topstep_account, contracts: r.contracts, maxDailyLoss: r.max_daily_loss, maxDailyWin: r.max_daily_win, enabled: r.enabled, profitTarget: r.profit_target, startBalance: r.start_balance, newsRule: r.news_rule, phase: r.phase === "funded" ? "funded" : "eval" });
 export const money = (n: number) => `${n >= 0 ? "+" : "−"}$${Math.abs(n).toFixed(2)}`;
 
 export async function logEvent(level: "info" | "warn" | "error", message: string) {
@@ -68,8 +68,8 @@ export async function handleAlert(raw: string, a: Alert, now = new Date()): Prom
   const signalId = `sig_${sha256(`${raw}|${Math.floor(now.getTime() / 90_000)}`).slice(0, 24)}`;
   const handoff = d.event === "entry" && mode === "live" ? "waiting" : null;
   const fresh = await sql`
-    insert into bot_signals (id, event, dir, price, stop, target, session, mode, received_at, handoff)
-    values (${signalId}, ${d.event}, ${"dir" in d ? d.dir : null}, ${a.price}, ${d.event === "entry" ? d.stop : null}, ${d.event === "entry" ? d.target : null}, ${session}, ${mode}, ${now}, ${handoff})
+    insert into bot_signals (id, event, dir, price, stop, target, session, mode, received_at, handoff, alert_mode, quiet)
+    values (${signalId}, ${d.event}, ${"dir" in d ? d.dir : null}, ${a.price}, ${d.event === "entry" ? d.stop : null}, ${d.event === "entry" ? d.target : null}, ${session}, ${mode}, ${now}, ${handoff}, ${d.event === "entry" ? (d.mode ?? null) : null}, ${d.event === "entry" ? (d.quiet ?? null) : null})
     on conflict (id) do nothing returning id
   `;
   if (!fresh.length) {
@@ -107,7 +107,7 @@ export async function handleAlert(raw: string, a: Alert, now = new Date()): Prom
   }
 
   // ── Entry ─────────────────────────────────────────────────────────────────
-  const head = `${d.dir} ${SESSION_LABEL[session]} @ ~${a.price} · SL ${d.stop} · TP ${d.target}`;
+  const head = `${d.dir} ${SESSION_LABEL[session]}${d.quiet ? " (quiet)" : ""} @ ~${a.price} · SL ${d.stop} · TP ${d.target}`;
   if (mode === "live") {
     const runner = await runnerStatus();
     await logEvent(runner.online ? "info" : "error", runner.online ? `Entry handed to your Mac: ${head}` : `Entry handed to your Mac, but it isn't connected: if it doesn't pick it up within 20 seconds, nothing is placed. ${head}`);
@@ -142,6 +142,16 @@ export async function handleAlert(raw: string, a: Alert, now = new Date()): Prom
 
   // ── Paper: the same rules, followed on paper ──────────────────────────────
   const lines: string[] = [];
+  for (const acct of accts.filter((x) => phaseSkip(x.phase, d.mode, d.quiet))) {
+    const why = phaseSkip(acct.phase, d.mode, d.quiet)!;
+    await record(acct, "skipped", why);
+    lines.push(`• ${acct.label}: skipped (${why})`);
+  }
+  accts = accts.filter((x) => !phaseSkip(x.phase, d.mode, d.quiet));
+  if (!accts.length) {
+    await logEvent("info", `Entry skipped on every account (${lines.length ? "phase" : "none on"}): ${head}`);
+    return { status: "phase" };
+  }
   const [{ news_minutes: newsMinutes }] = await sql<{ news_minutes: number }[]>`select news_minutes from bot_settings where id = 1`;
   if (newsMinutes > 0) {
     const from = new Date(now.getTime() - newsMinutes * 60_000);

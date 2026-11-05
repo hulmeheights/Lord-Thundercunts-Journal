@@ -14,7 +14,17 @@ export const TICKS_PER_POINT = 4;
 
 const Px = z.coerce.number().finite().positive();
 const Data = z.discriminatedUnion("event", [
-  z.object({ event: z.literal("entry"), secret: z.string().max(200), dir: z.enum(["LONG", "SHORT"]), qty: z.coerce.number().int().positive().max(100).optional(), stop: Px, target: Px }),
+  z.object({
+    event: z.literal("entry"),
+    secret: z.string().max(200),
+    dir: z.enum(["LONG", "SHORT"]),
+    qty: z.coerce.number().int().positive().max(100).optional(),
+    stop: Px,
+    target: Px,
+    /** Script B: which account type the chart is set to, and whether this is a quiet-market trade. */
+    mode: z.enum(["eval", "funded", "off"]).optional().catch(undefined),
+    quiet: z.boolean().optional().catch(undefined),
+  }),
   z.object({ event: z.literal("exit"), secret: z.string().max(200), dir: z.enum(["LONG", "SHORT"]) }),
   z.object({ event: z.literal("flatten"), secret: z.string().max(200) }),
 ]);
@@ -76,7 +86,22 @@ export type BotAccount = {
   startBalance: number;
   /** Does the news blackout apply to this account? (Topstep: yes. Firms without a news rule: switch it off.) */
   newsRule: boolean;
+  /** Eval (Combine) takes every trade; funded (Express) skips quiet-market trades. */
+  phase: Phase;
 };
+export type Phase = "eval" | "funded";
+
+/**
+ * Which accounts an entry goes to. One alert (chart on Eval) serves both:
+ * eval accounts take everything, funded accounts skip quiet-market trades.
+ * An alert from a chart set to Funded only goes to funded accounts. Alerts
+ * without a mode (older scripts) or with "off" go to everyone.
+ */
+export function phaseSkip(phase: Phase, mode: "eval" | "funded" | "off" | undefined | null, quiet: boolean | undefined | null): string | null {
+  if (mode === "funded" && phase === "eval") return "funded-chart alert: eval accounts follow the eval chart";
+  if (phase === "funded" && quiet && mode === "eval") return "quiet market: funded accounts skip quiet trades";
+  return null;
+}
 
 /** Has the account made its profit target? Profit is its balance above the start (or, on paper, the paper P&L). */
 export const targetReached = (a: Pick<BotAccount, "profitTarget">, profit: number) => a.profitTarget != null && profit >= a.profitTarget;

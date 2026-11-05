@@ -703,4 +703,15 @@ export const MIGRATIONS: { version: number; sql: string }[] = [
       from bad where t.id = bad.id;
     `,
   },
+  {
+    version: 35,
+    sql: /* sql */ `
+      -- Script B: each card is an eval (Combine) or funded (Express) account; funded skips quiet-market trades.
+      alter table bot_accounts add column if not exists phase text not null default 'eval';
+      alter table bot_accounts drop constraint if exists bot_accounts_phase_check;
+      alter table bot_accounts add constraint bot_accounts_phase_check check (phase in ('eval', 'funded'));
+      alter table bot_signals add column if not exists alert_mode text;
+      alter table bot_signals add column if not exists quiet boolean;
+    `,
+  },
 ];

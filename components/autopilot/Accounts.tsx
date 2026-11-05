@@ -13,11 +13,11 @@ const money = (n: number) => `${n >= 0 ? "+" : "−"}$${Math.abs(n).toLocaleStri
 
 function Card({ a, live, options }: { a: BotAccountView; live: boolean; options: { id: number; name: string }[] }) {
   const router = useRouter();
-  const initial = { label: a.label, topstepAccount: a.topstepAccount, contracts: String(a.contracts), maxDailyLoss: String(a.maxDailyLoss), maxDailyWin: a.maxDailyWin ? String(a.maxDailyWin) : "", profitTarget: a.profitTarget ? String(a.profitTarget) : "", startBalance: String(a.startBalance), newsRule: a.newsRule, enabled: a.enabled };
+  const initial = { label: a.label, topstepAccount: a.topstepAccount, contracts: String(a.contracts), maxDailyLoss: String(a.maxDailyLoss), maxDailyWin: a.maxDailyWin ? String(a.maxDailyWin) : "", profitTarget: a.profitTarget ? String(a.profitTarget) : "", startBalance: String(a.startBalance), newsRule: a.newsRule, phase: a.phase, enabled: a.enabled };
   const [f, setF] = useState(initial);
   const [msg, setMsg] = useState<string | null>(null);
   const [pending, start] = useTransition();
-  const dirty = (Object.keys(initial) as (keyof typeof initial)[]).some((k) => k !== "enabled" && k !== "newsRule" && f[k] !== initial[k]);
+  const dirty = (Object.keys(initial) as (keyof typeof initial)[]).some((k) => k !== "enabled" && k !== "newsRule" && k !== "phase" && f[k] !== initial[k]);
   const save = (next = f) =>
     start(async () => {
       setMsg(null);
@@ -30,6 +30,7 @@ function Card({ a, live, options }: { a: BotAccountView; live: boolean; options:
         profitTarget: next.profitTarget.trim() ? Number(next.profitTarget) : null,
         startBalance: Number(next.startBalance),
         newsRule: next.newsRule,
+        phase: next.phase,
         enabled: next.enabled,
       });
       if ("error" in r && r.error) return setMsg(r.error);
@@ -83,6 +84,21 @@ function Card({ a, live, options }: { a: BotAccountView; live: boolean; options:
           <span className={lab}>Starting balance $</span>
           <input className={num} inputMode="decimal" value={f.startBalance} onChange={(e) => setF({ ...f, startBalance: e.target.value.replace(/[^0-9.]/g, "") })} />
         </label>
+        <div className="col-span-2 flex items-center justify-between gap-4 border-t border-line py-2.5">
+          <span className="font-mono text-[10.5px] leading-[1.6] text-ink-2">
+            {f.phase === "funded" ? "Funded / Express" : "Eval / Combine"}
+            <span className="block text-[9.5px] text-ink-4">{f.phase === "funded" ? "Skips quiet-market trades (each loss eats the buffer; the small wins don't count towards payouts)" : "Takes every trade, quiet ones too (15 pt target). Flip to Funded when it passes."}</span>
+          </span>
+          <Toggle
+            checked={f.phase === "funded"}
+            label={`${f.label} is funded`}
+            onChange={(v) => {
+              const next = { ...f, phase: (v ? "funded" : "eval") as "eval" | "funded" };
+              setF(next);
+              save(next);
+            }}
+          />
+        </div>
         <div className="col-span-2 flex items-center justify-between gap-4 border-y border-line py-2.5">
           <span className="font-mono text-[10.5px] leading-[1.6] text-ink-2">
             Follows the news blackout

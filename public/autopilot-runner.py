@@ -32,7 +32,7 @@ import urllib.error
 import urllib.request
 from datetime import datetime
 
-VERSION = "2.2"
+VERSION = "2.3"
 TOPSTEP = os.environ.get("THUNDER_TOPSTEP_URL", "https://api.topstepx.com")  # override only for testing
 TICKET_TTL_MS = 20_000  # never place a ticket older than this: a late entry is a different trade
 HOME = os.path.expanduser("~")
@@ -204,6 +204,17 @@ def match_account(accounts, hint):
     return None
 
 
+def phase_skip(card, alert):
+    """Script B: eval accounts take every trade; funded accounts skip quiet-market ones. A funded-chart alert never goes to an eval account."""
+    phase = card.get("phase", "eval")
+    mode = alert.get("mode")
+    if mode == "funded" and phase == "eval":
+        return "funded-chart alert: eval accounts follow the eval chart"
+    if phase == "funded" and alert.get("quiet") and mode == "eval":
+        return "quiet market: funded accounts skip quiet trades"
+    return None
+
+
 def bracket_problem(direction, price, stop, target):
     if direction == "LONG" and not (stop < price < target):
         return "stop must be below and target above the price for a long"
@@ -305,7 +316,7 @@ def handle(base, auth, ts, alert, ctx):
     def skip(card, why, status="skipped"):
         results.append({"cardId": card["id"], "status": status, "reason": why, "qty": card["contracts"]})
 
-    head = f"{alert['dir']} @ ~{alert['price']} SL {alert['stop']} TP {alert['target']}"
+    head = f"{alert['dir']}{' (quiet)' if alert.get('quiet') else ''} @ ~{alert['price']} SL {alert['stop']} TP {alert['target']}"
     if ctx.get("mode") != "live":
         for c in cards:
             skip(c, "Autopilot isn't on Live")
@@ -320,7 +331,13 @@ def handle(base, auth, ts, alert, ctx):
     stop_ticks = max(1, round(abs(alert["price"] - alert["stop"]) * TICKS_PER_POINT))
     target_ticks = max(1, round(abs(alert["target"] - alert["price"]) * TICKS_PER_POINT))
 
-    live = [c for c in cards]
+    live = []
+    for c in cards:
+        why = phase_skip(c, alert)
+        if why:
+            skip(c, why)
+        else:
+            live.append(c)
     if news:
         for c in [c for c in live if c.get("newsRule", True)]:
             skip(c, news)
