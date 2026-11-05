@@ -24,6 +24,11 @@ export type Edge = {
   /** Trades that were copies of another account's trade, folded into it. */
   copiesFolded: number;
   rs: number[];
+  /** Each trade's real net P&L in dollars (copies averaged). */
+  usd: number[];
+  netUsd: number;
+  avgWinUsd: number | null;
+  avgLossUsd: number | null;
   perDay: number[];
   ready: { ok: boolean; checks: { label: string; ok: boolean; value: string }[] };
 };
@@ -43,14 +48,15 @@ export function measureEdge(trades: Trade[], basis: RiskBasis, tz: string, f: Sc
   const each = keep.map((t) => ({ t, r: rMultiple(t, defaultRisk, risks.get(t.accountId ?? t.source) ?? fallback) })).filter((x): x is { t: Trade; r: number } => x.r !== null && Number.isFinite(x.r));
   // One decision copied to several accounts (Tradecopia, group trading) is one trade, not five: same market and
   // side, entered within a minute on different accounts, counts once at its average R.
-  const rows: { t: Trade; r: number; copies: number }[] = [];
+  const rows: { t: Trade; r: number; usd: number; copies: number }[] = [];
   for (const x of each) {
     const at = Date.parse(x.t.entryTime);
     const twin = rows.find((y) => y.t.root === x.t.root && y.t.direction === x.t.direction && Math.abs(Date.parse(y.t.entryTime) - at) <= 60_000 && (y.t.accountId ?? y.t.source) !== (x.t.accountId ?? x.t.source));
     if (twin) {
       twin.r = (twin.r * twin.copies + x.r) / (twin.copies + 1);
+      twin.usd = (twin.usd * twin.copies + x.t.netPnl) / (twin.copies + 1);
       twin.copies++;
-    } else rows.push({ ...x, copies: 1 });
+    } else rows.push({ ...x, usd: x.t.netPnl, copies: 1 });
   }
   const rs = rows.map((x) => Math.max(-3, Math.min(10, x.r))); // a fat-finger outlier can't run the whole projection
   const wins = rs.filter((r) => r > 0);
@@ -69,12 +75,16 @@ export function measureEdge(trades: Trade[], basis: RiskBasis, tz: string, f: Sc
     worst = Math.max(worst, streak);
   }
   const n = rs.length;
-  const pf = gl > 0 ? gw / gl : wins.length ? Infinity : null;
+  // Profit factor and averages in dollars: your real results, exactly as the journal has them.
+  const usd = rows.map((x) => x.usd);
+  const uw = usd.filter((v) => v > 0).reduce((s, v) => s + v, 0);
+  const ul = -usd.filter((v) => v < 0).reduce((s, v) => s + v, 0);
+  const pf = ul > 0 ? uw / ul : uw > 0 ? Infinity : null;
   const exp = n ? rs.reduce((s, r) => s + r, 0) / n : null;
   const checks = [
     { label: "At least 40 trades", ok: n >= 40, value: `${n}` },
     { label: "Profit factor 1.3 or more", ok: pf !== null && pf >= 1.3, value: pf === null ? "—" : Number.isFinite(pf) ? pf.toFixed(2) : "∞" },
-    { label: "Makes money per trade", ok: exp !== null && exp > 0, value: exp === null ? "—" : `${exp >= 0 ? "+" : ""}${exp.toFixed(2)}R` },
+    { label: "Makes money per trade", ok: n > 0 && uw - ul > 0, value: n ? `${uw - ul >= 0 ? "+" : "−"}$${Math.abs((uw - ul) / n).toFixed(0)} a trade` : "—" },
   ];
   return {
     n,
@@ -88,6 +98,10 @@ export function measureEdge(trades: Trade[], basis: RiskBasis, tz: string, f: Sc
     worstStreak: worst,
     copiesFolded: each.length - rows.length,
     rs,
+    usd,
+    netUsd: Math.round((uw - ul) * 100) / 100,
+    avgWinUsd: usd.some((v) => v > 0) ? uw / usd.filter((v) => v > 0).length : null,
+    avgLossUsd: usd.some((v) => v < 0) ? -ul / usd.filter((v) => v < 0).length : null,
     perDay: [...days.values()],
     ready: { ok: checks.every((c) => c.ok), checks },
   };
@@ -105,7 +119,8 @@ function rng(seed: number) {
   };
 }
 
-export type ScaleOpts = { risk: number; months?: number; sims?: number; mll?: number; payoutAt?: number; payoutTake?: number; keep?: number; replaceCost?: number; downtimeDays?: number; seed?: number };
+/** risk: dollars per 1R, or "actual" to replay your trades at the size you really traded. */
+export type ScaleOpts = { risk: number | "actual"; months?: number; sims?: number; mll?: number; payoutAt?: number; payoutTake?: number; keep?: number; replaceCost?: number; downtimeDays?: number; seed?: number };
 export type AccountYear = { median: number; low10: number; high90: number; bustChance: number; avgBusts: number; avgPayouts: number };
 
 /**
@@ -136,7 +151,8 @@ export function simulateAccountYear(edge: Edge, o: ScaleOpts): AccountYear | nul
       const count = edge.perDay[Math.floor(rand() * edge.perDay.length)]!;
       let bust = false;
       for (let k = 0; k < count; k++) {
-        bal += edge.rs[Math.floor(rand() * edge.rs.length)]! * o.risk;
+        const i = Math.floor(rand() * edge.rs.length);
+        bal += o.risk === "actual" ? edge.usd[i]! : edge.rs[i]! * o.risk;
         if (bal <= floor) {
           bust = true;
           break;

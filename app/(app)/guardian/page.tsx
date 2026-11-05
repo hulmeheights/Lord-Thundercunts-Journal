@@ -67,7 +67,7 @@ export default async function GuardianPage({ searchParams }: { searchParams: Pro
 
   // Scale: your own edge from the last 90 days, copied across accounts.
   const sf = (SCALE_FILTERS.find((f) => f.value === sp.sf)?.value ?? "aplusw") as ScaleFilterKey;
-  const sr = SCALE_RISKS.includes(Number(sp.sr)) ? Number(sp.sr) : 150;
+  const sr: number | "actual" = SCALE_RISKS.includes(Number(sp.sr)) ? Number(sp.sr) : "actual";
   const ws = parseHHMM(settings.rules.sessionStart);
   const we = parseHHMM(settings.rules.sessionEnd);
   const win = ws !== null && we !== null ? { start: ws, end: we } : null;

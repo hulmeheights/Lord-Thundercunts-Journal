@@ -11,16 +11,16 @@ export const SCALE_FILTERS: { value: ScaleFilterKey; label: string }[] = [
   { value: "window", label: "All in my window" },
   { value: "all", label: "Everything" },
 ];
-export const SCALE_RISKS = [100, 150, 200, 250];
+export const SCALE_RISKS = [100, 150, 200, 250, 300, 600];
 export const SCALE_ACCOUNTS = [1, 5, 10, 15];
 
 const r2 = (x: number | null) => (x === null ? "—" : `${x >= 0 ? "+" : ""}${x.toFixed(2)}R`);
 const pct = (x: number | null) => (x === null ? "—" : `${Math.round(x * 100)}%`);
 
 /** Guardian → Scale: is your own edge ready to copy across accounts, and what a year of it could look like. */
-export function ScaleSection({ n, edge, year, filter, risk, windowLabel, days }: { n: number; edge: Edge; year: AccountYear | null; filter: ScaleFilterKey; risk: number; windowLabel: string | null; days: number }) {
+export function ScaleSection({ n, edge, year, filter, risk, windowLabel, days }: { n: number; edge: Edge; year: AccountYear | null; filter: ScaleFilterKey; risk: number | "actual"; windowLabel: string | null; days: number }) {
   const sd = days === 365 ? "365" : days > 365 ? "all" : "90";
-  const href = (f: ScaleFilterKey, r: number, d = sd) => `/guardian?sf=${f}&sr=${r}&sd=${d}#scale`;
+  const href = (f: ScaleFilterKey, r: number | "actual", d = sd) => `/guardian?sf=${f}&sr=${r}&sd=${d}#scale`;
   return (
     <Section
       id="scale"
@@ -53,9 +53,9 @@ export function ScaleSection({ n, edge, year, filter, risk, windowLabel, days }:
 
       <Stats cols={4} className="mt-8">
         <Stat value={`${edge.n}`} label="Trades measured" sub={edge.tradesPerDay ? `${edge.tradesPerDay.toFixed(1)} a day · ${edge.daysPerMonth} days a month${edge.copiesFolded ? ` · ${edge.copiesFolded} copies folded in` : ""}` : "none yet"} />
-        <Stat value={pct(edge.winRate)} label="Win rate" sub={edge.avgWinR !== null ? `avg win ${r2(edge.avgWinR)} · loss ${r2(edge.avgLossR)}` : undefined} />
+        <Stat value={pct(edge.winRate)} label="Win rate" sub={edge.avgWinUsd !== null ? `avg win ${fmtMoney(edge.avgWinUsd)} · loss ${fmtMoney(edge.avgLossUsd ?? 0)} (${r2(edge.avgWinR)} / ${r2(edge.avgLossR)})` : undefined} />
         <Stat value={edge.pf === null ? "—" : Number.isFinite(edge.pf) ? edge.pf.toFixed(2) : "∞"} label="Profit factor" tone={edge.pf !== null && edge.pf >= 1.3 ? "pos" : edge.pf !== null && edge.pf < 1 ? "neg" : null} />
-        <Stat value={r2(edge.expectancyR)} label="Per trade, on average" sub={`worst losing run: ${edge.worstStreak}`} tone={edge.expectancyR !== null && edge.expectancyR > 0 ? "pos" : edge.expectancyR !== null ? "neg" : null} />
+        <Stat value={edge.n ? fmtMoney(edge.netUsd / edge.n, { sign: true }) : "—"} label="Per trade, on average" sub={`${r2(edge.expectancyR)} · net ${fmtMoney(edge.netUsd, { sign: true })} · worst losing run ${edge.worstStreak}`} tone={edge.netUsd > 0 ? "pos" : edge.n ? "neg" : null} />
       </Stats>
 
       <div className={cn("mt-10 border p-4 font-mono text-[11px]", edge.ready.ok ? "border-pos/50" : "border-gold/50")}>
@@ -75,7 +75,7 @@ export function ScaleSection({ n, edge, year, filter, risk, windowLabel, days }:
       <div className="mt-10">
         <div className="mb-3 flex flex-wrap items-baseline justify-between gap-4">
           <span className="font-mono text-[9.5px] tracking-[0.3em] text-ink-4 uppercase">A year, copied across funded accounts</span>
-          <Seg value={String(risk)} options={SCALE_RISKS.map((r) => ({ value: String(r), label: `$${r} risk`, href: href(filter, r) }))} />
+          <Seg value={String(risk)} options={[{ value: "actual", label: "My actual size", href: href(filter, "actual") }, ...SCALE_RISKS.map((r) => ({ value: String(r), label: `$${r} risk`, href: href(filter, r) }))]} />
         </div>
         {!year ? (
           <p className="font-mono text-[11px] text-ink-3">Needs at least 10 measured trades to project.</p>
@@ -98,7 +98,7 @@ export function ScaleSection({ n, edge, year, filter, risk, windowLabel, days }:
               ))}
             </ul>
             <p className="mt-3 font-mono text-[10.5px] leading-[1.8] text-ink-3">
-              Per account: about {year.avgPayouts.toFixed(1)} payouts a year · {pct(year.bustChance)} chance it busts at least once ({year.avgBusts.toFixed(1)} times on average) at ${risk} a trade.
+              Per account: about {year.avgPayouts.toFixed(1)} payouts a year · {pct(year.bustChance)} chance it busts at least once ({year.avgBusts.toFixed(1)} times on average) {risk === "actual" ? "at the size you really traded" : `at $${risk} a trade`}.
             </p>
             <p className="mt-2 font-mono text-[10px] leading-[1.8] text-ink-4">
               Your own trades, resampled 2,000 times over a year. $2,000 trailing max loss (stops at the start once $2,000 up); $2,000 payout (90% to you) every time it&apos;s $4,000 up; a bust costs a $150 replacement eval and 4 weeks off. Copied accounts take the same trades, so they win and lose together: N accounts = N × one. Most firms allow 5 funded accounts each, so 10+ means more than one firm (always the same direction, never opposite). It&apos;s a projection from your past trades, not a promise: it only holds if you keep trading the same way.
