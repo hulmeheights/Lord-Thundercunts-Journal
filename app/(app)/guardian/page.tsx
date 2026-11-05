@@ -20,7 +20,7 @@ import { RoadSection } from "@/components/guardian/Road";
 import { MindSection } from "@/components/guardian/Mind";
 import { PlanSection, type PlanFirm } from "@/components/guardian/Plan";
 import { MyRule } from "@/components/guardian/MyRule";
-import { SCALE_FILTERS, SCALE_RISKS, ScaleSection, type ScaleFilterKey } from "@/components/guardian/Scale";
+import { SCALE_RISKS, ScaleSection, type ScaleView } from "@/components/guardian/Scale";
 import { measureEdge, simulateAccountYear } from "@/lib/analytics/scale";
 import { riskBasis } from "@/lib/analytics/stats";
 import { parseHHMM } from "@/lib/analytics/time";
@@ -66,14 +66,19 @@ export default async function GuardianPage({ searchParams }: { searchParams: Pro
   const firms = [...new Map([prop.firm, ...summary.byFirm.map((f) => f.firm), ...FIRM_SUGGESTIONS].filter(Boolean).map((f) => [firmKey(f), f])).values()];
 
   // Scale: your own edge from the last 90 days, copied across accounts.
-  const sf = (SCALE_FILTERS.find((f) => f.value === sp.sf)?.value ?? "aplusw") as ScaleFilterKey;
+  // Defaults: my window, A+ only. Older links (?sf=…) still open the matching view.
+  const legacy = typeof sp.sf === "string" ? sp.sf : null;
+  const sgRaw = typeof sp.sg === "string" ? sp.sg : legacy === "window" || legacy === "all" ? "all" : "A+";
+  const grades = sgRaw === "all" ? null : sgRaw.split(",").filter((g) => ["A+", "A", "B", "C", "F"].includes(g));
+  const useWindow = typeof sp.sw === "string" ? sp.sw !== "0" : !(legacy === "aplus" || legacy === "all");
   const sr: number | "actual" = SCALE_RISKS.includes(Number(sp.sr)) ? Number(sp.sr) : "actual";
   const ws = parseHHMM(settings.rules.sessionStart);
   const we = parseHHMM(settings.rules.sessionEnd);
   const win = ws !== null && we !== null ? { start: ws, end: we } : null;
-  const sd = sp.sd === "365" ? 365 : sp.sd === "all" ? 1100 : 90;
+  const sdKey: ScaleView["days"] = sp.sd === "365" ? "365" : sp.sd === "all" ? "all" : "90";
+  const sd = sdKey === "365" ? 365 : sdKey === "all" ? 1100 : 90;
   const recent = history.filter((t) => t.entryTime >= `${addDays(today, -sd)}T00:00:00Z`);
-  const edge = measureEdge(recent, riskBasis(settings.rules), tz, { window: sf === "aplusw" || sf === "window" ? win : null, grades: sf === "aplusw" || sf === "aplus" ? ["A+"] : null });
+  const edge = measureEdge(recent, riskBasis(settings.rules), tz, { window: useWindow ? win : null, grades: grades && grades.length ? grades : null });
   const year = simulateAccountYear(edge, { risk: sr });
 
   let n = 0;
@@ -96,7 +101,7 @@ export default async function GuardianPage({ searchParams }: { searchParams: Pro
       <LedgerSection entries={ledger} summary={summary} n={++n} today={today} firms={firms} />
       <RoadSection road={road} n={++n} />
       <PlanSection n={++n} initial={settings.plan} pooled={pooled} firms={planFirms} />
-      <ScaleSection n={++n} edge={edge} year={year} filter={sf} risk={sr} days={sd} windowLabel={win ? `${settings.rules.sessionStart}–${settings.rules.sessionEnd}` : null} />
+      <ScaleSection n={++n} edge={edge} year={year} view={{ window: useWindow, grades: grades && grades.length ? grades : null, risk: sr, days: sdKey }} windowLabel={win ? `${settings.rules.sessionStart}–${settings.rules.sessionEnd}` : null} />
       <MindSection rows={mind} summary={mood} n={++n} today={today} />
 
       <Section
