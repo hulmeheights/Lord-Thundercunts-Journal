@@ -44,3 +44,20 @@ export async function trackRecord(source: "tv"): Promise<{ trades: HistTrade[]; 
     imports: imports.map((i) => ({ id: i.id, source: i.source, fileName: i.file_name, account: i.account, rows: i.rows, added: i.added, at: i.created_at.toISOString() })),
   };
 }
+
+/**
+ * The bot's own trades since the 2-year backtest ended, for one account type:
+ * one per signal (the first card that took it), dry run or live, closed only.
+ */
+export async function sinceBacktest(phase: "eval" | "funded", after: string): Promise<HistTrade[]> {
+  const sql = await db();
+  const rows = await sql<{ signal_id: string; mode: string; dir: "LONG" | "SHORT"; qty: number; entry_price: number; exit_price: number | null; pnl: number; session: Session; entered_at: Date; exited_at: Date | null }[]>`
+    select distinct on (signal_id) signal_id, mode, dir, qty, entry_price, exit_price, pnl, session, entered_at, exited_at
+    from bot_trades
+    where tv_id is not null and status = 'closed' and pnl is not null and phase = ${phase} and mode in ('dry', 'live') and entered_at > ${new Date(`${after}T22:00:00Z`)}
+    order by signal_id, entered_at
+  `;
+  return rows
+    .map((r) => ({ key: r.signal_id, entryAt: r.entered_at.toISOString(), exitAt: r.exited_at?.toISOString() ?? null, dir: r.dir, entry: r.entry_price, exit: r.exit_price, qty: r.qty, pnl: r.pnl, session: r.session, account: r.mode === "live" ? "Live since" : "Dry run since", symbol: "MNQ", signal: null }))
+    .sort((a, b) => a.entryAt.localeCompare(b.entryAt));
+}

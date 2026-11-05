@@ -57,3 +57,20 @@ test("dry-run check: matched, missing (with the step), extra and different trade
   assert.deepEqual(r!.diffs.map((d) => d.kind), ["missing", "extra"]);
   assert.match(r!.diffs[0]!.detail, /step 10/);
 });
+
+test("2-year backtest: every trade loads, and the Combine and payout simulations match the backtest's own figures", async () => {
+  const { backtestTrades, combineSim, payoutSim } = await import("../lib/bot/backtest");
+  const { tally } = await import("../lib/bot/history");
+  const e = backtestTrades("eval");
+  const f = backtestTrades("funded");
+  assert.equal(e.length + f.length, 721);
+  assert.equal(Math.round(tally(e).pf! * 100) / 100, 1.52); // spec: eval PF 1.52
+  assert.equal(Math.round(tally(f).pf! * 100) / 100, 1.61); // spec: funded PF 1.61
+  const c = combineSim(e);
+  assert.ok(c.rate! > 0.7 && c.rate! < 0.8); // spec: 75% pass rate
+  assert.ok(payoutSim(f).rate! > 0.4);
+  // A tiny Combine: +$1,600, +$1,500 fails consistency until a third day evens it out.
+  const t = (day: string, pnl: number) => ({ ...e[0]!, day, pnl });
+  assert.equal(combineSim([t("2026-01-05", 1600), t("2026-01-06", 1500), t("2026-01-07", 300)]).passed, 1);
+  assert.equal(combineSim([t("2026-01-05", -1000), t("2026-01-06", -1000)]).failed, 1); // from day 1 it touches −$2,000; from day 2 it never does
+});

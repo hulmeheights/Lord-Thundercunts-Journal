@@ -19,7 +19,9 @@ import { windows } from "@/lib/bot/news";
 import { todayKey } from "@/lib/analytics/time";
 import { Seg } from "@/components/m/Seg";
 import { historyStats, tally, type Tally } from "@/lib/bot/history";
-import { liveRecord, trackRecord } from "@/lib/data/history";
+import { liveRecord, sinceBacktest, trackRecord } from "@/lib/data/history";
+import { BACKTEST_SOURCE, backtestTrades, combineSim, payoutSim } from "@/lib/bot/backtest";
+import type { HistTrade } from "@/lib/bot/history";
 import { TrackImport } from "@/components/autopilot/TrackImport";
 import { listLedger } from "@/lib/data/ledger";
 import { FIRM_SUGGESTIONS, summarizeLedger } from "@/lib/analytics/ledger";
@@ -82,8 +84,22 @@ function Breakdown({ title, rows }: { title: string; rows: (Tally & { key: strin
 
 export default async function AutopilotPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const sp = await searchParams;
-  const track: "tv" | "live" = sp.track === "live" ? "live" : "tv";
-  const [settings, s, h, ledger, record] = await Promise.all([getSettings(), autopilotState(), headers(), listLedger("autopilot"), track === "tv" ? trackRecord("tv").then((r) => ({ ...r, perAccount: [] })) : liveRecord().then((r) => ({ ...r, imports: [] }))]);
+  const track: "tv" | "live" | "bt" = sp.track === "live" ? "live" : sp.track === "bt" ? "bt" : "tv";
+  const btMode: "eval" | "funded" = sp.bt === "funded" ? "funded" : "eval";
+  const btTrades = track === "bt" ? backtestTrades(btMode) : [];
+  const btLast = btTrades.at(-1)?.day ?? "2026-11-04";
+  const [settings, s, h, ledger, record] = await Promise.all([
+    getSettings(),
+    autopilotState(),
+    headers(),
+    listLedger("autopilot"),
+    track === "tv"
+      ? trackRecord("tv").then((r) => ({ ...r, perAccount: [] as HistTrade[] }))
+      : track === "live"
+        ? liveRecord().then((r) => ({ ...r, imports: [] }))
+        : sinceBacktest(btMode, btLast).then((since) => ({ trades: [...btTrades, ...since], perAccount: [] as HistTrade[], imports: [] })),
+  ]);
+  const sim = track === "bt" ? (btMode === "eval" ? combineSim(btTrades) : payoutSim(btTrades)) : null;
   const setup = botSetup();
   const runner = await runnerStatus();
   await refreshNews();
@@ -242,9 +258,46 @@ export default async function AutopilotPage({ searchParams }: { searchParams: Pr
           options={[
             { value: "tv", label: "Strategy · TradingView", href: "/autopilot?track=tv#record" },
             { value: "live", label: "Live · your accounts", href: "/autopilot?track=live#record" },
+            { value: "bt", label: "Backtest · 2 years", href: "/autopilot?track=bt#record" },
           ]}
         />
-        {track === "tv" ? (
+        {track === "bt" ? (
+          <div>
+            <Seg
+              className="mb-4"
+              value={btMode}
+              options={[
+                { value: "eval", label: "Eval · 3/3", href: "/autopilot?track=bt&bt=eval#record" },
+                { value: "funded", label: "Funded · 3/2", href: "/autopilot?track=bt&bt=funded#record" },
+              ]}
+            />
+            <p className="max-w-2xl font-mono text-[11px] leading-[1.8] text-ink-4">
+              Every trade the strategy would have taken from {btTrades[0]?.day} to {btLast} ({BACKTEST_SOURCE}), 5 MNQ, after commission. The bot&apos;s own {btMode} trades (dry run or live) are added after it as they close, so the record keeps growing.
+            </p>
+            {sim && (
+              <div className="mt-6 border border-line-2 p-4 font-mono text-[11px]">
+                <div className="text-[9.5px] tracking-[0.3em] text-ink-4 uppercase">{btMode === "eval" ? "Topstep 50K Combine, started on every trading day" : "Funded 50K, first $2,000 payout, started on every trading day"}</div>
+                <div className="mt-2 flex flex-wrap items-baseline gap-x-8 gap-y-1">
+                  <span className="num text-[26px] text-ink">{pct(sim.rate)}</span>
+                  <span className="text-ink-3">
+                    {btMode === "eval" ? "passed" : "reached the payout"} ({sim.passed} of {sim.passed + sim.failed}) · {sim.failed} {btMode === "eval" ? "failed" : "busted first"}
+                  </span>
+                  {sim.medianDays !== null && (
+                    <span className="text-ink-3">
+                      typically {sim.medianDays} trading days ({sim.fastDays} quick · {sim.slowDays} slow)
+                    </span>
+                  )}
+                </div>
+                <p className="mt-2 text-[10px] leading-[1.7] text-ink-4">
+                  {btMode === "eval"
+                    ? "Pass: +$3,000 with the best day at most 50% of the profit. Fail: the balance touches the trailing max loss ($2,000 under the highest end-of-day balance, locking at $50,000)."
+                    : "Payout: 5 winning days of $150+ and $4,000 profit, before the balance touches the trailing max loss ($2,000)."}{" "}
+                  Checked as each trade closes, so dips inside a trade aren&apos;t seen; {sim.unfinished} starts ran out of data. Settings were tuned on these two years, so expect live to be somewhat worse.
+                </p>
+              </div>
+            )}
+          </div>
+        ) : track === "tv" ? (
           <TrackImport tz={tz} imports={record.imports} />
         ) : (
           <p className="max-w-2xl font-mono text-[11px] leading-[1.8] text-ink-4">Filled in by itself: every trade the bot takes on your Topstep accounts, from the moment it closes. One signal counts as one trade (P&amp;L added across accounts); each account is broken down below.</p>
@@ -284,9 +337,10 @@ export default async function AutopilotPage({ searchParams }: { searchParams: Pr
                   <Breakdown title="Long or short" rows={st.dirs.map((r) => ({ ...r, label: r.key === "LONG" ? "Long" : "Short" }))} />
                   <Breakdown title="By month" rows={st.months.map((r) => ({ ...r, label: new Date(`${r.key}-01T12:00:00Z`).toLocaleDateString("en-GB", { month: "short", year: "2-digit" }) }))} />
                   <Breakdown title="By week (starting Monday)" rows={st.weeks.slice(0, 12).map((r) => ({ ...r, label: new Date(`${r.key}T12:00:00Z`).toLocaleDateString("en-GB", { day: "numeric", month: "short" }) }))} />
+                  {track === "bt" && st.accounts.length > 1 && <Breakdown title="Backtest vs since" rows={st.accounts} />}
                   {track === "live" && record.perAccount.length > 0 && <Breakdown title="By account" rows={[...new Set(record.perAccount.map((t) => t.account ?? "—"))].map((a) => ({ key: a, ...tally(record.perAccount.filter((t) => (t.account ?? "—") === a)) }))} />}
                 </div>
-                <p className="mt-6 font-mono text-[10px] text-ink-4">Columns: trades · win rate · profit factor · net P&amp;L{track === "live" ? " (from your real fill to the exit, before Topstep fees)" : " (after the strategy's commission)"}.</p>
+                <p className="mt-6 font-mono text-[10px] text-ink-4">Columns: trades · win rate · profit factor · net P&amp;L{track === "live" ? " (from your real fill to the exit, before Topstep fees)" : track === "bt" ? " (after commission, as tested)" : " (after the strategy's commission)"}.</p>
               </div>
             );
           })()
