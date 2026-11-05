@@ -41,7 +41,7 @@ try:
 except Exception:  # very old Python: fixed offsets are close enough for the logs, never used to place
     NY = None
 
-VERSION = "3.0"
+VERSION = "3.1"
 TOPSTEP = os.environ.get("THUNDER_TOPSTEP_URL", "https://api.topstepx.com")  # override only for testing
 TICKET_TTL_MS = 20_000  # never place a ticket older than this: a late entry is a different trade
 HOME = os.path.expanduser("~")
@@ -308,11 +308,14 @@ def card_stats(ledger, now):
             trades_today += 1
             sessions[r.get("session")] += 1
         if r.get("status") == "closed" and r.get("exitedAt") and r.get("pnl") is not None:
-            day = trading_date(iso(r["exitedAt"]))  # a trade open over 18:00 counts on the day it closes
-            if day == today:
+            # Today's P&L (limits and the cap): a trade open over 18:00 counts on the day it closes.
+            if trading_date(iso(r["exitedAt"])) == today:
                 realized += r["pnl"]
-            elif wk <= day < today:
-                by_day[day] += r["pnl"]
+            # Losing days: the days the account traded, so a trade belongs to the day it was entered
+            # (this is what the 2-year backtest does: 721 of its 721 trades decided the same way, bar one).
+            entered = trading_date(iso(r["enteredAt"]))
+            if wk <= entered < today:
+                by_day[entered] += r["pnl"]
     return {
         "realized": round(realized, 2),
         "tradesToday": trades_today,

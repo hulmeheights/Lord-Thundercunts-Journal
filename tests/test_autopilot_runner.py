@@ -184,7 +184,41 @@ def expected_signals(mode):
     return out
 
 
+def expected_signals_2yr(mode):
+    """Expected_Trades_2yr_Nov2024_Nov2026.csv: real entry and exit times (UK), weekday and result for every trade."""
+    with open(os.path.join(HERE, "fixtures", "expected-trades-2024-11-to-2026-11.csv")) as f:
+        rows = [r for r in csv.DictReader(f) if r["mode"] == mode]
+    uk = lambda s: datetime.strptime(s, "%Y-%m-%d %H:%M").replace(tzinfo=R.ZoneInfo("Europe/London")).astimezone(timezone.utc)
+    out = []
+    for r in rows:
+        long = r["dir"] == "LONG"
+        fill = float(r["entry_fill"])
+        entry = fill - R.TICK if long else fill + R.TICK
+        quiet, capped, target = r["quiet"] == "True", r["capped"] == "True", float(r["target"])
+        far = entry + 500 if long else entry - 500
+        out.append({
+            "swing": "3/3" if mode == "eval" else "3/2", "session": r["session"], "dow": r["weekday"], "mins_in": 10, "quiet": quiet, "dir": r["dir"], "entry": entry, "stop": float(r["stop"]),
+            "target": None if quiet else (far if capped else target), "quiet_target": (far if capped else target) if quiet else None,
+            "id": f"{r['entry_time_UK']}-{mode}", "at": uk(r["entry_time_UK"]), "exit_at": uk(r["exit_time_UK"]), "pnl": float(r["pnl_usd"]), "_want_target": target, "_want_capped": capped,
+        })
+    return out
+
+
 class ReplayAndExpectedTrades(unittest.TestCase):
+    def test_two_years_of_expected_trades(self):
+        """All 721 trades of the 2-year backtest through steps 1-12 with their real exits. The one known difference: a funded trade
+        that closed exactly at Sunday 18:00 New York (the reopen) counts on Monday here; the backtest counted it on Friday."""
+        known = {"2026-02-02 08:59-funded"}
+        diffs = []
+        for mode in ("eval", "funded"):
+            sigs = expected_signals_2yr(mode)
+            for s, (sid, take, step, target, capped) in zip(sigs, replay(sigs, card(mode))):
+                if not take:
+                    diffs.append(f"{sid}: skipped at step {step}")
+                elif abs(target - s["_want_target"]) > 0.25 or capped != s["_want_capped"]:
+                    diffs.append(f"{sid}: target {target} capped {capped}, expected {s['_want_target']} capped {s['_want_capped']}")
+        self.assertEqual([d for d in diffs if d.split(": ")[0] not in known], [])
+
     def test_replay_is_deterministic(self):
         sigs = expected_signals("funded")
         self.assertEqual(replay(sigs, card("funded")), replay(sigs, card("funded")))
