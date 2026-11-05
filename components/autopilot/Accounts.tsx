@@ -129,6 +129,32 @@ function Card({ a, live, options }: { a: BotAccountView; live: boolean; options:
       <div className="mt-1.5 font-mono text-[10px] text-ink-4">
         {f.enabled ? (f.dryRun ? "On · dry run" : live ? "On · real orders" : "On · paper") : "Off · skipped"} · today <span className={a.today > 0 ? "text-pos" : a.today < 0 ? "text-neg" : ""}>{money(a.today)}</span>
       </div>
+      {/* One click sets the account type and puts back every tested setting for it; the Rules panel stays free to fine-tune. */}
+      <div className="mt-4">
+        <span className={lab}>Account type</span>
+        <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label={`${f.label} account type`}>
+          {(["eval", "funded"] as const).map((ph) => (
+            <button
+              key={ph}
+              type="button"
+              role="radio"
+              aria-checked={f.phase === ph}
+              disabled={pending}
+              onClick={() => {
+                if (f.phase === ph) return;
+                const next = { ...f, phase: ph, rules: PHASE_DEFAULTS[ph], maxDailyWin: "1600", maxDailyLoss: "500" };
+                setF(next);
+                save(next);
+              }}
+              className={cn("border px-3 py-2 text-left font-mono transition-colors", f.phase === ph ? "border-gold/70 bg-gold/10 text-ink" : "border-line text-ink-4 hover:text-ink-2")}
+            >
+              <span className="block text-[11px]">{ph === "eval" ? "Eval / Combine" : "Funded / Express"}</span>
+              <span className="mt-0.5 block text-[9.5px] leading-[1.5] text-ink-4">{ph === "eval" ? "3/3 · NY AM, NY PM, London · skips Thu · quiet = 15 pt" : "3/2 · all 4 sessions · every day · 150 min · skips quiet"}</span>
+            </button>
+          ))}
+        </div>
+        <span className="mt-1.5 block font-mono text-[9.5px] text-ink-4">Picking one sets its tested rules, $1,600 day target and −$500 day loss. Fine-tune anything under Rules.</span>
+      </div>
       <div className="mt-4 grid grid-cols-2 gap-3">
         <label className="col-span-2">
           <span className={lab}>TopstepX account (name or ID)</span>
@@ -158,22 +184,6 @@ function Card({ a, live, options }: { a: BotAccountView; live: boolean; options:
           <span className={lab}>Starting balance $</span>
           <input className={num} inputMode="decimal" value={f.startBalance} onChange={(e) => setF({ ...f, startBalance: e.target.value.replace(/[^0-9.]/g, "") })} />
         </label>
-        <div className="col-span-2 flex items-center justify-between gap-4 border-t border-line py-2.5">
-          <span className="font-mono text-[10.5px] leading-[1.6] text-ink-2">
-            {f.phase === "funded" ? "Funded / Express" : "Eval / Combine"}
-            <span className="block text-[9.5px] text-ink-4">{f.phase === "funded" ? "Follows the 3/2 signals, all sessions, every weekday, 150 min windows, skips quiet signals." : "Follows the 3/3 signals: NY AM, NY PM, London, skips Thursday, quiet signals take a 15 pt target. Flip to Funded when it passes."}</span>
-          </span>
-          <Toggle
-            checked={f.phase === "funded"}
-            label={`${f.label} is funded`}
-            onChange={(v) => {
-              const phase = (v ? "funded" : "eval") as "eval" | "funded";
-              const next = { ...f, phase, rules: PHASE_DEFAULTS[phase] };
-              setF(next);
-              save(next);
-            }}
-          />
-        </div>
         <div className="col-span-2 flex items-center justify-between gap-4 border-t border-line py-2.5">
           <span className="font-mono text-[10.5px] leading-[1.6] text-ink-2">
             {f.dryRun ? "Dry run" : <span className="text-neg">Real orders</span>}
