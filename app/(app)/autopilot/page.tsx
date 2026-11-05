@@ -84,7 +84,8 @@ function Breakdown({ title, rows }: { title: string; rows: (Tally & { key: strin
 
 export default async function AutopilotPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const sp = await searchParams;
-  const track: "tv" | "live" | "bt" = sp.track === "live" ? "live" : sp.track === "bt" ? "bt" : "tv";
+  // The 2-year backtest is what most people want to see first; the other tabs are a click away.
+  const track: "tv" | "live" | "bt" = sp.track === "live" ? "live" : sp.track === "tv" ? "tv" : "bt";
   const btMode: "eval" | "funded" = sp.bt === "funded" ? "funded" : "eval";
   const btTrades = track === "bt" ? backtestTrades(btMode) : [];
   const btLast = btTrades.at(-1)?.day ?? "2026-11-04";
@@ -256,9 +257,9 @@ export default async function AutopilotPage({ searchParams }: { searchParams: Pr
           className="mb-6"
           value={track}
           options={[
-            { value: "tv", label: "Strategy · TradingView", href: "/autopilot?track=tv#record" },
-            { value: "live", label: "Live · your accounts", href: "/autopilot?track=live#record" },
             { value: "bt", label: "Backtest · 2 years", href: "/autopilot?track=bt#record" },
+            { value: "live", label: "Live · your accounts", href: "/autopilot?track=live#record" },
+            { value: "tv", label: "TradingView imports", href: "/autopilot?track=tv#record" },
           ]}
         />
         {track === "bt" ? (
