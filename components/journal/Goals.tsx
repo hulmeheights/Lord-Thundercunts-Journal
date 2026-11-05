@@ -461,6 +461,15 @@ function GoalCard({ g, today, onReached, progress, accounts = [] }: { g: Goal; t
             ◉ {auto ? "Reached early" : "Goal reached"}
           </button>
         )}
+        {!done && (
+          <button
+            type="button"
+            onClick={() => confirm(`Mark "${g.title}" as failed? It moves to the Failed list, crossed out (you can undo it there).`) && run(() => failGoal(g.id, true))}
+            className="text-neg/80 hover:text-neg"
+          >
+            ✕ Failed
+          </button>
+        )}
         <button
           type="button"
           onClick={() => confirm(`Delete "${g.title}" and its steps?`) && run(() => deleteGoal(g.id))}
