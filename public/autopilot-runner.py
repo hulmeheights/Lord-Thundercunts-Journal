@@ -42,7 +42,7 @@ try:
 except Exception:  # very old Python: fixed offsets are close enough for the logs, never used to place
     NY = None
 
-VERSION = "3.3"
+VERSION = "3.4"
 TOPSTEP = os.environ.get("THUNDER_TOPSTEP_URL", "https://api.topstepx.com")  # override only for testing
 TICKET_TTL_MS = 20_000  # never place a ticket older than this: a late entry is a different trade
 HOME = os.path.expanduser("~")
@@ -602,6 +602,7 @@ def run():
     log(f"Autopilot bot {VERSION} started for {base}")
     last_accounts = 0
     last_watch = 0
+    last_ready = 0
     failures = 0
     while True:
         try:
@@ -628,6 +629,15 @@ def run():
             if ctx.get("balancesDue") or time.time() - last_accounts > 600:
                 send_accounts(base, auth, ts, ctx)
                 last_accounts = time.time()
+            # Each time a session window opens (the journal stops telling it to nap), check everything once.
+            if int(d.get("wait", 0)) == 0 and time.time() - last_ready > 3 * 3600:
+                problems, summary = readiness(ts, ctx)
+                post(base, auth, {"type": "ready", "problems": problems, "summary": summary})
+                for p_ in problems:
+                    log(f"NOT READY: {p_}")
+                last_ready = time.time()
+            elif int(d.get("wait", 0)) > 300:
+                last_ready = 0  # napping between sessions: check again when the next one opens
             wait = int(d.get("wait", 0))
             if wait > 0:
                 time.sleep(min(wait, 900))
@@ -638,6 +648,33 @@ def run():
             failures += 1
             log(f"Connection problem ({e}); retrying")
             time.sleep(min(30, 2 * failures))
+
+
+def readiness(ts, ctx):
+    """Everything a real signal needs, checked before it comes: problems (plain words) and a one-line summary."""
+    problems = []
+    if ctx.get("mode") != "live":
+        problems.append(f"Autopilot is {ctx.get('mode', 'off').upper()}, not LIVE: no real orders will be placed")
+    cards = ctx.get("cards", [])
+    live = [c for c in cards if not c.get("dry", True)]
+    if not cards:
+        problems.append("no account card is switched on")
+    elif not live:
+        problems.append("every card is on Dry run: no real orders will be placed")
+    try:
+        accts = ts.accounts()
+        ts.mnq()
+    except Exception as e:
+        problems.append(f"your Mac can't reach TopstepX ({e})")
+        accts = []
+    for c in live:
+        m = match_account(accts, c.get("topstepAccountId"))
+        if not m:
+            problems.append(f"{c['label']}: Topstep account \"{c.get('topstepAccountId') or 'none set'}\" not found")
+        elif m.get("canTrade") is False:
+            problems.append(f"{c['label']}: Topstep says this account can't trade right now")
+    summary = f"{len(live)} {'card' if len(live) == 1 else 'cards'} on real orders ({', '.join(c['label'] + ' ' + str(c['contracts']) + ' MNQ' for c in live) or 'none'}), TopstepX reachable"
+    return problems, summary
 
 
 def send_accounts(base, auth, ts, ctx):

@@ -120,8 +120,10 @@ const TestSignal = z.object({
   stop: z.number().finite().positive(),
   target: z.number().finite().positive(),
 });
+const Ready = z.object({ type: z.literal("ready"), problems: z.array(z.string().max(300)).max(20), summary: z.string().max(400) });
 const Report = z.discriminatedUnion("type", [
   Closed,
+  Ready,
   TestSignal,
   z.object({ type: z.literal("results"), signalId: z.string().regex(/^sig_[a-f0-9]{24}$/), results: z.array(Result).max(50), passed: z.array(Passed).max(50).default([]) }),
   z.object({
@@ -143,6 +145,21 @@ export async function POST(req: Request) {
   for (const p of "passed" in r ? r.passed : []) {
     const c = cards.get(p.cardId);
     if (c) await switchOff(c, p.profit);
+  }
+  if (r.type === "ready") {
+    // The Mac checks itself as each session starts. All good: one quiet log line. Anything wrong: log + push, at most every 3 hours per problem.
+    if (!r.problems.length) {
+      await logEvent("info", `Ready for the session: ${r.summary}`);
+      return NextResponse.json({ ok: true });
+    }
+    for (const p of r.problems) {
+      const message = `Not ready for the session: ${p}`;
+      const [recent] = await sql<{ n: number }[]>`select count(*)::int as n from bot_events where message = ${message} and created_at > now() - interval '3 hours'`;
+      if (recent?.n) continue;
+      await logEvent("error", message);
+      await botNotify(`⚠ Autopilot isn't ready for the session\n${p}`, { push: true, critical: true });
+    }
+    return NextResponse.json({ ok: true });
   }
   if (r.type === "test") {
     // "python3 autopilot-runner.py test": one signal for each signal set (3/3 eval, 3/2 funded), passing every

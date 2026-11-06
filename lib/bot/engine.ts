@@ -117,7 +117,7 @@ export async function handleAlert(raw: string, a: Alert, now = new Date()): Prom
     const missed = await sql`update bot_signals set handoff = 'missed' where id = ${signalId} and handoff = 'waiting' returning id`;
     if (missed.length) {
       await logEvent("error", `Your Mac didn't pick up a live signal within 20 seconds: nothing placed. ${head}`);
-      await botNotify(`⚠ Your Mac missed a signal\n${head}\nNothing was placed. Check the Mac is on and online.`);
+      await botNotify(`⚠ Your Mac missed a signal\n${head}\nNothing was placed. Check the Mac is on and online.`, { push: true, critical: true });
     }
     return { status: "handed-to-mac" };
   }
@@ -236,7 +236,7 @@ export async function handleSignal(sig: SorSignal, now = new Date()): Promise<{ 
   const missed = await sql`update bot_signals set handoff = 'missed' where id = ${key} and handoff = 'waiting' returning id`;
   if (missed.length) {
     await logEvent("error", `Your Mac didn't pick up signal ${sig.id} within 20 seconds: nothing placed. ${head}`);
-    await botNotify(`⚠ Your Mac missed a signal\n${head}\nNothing was placed. Check the Mac is on and online.`);
+    if (!sig.id.endsWith("-TEST")) await botNotify(`⚠ Your Mac missed a signal\n${head}\nNothing was placed. Check the Mac is on and online.`, { push: true, critical: true });
   }
   return { status: "handed-to-mac" };
 }

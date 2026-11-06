@@ -82,7 +82,11 @@ async function turnedAway(reason: string) {
     const sql = await db();
     const message = `An alert from TradingView was turned away: ${reason}. Nothing was placed.`;
     const [recent] = await sql<{ n: number }[]>`select count(*)::int as n from bot_events where message = ${message} and created_at > now() - interval '10 minutes'`;
-    if (!recent?.n) await logEvent("error", message);
+    if (!recent?.n) {
+      await logEvent("error", message);
+      const { botNotify } = await import("@/lib/bot/notify");
+      await botNotify(`⚠ A TradingView alert was turned away\n${reason}. Nothing was placed.`, { push: true, critical: true });
+    }
   } catch {
     // logging must never break the reply
   }

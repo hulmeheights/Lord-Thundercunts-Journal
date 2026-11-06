@@ -25,7 +25,7 @@ export const telegramConfigured = () => !!(process.env.TELEGRAM_TOKEN?.trim() &&
  * is the title. Phone pushes follow the "Autopilot trades" switch in
  * Settings → Notifications. Never throws.
  */
-export async function botNotify(text: string, opts: { push?: boolean; telegram?: boolean } = {}): Promise<void> {
+export async function botNotify(text: string, opts: { push?: boolean; telegram?: boolean; critical?: boolean } = {}): Promise<void> {
   if (opts.telegram !== false) await telegram(text);
   if (!opts.push) return;
   try {
@@ -33,7 +33,7 @@ export async function botNotify(text: string, opts: { push?: boolean; telegram?:
     const settings = await getSettings();
     if (settings.notify.autopilot === false) return;
     const [{ tradingQuiet }, { minuteOfDay }] = await Promise.all([import("../analytics/notify"), import("../analytics/time")]);
-    if (tradingQuiet(settings.notify, minuteOfDay(new Date().toISOString(), settings.profile.timezone))) return;
+    if (!opts.critical && tradingQuiet(settings.notify, minuteOfDay(new Date().toISOString(), settings.profile.timezone))) return;
     const [title, ...rest] = text.split("\n");
     await pushAll({ title: title.slice(0, 120), body: rest.join("\n").slice(0, 400) || " ", url: "/autopilot#ledger", tag: `autopilot:${Date.now()}` });
   } catch {
