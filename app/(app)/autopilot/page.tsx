@@ -59,6 +59,13 @@ const pct = (x: number | null) => (x === null ? "—" : `${Math.round(x * 100)}%
 const pfText = (x: number | null) => (x === null ? "—" : Number.isFinite(x) ? x.toFixed(2) : "∞");
 
 /** One breakdown: name · trades · win rate (with a bar) · PF · net. */
+/** 7m · 1h 05m */
+const holdText = (m: number | null) => {
+  if (m === null) return "—";
+  const r = Math.round(m);
+  return r < 60 ? `${r}m` : `${Math.floor(r / 60)}h ${String(r % 60).padStart(2, "0")}m`;
+};
+
 function Breakdown({ title, rows }: { title: string; rows: (Tally & { key: string; label?: string })[] }) {
   return (
     <div>
@@ -401,6 +408,22 @@ export default async function AutopilotPage({ searchParams }: { searchParams: Pr
                     {d(st.first)} – {d(st.last)}
                   </span>
                 </div>
+                {st.hold.n > 0 && (
+                  <div className="mt-6 grid grid-cols-2 gap-x-6 gap-y-3 font-mono text-[11px] sm:grid-cols-5">
+                    {[
+                      ["Avg time in trade", st.hold.avg],
+                      ["Median", st.hold.median],
+                      ["Avg winner", st.hold.avgWin],
+                      ["Avg loser", st.hold.avgLoss],
+                      ["Longest", st.hold.longest],
+                    ].map(([k, v]) => (
+                      <div key={k as string}>
+                        <div className="text-[9.5px] tracking-[0.2em] text-ink-4 uppercase">{k}</div>
+                        <div className="mt-1 text-ink">{holdText(v as number | null)}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
                 {st.all.n >= 2 && (
                   <div className="mt-8">
                     <div className="mb-2 font-mono text-[9.5px] tracking-[0.3em] text-ink-4 uppercase">
@@ -413,6 +436,7 @@ export default async function AutopilotPage({ searchParams }: { searchParams: Pr
                   <Breakdown title="By session (New York time)" rows={st.sessions.map((r) => ({ ...r, label: SESSION_LABEL[r.key] }))} />
                   <Breakdown title="By hour (your time)" rows={st.hours} />
                   <Breakdown title="By day (your time)" rows={st.weekdays} />
+                  <Breakdown title="By time in trade" rows={st.holds} />
                   <Breakdown title="Long or short" rows={st.dirs.map((r) => ({ ...r, label: r.key === "LONG" ? "Long" : "Short" }))} />
                   <Breakdown title="By month (one account, 5 MNQ)" rows={st.months.map((r) => ({ ...r, label: new Date(`${r.key}-01T12:00:00Z`).toLocaleDateString("en-GB", { month: "short", year: "2-digit" }) }))} />
                   <Breakdown title="By week (starting Monday)" rows={st.weeks.slice(0, 12).map((r) => ({ ...r, label: new Date(`${r.key}T12:00:00Z`).toLocaleDateString("en-GB", { day: "numeric", month: "short" }) }))} />

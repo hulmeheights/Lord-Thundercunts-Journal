@@ -740,4 +740,11 @@ export const MIGRATIONS: { version: number; sql: string }[] = [
       alter table bot_trades alter column target_price drop not null;
     `,
   },
+  {
+    version: 37,
+    sql: /* sql */ `
+      -- Funded (Express) cards: tested day target is $1,700 (eval stays $1,600). Only cards still on the old default move.
+      update bot_accounts set max_daily_win = 1700 where phase = 'funded' and max_daily_win = 1600;
+    `,
+  },
 ];

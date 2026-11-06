@@ -142,7 +142,7 @@ function Card({ a, live, options }: { a: BotAccountView; live: boolean; options:
               disabled={pending}
               onClick={() => {
                 if (f.phase === ph) return;
-                const next = { ...f, phase: ph, rules: PHASE_DEFAULTS[ph], maxDailyWin: "1600", maxDailyLoss: "500" };
+                const next = { ...f, phase: ph, rules: PHASE_DEFAULTS[ph], maxDailyWin: ph === "funded" ? "1700" : "1600", maxDailyLoss: "500" };
                 setF(next);
                 save(next);
               }}
@@ -153,7 +153,7 @@ function Card({ a, live, options }: { a: BotAccountView; live: boolean; options:
             </button>
           ))}
         </div>
-        <span className="mt-1.5 block font-mono text-[9.5px] text-ink-4">Picking one sets its tested rules, $1,600 day target and −$500 day loss. Fine-tune anything under Rules.</span>
+        <span className="mt-1.5 block font-mono text-[9.5px] text-ink-4">Picking one sets its tested rules, day target ($1,600 eval · $1,700 funded) and −$500 day loss. Fine-tune anything under Rules.</span>
       </div>
       <div className="mt-4 grid grid-cols-2 gap-3">
         <label className="col-span-2">

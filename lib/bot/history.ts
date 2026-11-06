@@ -7,6 +7,7 @@
 import { normHeader } from "../import/csv";
 import { parseDateTime, parseNumber } from "../import/values";
 import { dayKey, minuteOfDay, weekdayIndex } from "../analytics/time";
+import { HOLD_BUCKETS } from "../analytics/stats";
 import { sessionOf, type Session } from "./signal";
 
 export type HistSource = "tv" | "live";
@@ -161,6 +162,19 @@ const group = <T, K extends string>(xs: T[], k: (x: T) => K) => {
   for (const x of xs) m.set(k(x), [...(m.get(k(x)) ?? []), x]);
   return m;
 };
+/** Minutes from entry to exit (null while open or when the exit time is missing). */
+export const holdMins = (t: HistTrade) => {
+  if (!t.exitAt) return null;
+  const m = (Date.parse(t.exitAt) - Date.parse(t.entryAt)) / 60_000;
+  return Number.isFinite(m) && m >= 0 ? m : null;
+};
+const avg = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null);
+const median = (xs: number[]) => {
+  if (!xs.length) return null;
+  const s = [...xs].sort((a, b) => a - b);
+  const m = Math.floor(s.length / 2);
+  return s.length % 2 ? s[m]! : (s[m - 1]! + s[m]!) / 2;
+};
 const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 /** Everything the Track record shows, with times in your own timezone. */
@@ -195,5 +209,15 @@ export function historyStats(trades: HistTrade[], tz: string) {
     weekdays: DAYS.map((d, i) => ({ key: d, ...tally(ts.filter((t) => weekdayIndex(dayKey(t.entryAt, tz)) === i)) })).filter((d) => d.n),
     dirs: (["LONG", "SHORT"] as const).map((d) => ({ key: d, ...tally(ts.filter((t) => t.dir === d)) })),
     accounts: [...group(ts, (t) => t.account ?? "—")].map(([k, v]) => ({ key: k, ...tally(v) })),
+    holds: HOLD_BUCKETS.map(([max, label], i) => {
+      const lo = i ? HOLD_BUCKETS[i - 1]![0] : 0;
+      return { key: label, ...tally(ts.filter((t) => { const m = holdMins(t); return m !== null && m >= lo && m < max; })) };
+    }),
+    hold: (() => {
+      const all = ts.map(holdMins).filter((m): m is number => m !== null);
+      const win = ts.filter((t) => t.pnl > 0).map(holdMins).filter((m): m is number => m !== null);
+      const loss = ts.filter((t) => t.pnl < 0).map(holdMins).filter((m): m is number => m !== null);
+      return { n: all.length, avg: avg(all), median: median(all), longest: all.length ? Math.max(...all) : null, avgWin: avg(win), avgLoss: avg(loss) };
+    })(),
   };
 }
