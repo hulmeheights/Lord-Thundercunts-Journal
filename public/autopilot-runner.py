@@ -42,7 +42,7 @@ try:
 except Exception:  # very old Python: fixed offsets are close enough for the logs, never used to place
     NY = None
 
-VERSION = "3.5"
+VERSION = "3.4"
 TOPSTEP = os.environ.get("THUNDER_TOPSTEP_URL", "https://api.topstepx.com")  # override only for testing
 TICKET_TTL_MS = 20_000  # never place a ticket older than this: a late entry is a different trade
 HOME = os.path.expanduser("~")
@@ -158,18 +158,6 @@ class Topstep:
             },
         )
         return str(d.get("orderId", ""))
-
-    def place_plain(self, account_id, contract_id, direction, size, tag):
-        """A market order with nothing attached (for an account whose Auto OCO Brackets setting is off)."""
-        d = self.call("/api/Order/place", {"accountId": account_id, "contractId": contract_id, "type": 2, "side": 0 if direction == "LONG" else 1, "size": size, "customTag": tag})
-        return str(d.get("orderId", ""))
-
-    def protect(self, account_id, contract_id, direction, size, stop, target):
-        """The script's stop and target as two orders of the bot's own (when Topstep didn't attach a bracket).
-        They aren't linked at Topstep, so the bot cancels whichever is left the moment the trade closes."""
-        exit_side = 1 if direction == "LONG" else 0
-        self.call("/api/Order/place", {"accountId": account_id, "contractId": contract_id, "type": 4, "side": exit_side, "size": size, "stopPrice": stop})
-        self.call("/api/Order/place", {"accountId": account_id, "contractId": contract_id, "type": 1, "side": exit_side, "size": size, "limitPrice": target})
 
     def open_orders(self, account_id):
         return self.call("/api/Order/searchOpen", {"accountId": account_id}).get("orders") or []
@@ -514,31 +502,9 @@ def handle_signal(base, auth, ts, alert, ctx, now=None):
             RECENT_PLACE[m["id"]] = time.time()
             oid = ts.place(m["id"], contract, sig["dir"], c["contracts"], stop_ticks, target_ticks, tag)
             log(f"PLACED {sig['dir']} {c['contracts']} MNQ on {c['label']} (order {oid})")
-        except Exception as e:
-            if "Position Brackets" not in str(e) and "Auto OCO" not in str(e):  # rejected for a real reason: logged, not retried, not counted
-                log(f"FAILED {sig['dir']} on {c['label']}: {e}")
-                return {**row, "status": "error", "step": None, "reason": str(e)[:400]}
-            # Only the bracket setting objected (Auto OCO off on this account): the trade still goes in, and the bot
-            # puts the script's stop and target on it itself, straight after.
-            try:
-                oid = ts.place_plain(m["id"], contract, sig["dir"], c["contracts"], tag)
-                log(f"PLACED {sig['dir']} {c['contracts']} MNQ on {c['label']} (order {oid}; Auto OCO is off there, so the bot sets the stop and target itself)")
-            except Exception as e2:
-                log(f"FAILED {sig['dir']} on {c['label']}: {e2}")
-                return {**row, "status": "error", "step": None, "reason": str(e2)[:400]}
-            out = {**row, "status": "open", "orderId": oid, "target": d["target"], "capped": d["capped"]}
-            try:
-                fill, note = ts.snap(m["id"], contract, sig["dir"], sig["stop"], d["target"])  # Topstep's own position brackets, if it added any
-                if "not found" in note:
-                    ts.protect(m["id"], contract, sig["dir"], c["contracts"], rnd(sig["stop"]), d["target"])
-                    note = f"stop {rnd(sig['stop'])} and target {d['target']} placed by the bot"
-                log(f"  {c['label']}: {note}")
-                if isinstance(fill, (int, float)) and fill > 0:
-                    out["fill"] = float(fill)
-            except Exception as e3:
-                log(f"  {c['label']}: COULDN'T SET THE STOP/TARGET ({e3}): check TopstepX now")
-                out["reason"] = f"placed without a stop/target: {e3}"[:400]
-            return out
+        except Exception as e:  # rejected: logged, not retried, not counted
+            log(f"FAILED {sig['dir']} on {c['label']}: {e}")
+            return {**row, "status": "error", "step": None, "reason": str(e)[:400]}
         out = {**row, "status": "open", "orderId": oid, "target": d["target"], "capped": d["capped"]}
         try:
             fill, note = ts.snap(m["id"], contract, sig["dir"], sig["stop"], d["target"])
