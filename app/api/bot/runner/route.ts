@@ -1,9 +1,9 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { randomToken } from "@/lib/crypto";
 import { claimAlerts, napSeconds, runnerAuthed } from "@/lib/bot/runner";
-import { dayPnl, logEvent, money, switchOff, toAccount, type AccountRow } from "@/lib/bot/engine";
+import { dayPnl, handleSignal, logEvent, money, switchOff, toAccount, type AccountRow } from "@/lib/bot/engine";
 import { botNotify } from "@/lib/bot/notify";
 import { newsAround } from "@/lib/bot/newsFeed";
 import { SESSION_LABEL, type BotAccount, type Session } from "@/lib/bot/signal";
@@ -113,8 +113,16 @@ const Closed = z.object({
   exitedAt: z.string().datetime({ offset: true }),
 });
 const Passed = z.object({ cardId: z.string().max(60), profit: z.number() });
+const TestSignal = z.object({
+  type: z.literal("test"),
+  dir: z.enum(["LONG", "SHORT"]),
+  entry: z.number().finite().positive(),
+  stop: z.number().finite().positive(),
+  target: z.number().finite().positive(),
+});
 const Report = z.discriminatedUnion("type", [
   Closed,
+  TestSignal,
   z.object({ type: z.literal("results"), signalId: z.string().regex(/^sig_[a-f0-9]{24}$/), results: z.array(Result).max(50), passed: z.array(Passed).max(50).default([]) }),
   z.object({
     type: z.literal("accounts"),
@@ -135,6 +143,33 @@ export async function POST(req: Request) {
   for (const p of "passed" in r ? r.passed : []) {
     const c = cards.get(p.cardId);
     if (c) await switchOff(c, p.profit);
+  }
+  if (r.type === "test") {
+    // "python3 autopilot-runner.py test": one signal for each signal set (3/3 eval, 3/2 funded), passing every
+    // time and session rule, so the cards decide on it exactly as on a real one. Only cards on Real orders place.
+    const now = new Date();
+    const dow = new Date(now.getTime() + 6 * 3600_000).toLocaleDateString("en-US", { timeZone: "America/New_York", weekday: "short" });
+    for (const swing of ["3/3", "3/2"] as const) {
+      const sig = {
+        secret: "",
+        event: "signal" as const,
+        swing,
+        session: "NYAM" as const,
+        dow: (["Mon", "Tue", "Wed", "Fri"].includes(dow) ? dow : "Fri") as "Mon" | "Tue" | "Wed" | "Fri",
+        mins_in: 10,
+        quiet: false,
+        dir: r.dir,
+        entry: r.entry,
+        stop: r.stop,
+        target: r.target,
+        quiet_target: null,
+        atr: null,
+        id: `${now.getTime()}-${swing}-TEST`,
+      };
+      after(() => handleSignal(sig, now).catch(() => {}));
+    }
+    await logEvent("warn", `Test signal from your Mac: ${r.dir} @ ${r.entry} · SL ${r.stop} · TP ${r.target} (one for eval, one for funded)`);
+    return NextResponse.json({ ok: true });
   }
   if (r.type === "closed") {
     const [t] = await sql<{ account_label: string; mode: string; dir: string; session: string; qty: number }[]>`

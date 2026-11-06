@@ -12,6 +12,7 @@ at TopstepX from this Mac, and tells the journal what it did.
   python3 autopilot-runner.py setup      # once: saves your details (only on this Mac)
   python3 autopilot-runner.py install    # starts it now and every time you log in, keeps the Mac awake
   python3 autopilot-runner.py status     # is it running?
+  python3 autopilot-runner.py test       # send a test LONG at the live price (20 pt stop, 15 pt target)
   python3 autopilot-runner.py uninstall  # stop it and remove it
   python3 autopilot-runner.py run        # run in this window instead (Ctrl+C to stop)
 
@@ -41,7 +42,7 @@ try:
 except Exception:  # very old Python: fixed offsets are close enough for the logs, never used to place
     NY = None
 
-VERSION = "3.2"
+VERSION = "3.3"
 TOPSTEP = os.environ.get("THUNDER_TOPSTEP_URL", "https://api.topstepx.com")  # override only for testing
 TICKET_TTL_MS = 20_000  # never place a ticket older than this: a late entry is a different trade
 HOME = os.path.expanduser("~")
@@ -861,6 +862,29 @@ def install():
     print(f"  Log: {LOG}\n  Check the journal: Autopilot should say your Mac is connected within a minute.")
 
 
+def test():
+    """A test LONG at the live MNQ price, 20 point stop, 15 point target, sent through the journal like a real signal.
+    Cards on Dry run only log it; a card on Real orders places it (close it straight after in TopstepX)."""
+    cfg = load_config()
+    base = cfg["url"].rstrip("/")
+    auth = {"Authorization": "Bearer " + cfg["token"], "X-Runner": f"{platform.node()[:40]} - bot {VERSION}"}
+    ts = Topstep(cfg["user"], cfg["key"])
+    now = datetime.now(timezone.utc)
+    bars = ts.bars(ts.mnq(), (now - timedelta(minutes=30)).isoformat(), now.isoformat())
+    if not bars:
+        print("Couldn't read the MNQ price from TopstepX (market closed?). Nothing sent.")
+        return
+    price = rnd(bars[-1]["c"])
+    body = {"type": "test", "dir": "LONG", "entry": price, "stop": price - 20, "target": price + 15}
+    code, d = http("POST", base + "/api/bot/runner", body, auth)
+    if code != 200:
+        print(f"The journal said no ({code}). Is your Mac paired? Nothing sent.")
+        return
+    print(f"Test sent: LONG @ {price} · SL {price - 20} · TP {price + 15}")
+    print("Watch Autopilot → Log (and TopstepX, for any card on Real orders). Your Mac picks it up within a few seconds")
+    print("if the bot is running and it's within 5 minutes of a session or during one.")
+
+
 def status():
     r = subprocess.run(["launchctl", "list"], capture_output=True, text=True)
     running = LABEL in r.stdout
@@ -881,4 +905,4 @@ def uninstall():
 
 if __name__ == "__main__":
     cmd = sys.argv[1] if len(sys.argv) > 1 else "help"
-    {"setup": setup, "install": install, "run": run, "status": status, "uninstall": uninstall}.get(cmd, lambda: print(__doc__))()
+    {"setup": setup, "install": install, "run": run, "status": status, "test": test, "uninstall": uninstall}.get(cmd, lambda: print(__doc__))()
