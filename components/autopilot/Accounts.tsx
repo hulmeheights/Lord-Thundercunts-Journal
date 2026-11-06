@@ -184,21 +184,34 @@ function Card({ a, live, options }: { a: BotAccountView; live: boolean; options:
           <span className={lab}>Starting balance $</span>
           <input className={num} inputMode="decimal" value={f.startBalance} onChange={(e) => setF({ ...f, startBalance: e.target.value.replace(/[^0-9.]/g, "") })} />
         </label>
-        <div className="col-span-2 flex items-center justify-between gap-4 border-t border-line py-2.5">
-          <span className="font-mono text-[10.5px] leading-[1.6] text-ink-2">
-            {f.dryRun ? "Dry run" : <span className="text-neg">Real orders</span>}
-            <span className="block text-[9.5px] text-ink-4">{f.dryRun ? "Logs every decision with prices and follows it to its stop or target. Places nothing." : "Places real orders when Autopilot is Live."}</span>
-          </span>
-          <Toggle
-            checked={!f.dryRun}
-            label={`Real orders on ${f.label}`}
-            onChange={(v) => {
-              if (v && !window.confirm(`Switch ${f.label} to REAL orders? Only do this once its dry run has matched the expected trades (Autopilot → Dry-run check).`)) return;
-              const next = { ...f, dryRun: !v };
-              setF(next);
-              save(next);
-            }}
-          />
+        {/* Two plain buttons, so it's always obvious which one the card is on. */}
+        <div className="col-span-2 border-t border-line pt-2.5">
+          <span className={lab}>Orders</span>
+          <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label={`${f.label} orders`}>
+            {([true, false] as const).map((dry) => (
+              <button
+                key={String(dry)}
+                type="button"
+                role="radio"
+                aria-checked={f.dryRun === dry}
+                disabled={pending}
+                onClick={() => {
+                  if (f.dryRun === dry) return;
+                  if (!dry && !window.confirm(`Switch ${f.label} to REAL orders? The bot will place real trades on this account when Autopilot is Live.`)) return;
+                  const next = { ...f, dryRun: dry };
+                  setF(next);
+                  save(next);
+                }}
+                className={cn(
+                  "border px-3 py-2 text-left font-mono transition-colors",
+                  f.dryRun === dry ? (dry ? "border-gold/70 bg-gold/10 text-ink" : "border-neg/70 bg-neg/10 text-ink") : "border-line text-ink-4 hover:text-ink-2",
+                )}
+              >
+                <span className="block text-[11px]">{dry ? "Dry run" : "Real orders"}</span>
+                <span className="mt-0.5 block text-[9.5px] leading-[1.5] text-ink-4">{dry ? "Logs every decision, places nothing" : "Places real trades at Topstep"}</span>
+              </button>
+            ))}
+          </div>
         </div>
         <details className="col-span-2 border-t border-line pt-2.5">
           <summary className="cursor-pointer font-mono text-[10.5px] text-ink-2">
