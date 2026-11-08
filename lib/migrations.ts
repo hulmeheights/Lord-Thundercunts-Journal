@@ -747,4 +747,21 @@ export const MIGRATIONS: { version: number; sql: string }[] = [
       update bot_accounts set max_daily_win = 1700 where phase = 'funded' and max_daily_win = 1600;
     `,
   },
+  {
+    version: 38,
+    sql: /* sql */ `
+      -- Strategy health: PF60 (profit factor over the last 60 trades) and the eval spend limit. Tracking only.
+      create table if not exists bot_health (
+        id int primary key check (id = 1),
+        state text not null default 'ok' check (state in ('ok', 'warn')),
+        pf60 float8,
+        n int not null default 60,
+        changed_at timestamptz,
+        weekly_at timestamptz,
+        failed_sets int not null default 0 check (failed_sets >= 0),
+        limit_warned_at timestamptz
+      );
+      insert into bot_health (id) values (1) on conflict (id) do nothing;
+    `,
+  },
 ];

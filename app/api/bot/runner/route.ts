@@ -199,6 +199,8 @@ export async function POST(req: Request) {
     await logEvent("info", `${dry ? "Dry run closed" : "Trade closed"}: ${line}`);
     await botNotify(`${dry ? "Dry run closed" : "Trade closed"} · ${money(r.pnl)}\n${line}`, { push: !dry });
     if (!dry) await sql`update bot_settings set balances_due = now() where id = 1`;
+    // Strategy health (PF60) after every close, dry run or real. Tracking only: never stops a trade.
+    after(() => import("@/lib/bot/healthCheck").then((m) => m.checkHealth()).catch(() => {}));
     return NextResponse.json({ ok: true });
   }
   if (r.type === "accounts") {

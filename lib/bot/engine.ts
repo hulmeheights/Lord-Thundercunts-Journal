@@ -102,6 +102,7 @@ export async function handleAlert(raw: string, a: Alert, now = new Date()): Prom
       const cards = (await sql<AccountRow[]>`select * from bot_accounts where enabled and profit_target is not null`).map(toAccount);
       for (const c of cards) if (targetReached(c, profit.get(c.id) ?? 0)) await switchOff(c, profit.get(c.id) ?? 0);
     }
+    if (closed.length) await import("./healthCheck").then((m) => m.checkHealth()).catch(() => null);
     // Live: your Mac checks the balances against the targets on its next look (asked for here).
     if (mode === "live") await sql`update bot_settings set balances_due = now() where id = 1`;
     return { status: "exit" };

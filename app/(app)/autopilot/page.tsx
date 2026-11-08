@@ -29,6 +29,9 @@ import { FIRM_SUGGESTIONS, summarizeLedger } from "@/lib/analytics/ledger";
 import { LedgerSection } from "@/components/guardian/Ledger";
 import { WinRateChart } from "@/components/autopilot/WinRateChart";
 import { DryCheck } from "@/components/autopilot/DryCheck";
+import { Health } from "@/components/autopilot/Health";
+import { checkHealth } from "@/lib/bot/healthCheck";
+import { pfFmt, SPEND_LIMIT_SETS } from "@/lib/bot/health";
 
 export const metadata = { title: "Autopilot" };
 
@@ -126,6 +129,7 @@ export default async function AutopilotPage({ searchParams }: { searchParams: Pr
   const sets = track === "bt" ? await setsOfFive(btCase) : null;
   const setup = botSetup();
   const runner = await runnerStatus();
+  const hl = await checkHealth().catch(() => null);
   await refreshNews();
   const [upcoming, fresh] = await Promise.all([newsAround(new Date(Date.now() - 60 * 60_000), new Date(Date.now() + 8 * 86_400_000)), newsFreshness()]);
   const blackouts = windows(upcoming, s.newsMinutes);
@@ -162,6 +166,18 @@ export default async function AutopilotPage({ searchParams }: { searchParams: Pr
         sub="Your MNQ Session Open Reversal strategy fires on TradingView. The bot on your Mac applies your rules and places the bracketed orders from your own computer; this page holds your settings and keeps the book."
         meta={<Meta value={live ? <LiveLight>Live</LiveLight> : s.mode === "off" ? "Off" : "Paper"} tone={live ? "pos" : null} caption={`${on} ${on === 1 ? "account" : "accounts"} on${s.lastSignal ? ` · last alert ${when(s.lastSignal.at)}` : " · no alerts yet"}`} />}
       />
+
+      {hl && !hl.ok && (
+        <div role="alert" className="mb-4 border border-neg/60 bg-neg/10 px-4 py-3 font-mono text-[11.5px] leading-[1.7] text-neg">
+          ⚠ Strategy health: PF60 = {pfFmt(hl.pf60)} over the last {hl.n} trades (below 1.0). The strategy may have stopped working. Autopilot is still trading; switch it off yourself if you want it to stop.
+        </div>
+      )}
+      {hl && hl.failedSets >= SPEND_LIMIT_SETS && (
+        <div role="alert" className="mb-4 border border-neg/60 bg-neg/10 px-4 py-3 font-mono text-[11.5px] leading-[1.7] text-neg">
+          🛑 Eval spend limit: {hl.failedSets} sets of evals failed in a row. Stop buying evals until you&apos;ve looked at why, then reset it below.
+        </div>
+      )}
+      {hl && <Health pf60={hl.pf60} n={hl.n} real={hl.real} ok={hl.ok} changedAt={hl.changedAt} failedSets={hl.failedSets} limit={SPEND_LIMIT_SETS} window={hl.window} />}
 
       {daysLeft !== null && daysLeft <= 7 && (
         <a href="#setup" className="mb-4 block border border-gold/50 px-4 py-3 font-mono text-[11.5px] leading-[1.7] text-gold">

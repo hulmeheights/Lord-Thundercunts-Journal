@@ -241,3 +241,47 @@ export async function checkExpected(csvText: string) {
     return { ok: true as const, file: { rows: parsed.rows.length, first, last }, signalDays: [...days].filter((d) => (!first || d >= first) && (!last || d <= last)).length, cards: result };
   });
 }
+
+/** Strategy health: send the PF60 warning as a test (changes nothing) so you can see it reach your phone. */
+export async function healthTest() {
+  await assertSession();
+  return safely(async () => {
+    const [{ checkHealth }, { botNotify }, { pfFmt }] = await Promise.all([import("../bot/healthCheck"), import("../bot/notify"), import("../bot/health")]);
+    const h = await checkHealth();
+    await botNotify(`🧪 TEST · ⚠️ S1 health: PF60 = 0.95 (below 1.0). Strategy may have stopped working.\nThis is only a test: the real PF60 is ${pfFmt(h.pf60)}. Nothing was changed.`, { push: true, critical: true, url: "/autopilot" });
+    await logEvent("info", "Strategy health test alert sent");
+    return { ok: true };
+  });
+}
+
+/** Eval spend limit: a set of 5 failed (none passed). 2 in a row: warn, push + Telegram. Never blocks anything. */
+export async function evalSetFailed() {
+  await assertSession();
+  return safely(async () => {
+    const sql = await db();
+    const [r] = await sql<{ failed_sets: number }[]>`update bot_health set failed_sets = failed_sets + 1 where id = 1 returning failed_sets`;
+    const n = r?.failed_sets ?? 0;
+    const { SPEND_LIMIT_SETS } = await import("../bot/health");
+    if (n >= SPEND_LIMIT_SETS) {
+      const { botNotify } = await import("../bot/notify");
+      const text = `🛑 Eval spend limit: ${n} sets of evals failed in a row\nStop buying evals until you've looked at why. Reset it on Autopilot when you're ready.`;
+      await logEvent("error", text.split("\n")[0]!);
+      await botNotify(text, { push: true, critical: true, url: "/autopilot" });
+      await sql`update bot_health set limit_warned_at = now() where id = 1`;
+    } else await logEvent("warn", `Eval set failed (${n} in a row)`);
+    done();
+    return { ok: true, failedSets: n };
+  });
+}
+
+/** Only you reset the spend limit (or record a set that passed). */
+export async function evalSetsReset() {
+  await assertSession();
+  return safely(async () => {
+    const sql = await db();
+    await sql`update bot_health set failed_sets = 0, limit_warned_at = null where id = 1`;
+    await logEvent("info", "Eval spend limit reset");
+    done();
+    return { ok: true };
+  });
+}
