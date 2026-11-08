@@ -18,8 +18,8 @@ async function closedRows(): Promise<HealthRow[]> {
 }
 
 /**
- * Recompute PF60 and message once when it crosses 1.0 either way (push +
- * Telegram). Called after every closed trade and every hour. It never touches
+ * Recompute PF60 and push to your phone once when it crosses 1.0 either way
+ * (no Telegram). Called after every closed trade and every hour. It never touches
  * a trade or the switch.
  */
 export async function checkHealth(): Promise<HealthState> {
@@ -36,7 +36,7 @@ export async function checkHealth(): Promise<HealthState> {
       changedAt = new Date();
       const text = next === "warn" ? healthWarning(h.pf60) : healthBack(h.pf60);
       await logEvent(next === "warn" ? "error" : "info", text.split("\n")[0]!);
-      await botNotify(text, { push: true, critical: true, url: "/autopilot" });
+      await botNotify(text, { push: true, telegram: false, critical: true, always: true, url: "/autopilot" });
     }
   } else await sql`update bot_health set pf60 = ${h.pf60}, n = ${h.n} where id = 1`;
   return { ...h, state: next, changedAt: changedAt ? changedAt.toISOString() : null, failedSets: prev?.failed_sets ?? 0 };
@@ -49,5 +49,5 @@ export async function weeklyHealth(now = new Date()) {
   if (!weeklyDue(now, row?.weekly_at ?? null)) return;
   const h = await checkHealth();
   const [won] = await sql<{ id: number }[]>`update bot_health set weekly_at = ${now} where id = 1 and (weekly_at is null or weekly_at < ${new Date(now.getTime() - 6 * 86_400_000)}) returning id`;
-  if (won) await botNotify(healthWeekly(h), { push: true, critical: true, url: "/autopilot" });
+  if (won) await botNotify(healthWeekly(h), { push: true, telegram: false, critical: true, always: true, url: "/autopilot" });
 }

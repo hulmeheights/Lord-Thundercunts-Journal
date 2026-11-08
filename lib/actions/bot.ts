@@ -248,13 +248,13 @@ export async function healthTest() {
   return safely(async () => {
     const [{ checkHealth }, { botNotify }, { pfFmt }] = await Promise.all([import("../bot/healthCheck"), import("../bot/notify"), import("../bot/health")]);
     const h = await checkHealth();
-    await botNotify(`🧪 TEST · ⚠️ S1 health: PF60 = 0.95 (below 1.0). Strategy may have stopped working.\nThis is only a test: the real PF60 is ${pfFmt(h.pf60)}. Nothing was changed.`, { push: true, critical: true, url: "/autopilot" });
+    await botNotify(`🧪 TEST · ⚠️ S1 health: PF60 = 0.95 (below 1.0). Strategy may have stopped working.\nThis is only a test: the real PF60 is ${pfFmt(h.pf60)}. Nothing was changed.`, { push: true, telegram: false, critical: true, always: true, url: "/autopilot" });
     await logEvent("info", "Strategy health test alert sent");
     return { ok: true };
   });
 }
 
-/** Eval spend limit: a set of 5 failed (none passed). 2 in a row: warn, push + Telegram. Never blocks anything. */
+/** Eval spend limit: a set of 5 failed (none passed). 2 in a row: warning + push. Never blocks anything. */
 export async function evalSetFailed() {
   await assertSession();
   return safely(async () => {
@@ -266,7 +266,7 @@ export async function evalSetFailed() {
       const { botNotify } = await import("../bot/notify");
       const text = `🛑 Eval spend limit: ${n} sets of evals failed in a row\nStop buying evals until you've looked at why. Reset it on Autopilot when you're ready.`;
       await logEvent("error", text.split("\n")[0]!);
-      await botNotify(text, { push: true, critical: true, url: "/autopilot" });
+      await botNotify(text, { push: true, telegram: false, critical: true, always: true, url: "/autopilot" });
       await sql`update bot_health set limit_warned_at = now() where id = 1`;
     } else await logEvent("warn", `Eval set failed (${n} in a row)`);
     done();

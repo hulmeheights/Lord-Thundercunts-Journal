@@ -40,7 +40,7 @@ export function Health({ pf60, n, real, ok, changedAt, failedSets, limit, window
           <polyline points={pts} fill="none" strokeWidth="1.2" vectorEffect="non-scaling-stroke" className={ok ? "stroke-pos" : "stroke-neg"} />
         </svg>
         <p className="mt-2 font-mono text-[10px] leading-[1.7] text-ink-4">
-          Profit factor of the last 60 trades (one per signal, dry run or real, at 5 MNQ, after fees). Updates after every closed trade. Below 1.0 you get a push and a Telegram message once, and again when it&apos;s back. Every Sunday at 18:00 UK you get the number. It never pauses the bot.
+          Profit factor of the last 60 trades (one per signal, dry run or real, at 5 MNQ, after fees). Updates after every closed trade. Below 1.0 you get a warning here and a push to your phone (once), and another push when it&apos;s back. Every Sunday at 18:00 UK you get the number. It never pauses the bot.
           {changedAt && ` Last change: ${new Date(changedAt).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}.`}
         </p>
         <button type="button" className={cn(btn, "mt-3")} disabled={pending} onClick={() => run(healthTest, "Test alert sent: check your phone")}>
@@ -55,7 +55,7 @@ export function Health({ pf60, n, real, ok, changedAt, failedSets, limit, window
             failed {failedSets === 1 ? "set" : "sets"} of 5 in a row · limit {limit}
           </span>
         </div>
-        <p className="mt-3 font-mono text-[10px] leading-[1.7] text-ink-4">A set fails when none of its 5 evals passes. Mark it here; at {limit} in a row you get a push and a Telegram message to stop buying evals. Only you reset it.</p>
+        <p className="mt-3 font-mono text-[10px] leading-[1.7] text-ink-4">A set fails when none of its 5 evals passes. Mark it here; at {limit} in a row you get a warning here and a push to stop buying evals. Only you reset it.</p>
         <div className="mt-3 flex flex-wrap gap-2">
           <button type="button" className={btn} disabled={pending} onClick={() => confirm("Mark a set of 5 evals as failed (none passed)?") && run(evalSetFailed, "Recorded")}>
             A set failed
