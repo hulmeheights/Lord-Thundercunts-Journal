@@ -54,6 +54,7 @@ export async function listTrades(opts: { since?: Date; until?: Date; limit?: num
     left join broker_accounts a on a.id = t.account_id
     where t.exit_time >= ${since} and t.exit_time < ${until}
       and (a.id is null or a.included)
+      and not t.by_bot
     order by t.exit_time desc
     limit ${limit}
   `;

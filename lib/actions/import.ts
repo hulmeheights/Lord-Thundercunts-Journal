@@ -60,7 +60,7 @@ function resolveSymbol(raw: string): { symbol: string; root: string } {
   return { symbol, root: rootFromSymbol(symbol.replace(/^[/@]/, "")) };
 }
 
-export type ImportResult = { ok?: boolean; added?: number; duplicates?: number; unknownRoots?: string[]; error?: string };
+export type ImportResult = { ok?: boolean; added?: number; duplicates?: number; botHidden?: number; unknownRoots?: string[]; error?: string };
 
 /**
  * Imports one chunk of a parsed export. Every row gets a deterministic ID, so
@@ -144,8 +144,11 @@ export async function importChunk(input: z.input<typeof Payload>): Promise<Impor
     if (importId) await sql`update trades set import_id = ${importId} where source = 'import' and account_id = any(${sql.array(touched)}::text[]) and import_id is null`;
   }
 
+  // The bot's own trades in this file are the strategy's, not yours: kept out of the journal.
+  const { hideBotCopies } = await import("../data/botCopies");
+  const hidden = await hideBotCopies().catch(() => 0);
   revalidatePath("/", "layout");
-  return { ok: true, added, duplicates: items.length - added };
+  return { ok: true, added, duplicates: items.length - added, botHidden: hidden };
 }
 
 /**

@@ -278,5 +278,7 @@ export async function syncAll(opts: { full?: boolean; staleMinutes?: number } = 
     }
     results.push(await syncConnection(c.id, { full: opts.full }));
   }
+  // Trades the bot placed on synced accounts stay out of your journal.
+  await import("../data/botCopies").then((m) => m.hideBotCopies()).catch(() => 0);
   return results;
 }

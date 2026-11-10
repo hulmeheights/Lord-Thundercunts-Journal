@@ -61,6 +61,7 @@ export function TrackImport({ tz, imports }: { tz: string; imports: HistImportVi
     const importId = `imp_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
     let added = 0;
     let duplicates = 0;
+    let botHidden = 0;
     for (let i = 0; i < parsed.items.length; i += 400) {
       const res = await importChunk({ importId, fileName, accountLabel: "Imported account", pointValues: {}, items: parsed.items.slice(i, i + 400) });
       if (res.unknownRoots?.length || res.error) {
@@ -69,9 +70,10 @@ export function TrackImport({ tz, imports }: { tz: string; imports: HistImportVi
       }
       added += res.added ?? 0;
       duplicates += res.duplicates ?? 0;
+      botHidden += res.botHidden ?? 0;
     }
     setBusy(false);
-    setMsg({ ok: true, text: `That's a broker export, not TradingView: ${added} ${added === 1 ? "trade" : "trades"} added to your journal (Trades)${duplicates ? `, ${duplicates} already there` : ""}. They're your own trades, so they don't change the strategy's track record.` });
+    setMsg({ ok: true, text: `That's a broker export, not TradingView: ${added} ${added === 1 ? "trade" : "trades"} added to your journal (Trades)${duplicates ? `, ${duplicates} already there` : ""}${botHidden ? `, ${botHidden} placed by the bot kept out of your journal` : ""}. They're your own trades, so they don't change the strategy's track record.` });
     if (file.current) file.current.value = "";
     router.refresh();
   };

@@ -52,7 +52,7 @@ export function ImportSheet({ tz, accounts, onDone }: { tz: string; accounts: st
   const [unknownRoots, setUnknownRoots] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState<string | null>(null);
-  const [result, setResult] = useState<{ added: number; duplicates: number; importId: string } | null>(null);
+  const [result, setResult] = useState<{ added: number; duplicates: number; botHidden: number; importId: string } | null>(null);
   const [undo, setUndo] = useState<"idle" | "confirm" | "working" | "done">("idle");
   const [error, setError] = useState<string | null>(null);
   const [drag, setDrag] = useState(false);
@@ -107,7 +107,8 @@ export function ImportSheet({ tz, accounts, onDone }: { tz: string; accounts: st
     setBusy(true);
     setError(null);
     let added = 0,
-      duplicates = 0;
+      duplicates = 0,
+      botHidden = 0;
     // One id for every chunk, so this whole file can be undone later.
     const importId = `imp_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
     const pv: Record<string, number> = {};
@@ -127,8 +128,9 @@ export function ImportSheet({ tz, accounts, onDone }: { tz: string; accounts: st
         }
         added += res.added ?? 0;
         duplicates += res.duplicates ?? 0;
+        botHidden += res.botHidden ?? 0;
       }
-      setResult({ added, duplicates, importId });
+      setResult({ added, duplicates, botHidden, importId });
       router.refresh();
     } catch {
       setError("Import failed — try again.");
@@ -161,6 +163,7 @@ export function ImportSheet({ tz, accounts, onDone }: { tz: string; accounts: st
           {result.duplicates
             ? `${result.duplicates.toLocaleString("en-US")} already in your journal — skipped, never doubled.`
             : "Every fill paired, every fee counted. Nothing was doubled."}
+          {result.botHidden > 0 && ` ${result.botHidden} ${result.botHidden === 1 ? "trade was" : "trades were"} placed by the bot: kept out of your journal.`}
         </p>
         <div className="mt-10 flex flex-wrap items-center gap-x-8 gap-y-4">
           <Btn className="w-full sm:w-auto" variant="primary" size="lg" onClick={onDone}>

@@ -764,4 +764,18 @@ export const MIGRATIONS: { version: number; sql: string }[] = [
       insert into bot_health (id) values (1) on conflict (id) do nothing;
     `,
   },
+  {
+    version: 39,
+    sql: /* sql */ `
+      -- Trades the bot placed (seen again through sync or imports) are the strategy's, not yours: kept out of the journal.
+      alter table trades add column if not exists by_bot boolean not null default false;
+      update trades t set by_bot = true
+      where not t.by_bot and t.root in ('MNQ', 'NQ') and exists (
+        select 1 from bot_trades b
+        where b.mode = 'live' and b.status in ('open', 'closed') and coalesce(b.order_id, '') <> ''
+          and lower(b.dir) = t.direction and b.qty = t.qty
+          and t.entry_time between b.entered_at - interval '1 minute' and b.entered_at + interval '3 minutes'
+      );
+    `,
+  },
 ];
