@@ -1,0 +1,219 @@
+//@version=5
+// =============================================================================
+//  Pass Plan 1 - All signals, no filter [1m]
+//
+//  Plain trades, like the SOR script: every Pass Plan signal traded the same
+//  way every day. No simulated account, no eval/funded stages, no pass logic:
+//  your website does all of that for each of your accounts.
+//
+//  THIS ONE: every signal is traded (no filter). It's the trade list your
+//  EVAL accounts on script A or D follow. Put your bot ALERT on this script.
+//
+//  Each trade: 10 MNQ, stop = the risk below (50 points for $1,000 on 10),
+//  target = what's left of the day cap ($1,640 a day, costs included), out at
+//  the time exit (02:59, 09:39, 16:09 New York). The day stops at the cap or
+//  at the daily loss limit; if the loss limit has less room than a full stop,
+//  the trade is smaller (fewer contracts), never a tighter stop.
+//
+//  ASIA    close of the 20:00 New York bar -> LONG (not Friday/Saturday evening)
+//  LONDON  close of the 03:30 bar vs the 03:01 open: above -> SHORT, else LONG
+//  NY      close of the 10:10 bar vs the 09:41 open: at/above -> LONG, else SHORT
+//  Filters: the last finished 4H candle's body points the trade's way, and
+//           price is outside the 70% value area (volume profile from 20:00 NY).
+//
+//  Alert: Condition = this script -> "alert() function calls only" (NOT "Order fills"),
+//         Webhook URL = https://lord-thundercunts-journal.vercel.app/api/bot/webhook.
+//         It sends EVERY signal with its filter results; the website decides per account.
+// =============================================================================
+strategy("Pass Plan 1 - All signals, no filter [1m]", overlay=true, max_labels_count=300, initial_capital=50000, default_qty_type=strategy.fixed, default_qty_value=10, commission_type=strategy.commission.cash_per_contract, commission_value=0.5, slippage=1, pyramiding=0)
+
+secret = input.string("", "Webhook Secret (same as BOT_WEBHOOK_SECRET in Vercel)")
+grpT = "Strategy Tester"
+inFilter = input.bool(false, "Only trade when BOTH filters pass (4H bias + outside value area)", group=grpT)
+inQty = input.int(10, "Contracts (MNQ)", minval=1, maxval=50, group=grpT)
+inRisk = input.float(1000, "Risk per trade $ (eval 1,000 · Topstep funded 750)", minval=50, group=grpT)
+inCap = input.float(1640, "Day cap $ (eval 1,640 · Topstep funded 2,500 · Lucid 1,200)", minval=100, group=grpT)
+inDll = input.float(1000, "Daily loss limit $ (0 = none)", minval=0, group=grpT)
+
+TZ = "America/New_York"
+hr = hour(time, TZ)
+mn = minute(time, TZ)
+dow = dayofweek(time, TZ)
+at(h, m) => hr == h and mn == m
+dayAt(h) => timestamp(TZ, year(time, TZ), month(time, TZ), dayofmonth(time, TZ), h, 0)
+
+// ---------------- 4H candles (18, 22, 02, 06, 10, 14 New York) ----------------
+blockStart = time - (((hr + 2) % 4) * 60 + mn) * 60000
+newBlock = blockStart != blockStart[1]
+var float curO = na
+var float curC = na
+var int curS = na
+var float c14o = na
+var float c14c = na
+var int c14s = na
+var float c22o = na
+var float c22c = na
+var int c22s = na
+var float c02o = na
+var float c02c = na
+var int c02s = na
+if newBlock
+    if not na(curS)
+        sh = hour(curS, TZ)
+        if sh == 14
+            c14o := curO
+            c14c := curC
+            c14s := curS
+        if sh == 22
+            c22o := curO
+            c22c := curC
+            c22s := curS
+        if sh == 2
+            c02o := curO
+            c02c := curC
+            c02s := curS
+    curS := blockStart
+    curO := open
+curC := close
+
+biasOf(o, c, s, expected) =>
+    na(s) or s != expected ? "null" : c > o ? "\"UP\"" : c < o ? "\"DOWN\"" : "null"
+
+// ---------------- volume profile, 1-point bins, from 20:00 New York ----------------
+var vol = map.new<int, float>()
+var int lob = na
+var int hib = na
+
+vaOf() =>
+    float tot = 0.0
+    float best = -1.0
+    int poc = na
+    if not na(lob)
+        for k = lob to hib
+            v = nz(vol.get(k))
+            tot += v
+            if v > best
+                best := v
+                poc := k
+    float val = na
+    float vah = na
+    if tot > 0
+        int lo = poc
+        int hi = poc
+        float inside = best
+        while inside < 0.7 * tot
+            up = hi + 1 <= hib ? nz(vol.get(hi + 1)) : -1.0
+            dn = lo - 1 >= lob ? nz(vol.get(lo - 1)) : -1.0
+            if up < 0 and dn < 0
+                break
+            if up >= dn
+                hi += 1
+                inside += math.max(up, 0)
+            else
+                lo -= 1
+                inside += dn
+        val := lo
+        vah := hi + 1
+    [val, vah]
+
+addBar() =>
+    lo = int(math.floor(low))
+    hi = int(math.floor(high))
+    v = nz(volume)
+    if v > 0 and hi >= lo
+        n = hi - lo + 1
+        for k = lo to hi
+            vol.put(k, nz(vol.get(k)) + v / n)
+    true
+
+addBar()
+lo0 = int(math.floor(low))
+hi0 = int(math.floor(high))
+lob := na(lob) ? lo0 : math.min(lob, lo0)
+hib := na(hib) ? hi0 : math.max(hib, hi0)
+
+// ---------------- the signals ----------------
+var float lonRef = na
+var float nyRef = na
+if at(3, 1)
+    lonRef := open
+if at(9, 41)
+    nyRef := open
+
+string sess = ""
+string dir = ""
+string bias = "null"
+float vaL = na
+float vaH = na
+if at(20, 0)
+    // Asia: the previous 24 hours' profile (this 20:00 bar included), then a fresh one from 20:00.
+    [l, h] = vaOf()
+    if dow != dayofweek.friday and dow != dayofweek.saturday
+        sess := "ASIA"
+        dir := "LONG"
+        bias := biasOf(c14o, c14c, c14s, dayAt(14))
+        vaL := l
+        vaH := h
+    vol.clear()
+    lob := lo0
+    hib := hi0
+    addBar()
+    lonRef := na
+    nyRef := na
+if at(3, 30) and not na(lonRef) and dow != dayofweek.saturday and dow != dayofweek.sunday
+    [l, h] = vaOf()
+    sess := "LON"
+    dir := close > lonRef ? "SHORT" : "LONG"
+    bias := biasOf(c22o, c22c, c22s, dayAt(2) - 4 * 3600000)
+    vaL := l
+    vaH := h
+if at(10, 10) and not na(nyRef) and dow != dayofweek.saturday and dow != dayofweek.sunday
+    [l, h] = vaOf()
+    sess := "NY"
+    dir := close >= nyRef ? "LONG" : "SHORT"
+    bias := biasOf(c02o, c02c, c02s, dayAt(2))
+    vaL := l
+    vaH := h
+
+num(x) => na(x) ? "null" : str.tostring(x)
+outside = not na(vaH) and (close > vaH or close < vaL)
+agrees = (dir == "LONG" and bias == "\"UP\"") or (dir == "SHORT" and bias == "\"DOWN\"")
+
+// ---------------- the alert: every signal, for the journal to decide per account ----------------
+if sess != ""
+    tday = str.format_time(time + 6 * 3600000, "yyyy-MM-dd", TZ)
+    msg = "{\"secret\":\"" + secret + "\",\"event\":\"pass\",\"session\":\"" + sess + "\",\"trading_day\":\"" + tday + "\",\"dir\":\"" + dir + "\",\"price\":" + str.tostring(close) + ",\"bias\":" + bias + ",\"vah\":" + num(vaH) + ",\"val\":" + num(vaL) + ",\"id\":\"" + str.tostring(time) + "-" + sess + "\"}"
+    alert(msg, alert.freq_once_per_bar_close)
+
+
+// ---------------- the trades (plain, every day) ----------------
+var float today = 0.0
+var float lastNet = 0.0
+net = strategy.netprofit
+if net != lastNet
+    today += net - lastNet
+    lastNet := net
+tdayKey = str.format_time(time + 6 * 3600000, "yyyyMMdd", TZ)
+if bar_index > 0 and tdayKey != tdayKey[1]
+    today := 0.0
+
+stopT = math.floor(inRisk / (inQty * 2) / 0.25)
+oneContract = stopT * 0.25 * 2
+room = inDll > 0 ? inDll + today : 1e9
+left = inCap - today
+qtyNow = room >= inRisk ? inQty : math.min(inQty, int(math.floor(room / oneContract)))
+// The target covers the $1/contract costs, so a hit really adds what's left of the day cap.
+tgtT = math.max(1, math.ceil((left + inQty * 1.0) / (inQty * 2) / 0.25 - 1e-9))
+take = sess != "" and strategy.position_size == 0 and left >= 25 and qtyNow >= 1 and stopT >= 1 and (not inFilter or (agrees and outside))
+if take
+    strategy.entry("Pass", dir == "LONG" ? strategy.long : strategy.short, qty=qtyNow, comment=sess + (qtyNow < inQty ? " x" + str.tostring(qtyNow) : ""))
+    strategy.exit("Pass out", "Pass", loss=stopT, profit=tgtT, comment_loss="stop", comment_profit="target")
+
+// Time exits (filled at the open of 02:59, 09:39, 16:09 New York).
+if at(2, 58) or at(9, 38) or at(16, 8)
+    strategy.close("Pass", comment="time exit")
+
+// ---------------- chart labels ----------------
+if sess != ""
+    txt = sess + " " + dir + "\n4H " + (bias == "null" ? "flat" : str.replace_all(bias, "\"", "")) + (agrees ? " ✓" : " ✗") + "\nVA " + num(vaL) + "-" + num(vaH) + (outside ? " out ✓" : " in ✗")
+    label.new(bar_index, dir == "LONG" ? low : high, txt, style=dir == "LONG" ? label.style_label_up : label.style_label_down, color=color.new(dir == "LONG" ? color.teal : color.maroon, 15), textcolor=color.white, size=size.small)
