@@ -147,7 +147,7 @@ export async function passSignal(sig: Signal & { barTime: string }) {
     const target = p.take ? r2(sig.price + long * p.targetPts) : sig.price;
     const ins = await sql`
       insert into pass_trades (id, account_id, account_label, mode, stage, session, trading_day, dir, qty, entry_price, stop_price, target_price, status, reason, filters, entered_at)
-      values (${id}, ${a.id}, ${a.label}, ${mode}, ${a.stage}, ${sig.session}, ${sig.tradingDay}, ${sig.dir}, ${a.contracts}, ${sig.price}, ${stop}, ${target},
+      values (${id}, ${a.id}, ${a.label}, ${mode}, ${a.stage}, ${sig.session}, ${sig.tradingDay}, ${sig.dir}, ${p.take ? p.qty : a.contracts}, ${sig.price}, ${stop}, ${target},
         ${p.take ? (mode === "live" ? "pending" : "open") : "skipped"}, ${p.reason}, ${sql.json({ bias: sig.bias, vah: sig.vah, val: sig.val, barTime: sig.barTime } as never)}, now())
       on conflict (account_id, trading_day, session) do nothing returning id
     `;
@@ -160,10 +160,10 @@ export async function passSignal(sig: Signal & { barTime: string }) {
       await sql`update pass_trades set entry_price = ${fill}, stop_price = ${stop + long * 0.25}, target_price = ${target + long * 0.25} where id = ${id}`;
     }
     if (mode === "signal") {
-      await botNotify(`📣 ${a.label}: ${sig.dir} ${a.contracts} MNQ now\nPass plan · ${SESSION_NAME[sig.session]} · @ ~${sig.price} · stop ${stop} · target ${target} · close it at ${clock(sig.session)} if neither is hit`, { push: true, telegram: false, critical: true, always: true, url: "/pass" });
+      await botNotify(`📣 ${a.label}: ${sig.dir} ${p.qty} MNQ now\nPass plan · ${SESSION_NAME[sig.session]} · @ ~${sig.price} · stop ${stop} · target ${target} · close it at ${clock(sig.session)} if neither is hit`, { push: true, telegram: false, critical: true, always: true, url: "/pass" });
     }
     if (mode !== "live") continue;
-    plans.push({ tradeId: id, cardId: a.id, label: a.label, account: a.topstep_account, mode, dir: sig.dir, qty: a.contracts, stopTicks: p.stopTicks, targetTicks: p.targetTicks });
+    plans.push({ tradeId: id, cardId: a.id, label: a.label, account: a.topstep_account, mode, dir: sig.dir, qty: p.qty, stopTicks: p.stopTicks, targetTicks: p.targetTicks });
   }
   await logEvent("info", `Pass plan · ${head}: ${plans.length} to take`);
   if (lines.length) await sql`insert into bot_events (level, message) values ('info', ${`Pass plan · ${head}\n${lines.join("\n")}`.slice(0, 1900)})`;

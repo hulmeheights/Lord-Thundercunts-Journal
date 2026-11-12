@@ -258,13 +258,14 @@ finishing = stage == "FUNDED" ? (winDays >= 5 and payoutAt - before <= cap) : st
 room = math.min(prof - floorP, dllAmt + today)
 useFilters = inScript == "C" or (inScript == "D" and stage != "EVAL")
 take = sess != "" and strategy.position_size == 0 and left > 0 and (left >= 25 or finishing) and room >= 25 and (not useFilters or (agrees and outside))
-riskNow = math.min(risk, room)
-stopT = math.floor(riskNow / (inQty * 2) / 0.25)
+// Always the full-size stop; when a loss limit has less room, fewer contracts (never a tighter stop).
+stopT = math.floor(risk / (inQty * 2) / 0.25)
+qtyNow = room >= risk ? inQty : math.min(inQty, int(math.floor(room / (stopT * 0.25 * 2))))
 // The target covers the $1/contract costs, so hitting it really adds what's left (at least $25 when it finishes the account).
 aim = (finishing ? math.max(left, 25) : left) + inQty * 1.0
 tgtT = math.max(1, math.ceil(aim / (inQty * 2) / 0.25 - 1e-9))
-if take and stopT >= 1
-    strategy.entry("Pass", dir == "LONG" ? strategy.long : strategy.short, qty=inQty, comment=sess + " " + stage)
+if take and stopT >= 1 and qtyNow >= 1
+    strategy.entry("Pass", dir == "LONG" ? strategy.long : strategy.short, qty=qtyNow, comment=sess + " " + stage + (qtyNow < inQty ? " x" + str.tostring(qtyNow) : ""))
     strategy.exit("Pass out", "Pass", loss=stopT, profit=tgtT, comment_loss="stop", comment_profit="target")
 
 // Time exits (filled at the open of 02:59, 09:39, 16:09 New York).

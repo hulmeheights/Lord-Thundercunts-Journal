@@ -31,9 +31,11 @@ test("the day stops at the goal, at the daily loss limit, and under $25 of room"
   assert.match((plan(evalD, fresh([{ day: "2026-11-12", pnl: -1000 }]), sig()) as { reason: string }).reason, /daily loss limit/);
   // After a $990 loss today only $10 of the $1,000 daily limit is left.
   assert.match((plan(evalD, fresh([{ day: "2026-11-12", pnl: -990 }]), sig()) as { reason: string }).reason, /less than \$25/);
-  // $600 lost today: risk shrinks to the $400 left (20 points), target = goal left ($2,240 → capped by goal 1,640 + 600).
+  // $600 lost today, $400 of the daily limit left: the same 50-point stop on 4 MNQ ($400), never a tighter stop.
   const p = plan(evalD, fresh([{ day: "2026-11-12", pnl: -600 }]), sig());
-  assert.ok(p.take && p.stopPts === 20 && p.targetPts === 112.5);
+  assert.ok(p.take && p.qty === 4 && p.stopPts === 50 && p.risk === 400);
+  // $90 of room: not even 1 contract at 50 points → skip.
+  assert.match((plan(evalD, fresh([{ day: "2026-11-12", pnl: -910 }]), sig()) as { reason: string }).reason, /not enough for 1 contract/);
 });
 
 test("script D: no filters in eval, both filters once funded; script C: always", () => {

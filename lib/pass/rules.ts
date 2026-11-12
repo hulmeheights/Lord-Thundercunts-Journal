@@ -140,7 +140,7 @@ export type Signal = {
 export type Card = { firm: Firm; stage: Stage; script: Script; dll: boolean; contracts: number };
 export type Plan =
   | { take: false; reason: string }
-  | { take: true; reason: string; risk: number; goalLeft: number; stopPts: number; targetPts: number; stopTicks: number; targetTicks: number };
+  | { take: true; reason: string; risk: number; goalLeft: number; qty: number; stopPts: number; targetPts: number; stopTicks: number; targetTicks: number };
 
 const floorTick = (pts: number) => Math.floor(pts / TICK + 1e-9) * TICK;
 export const money = (n: number) => `${n < 0 ? "−" : ""}$${Math.abs(Math.round(n)).toLocaleString("en-GB")}`;
@@ -168,16 +168,20 @@ export function plan(card: Card, s: Stats, sig: Signal): Plan {
     if (sig.price <= sig.vah && sig.price >= sig.val) return { take: false, reason: `price ${sig.price} is inside the value area (${sig.val}–${sig.vah})` };
   }
 
-  const qty = Math.max(1, card.contracts);
-  const risk = Math.min(r.risk, room);
-  const stopPts = floorTick(risk / (qty * DOLLARS_PER_POINT));
+  // The stop and target are always the full-size trade's (the stage's risk on the card's contracts). When a loss
+  // limit has less room than that, the trade is the same but with fewer contracts, never a tighter stop.
+  const full = Math.max(1, card.contracts);
+  const stopPts = floorTick(r.risk / (full * DOLLARS_PER_POINT));
   // The target covers the costs too, so hitting it really adds what's left (at least $25 when it finishes the account).
-  const aim = (last ? Math.max(left, MIN_TARGET) : left) + qty * COST_PER_CONTRACT;
-  const targetPts = Math.max(TICK, Math.ceil(aim / (qty * DOLLARS_PER_POINT) / TICK - 1e-9) * TICK);
-  if (stopPts < TICK) return { take: false, reason: "stop would be under a tick" };
+  const aim = (last ? Math.max(left, MIN_TARGET) : left) + full * COST_PER_CONTRACT;
+  const targetPts = Math.max(TICK, Math.ceil(aim / (full * DOLLARS_PER_POINT) / TICK - 1e-9) * TICK);
+  const qty = room >= r.risk ? full : Math.min(full, Math.floor(room / (stopPts * DOLLARS_PER_POINT)));
+  if (qty < 1) return { take: false, reason: `only ${money(room)} of room: not enough for 1 contract at the ${stopPts}-point stop` };
+  const risk = qty * stopPts * DOLLARS_PER_POINT;
   return {
     take: true,
-    reason: `risk ${money(risk)} · target ${money(targetPts * qty * DOLLARS_PER_POINT)} (left of today's ${money(goal)})`,
+    reason: `${qty} MNQ${qty < full ? ` (cut from ${full}: ${money(room)} of room)` : ""} · risk ${money(risk)} · target ${money(targetPts * qty * DOLLARS_PER_POINT)} (left of today's ${money(goal)})`,
+    qty,
     risk,
     goalLeft: left,
     stopPts,
