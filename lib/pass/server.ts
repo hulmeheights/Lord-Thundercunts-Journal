@@ -216,7 +216,7 @@ export async function passClosed(r: { tradeId: string; exitPrice: number | null;
   if (!t.account_id) return;
   const [a] = await sql<PassAccountRow[]>`select * from pass_accounts where id = ${t.account_id}`;
   if (!a) return;
-  const done = accountDone(a.stage, stageRules(a.firm, a.stage, a.dll), await statsFor(a));
+  const done = accountDone(a.stage, stageRules(a.firm, a.stage, a.dll), await statsFor(a), a.contracts);
   if (!done) return;
   const off = await sql`update pass_accounts set enabled = false, done = ${done.kind}, done_note = ${done.text} where id = ${a.id} and done is distinct from ${done.kind} returning id`;
   if (!off.length) return;

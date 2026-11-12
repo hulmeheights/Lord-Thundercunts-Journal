@@ -91,3 +91,11 @@ test("script A never filters", () => {
   assert.equal(filtersApply("A", "eval"), false);
   assert.equal(filtersApply("A", "funded"), false);
 });
+
+test("stuck account: less room than 1 contract's stop counts as blown", () => {
+  const r = stageRules("topstep", "eval");
+  // -1,920 after a clean day at 0: $80 above the -2,000 limit, 1 contract at 50 pt needs $100.
+  const s = fresh([{ day: "2026-11-10", pnl: -1000 }, { day: "2026-11-11", pnl: -920 }]);
+  assert.equal(accountDone("eval", r, s, 10)?.kind, "blown");
+  assert.equal(accountDone("eval", r, s), null); // without the size it can't tell
+});

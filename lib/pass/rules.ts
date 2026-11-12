@@ -99,8 +99,13 @@ export function accountStats(days: DayPnl[], today: string, base: Baseline = { p
 export type Done = { kind: "passed" | "payout" | "blown"; text: string } | null;
 
 /** After every close: passed, payout ready, or blown. */
-export function accountDone(stage: Stage, r: StageRules, s: Stats): Done {
+export function accountDone(stage: Stage, r: StageRules, s: Stats, contracts?: number): Done {
   if (s.profit <= s.floor) return { kind: "blown", text: `hit the trailing loss limit (${money(s.profit)} against a limit of ${money(s.floor)})` };
+  // Less room above the trailing limit than 1 contract at the full-size stop: it can never trade again, so it's done.
+  if (contracts) {
+    const one = Math.floor(r.risk / (contracts * DOLLARS_PER_POINT) / TICK) * TICK * DOLLARS_PER_POINT;
+    if (s.profit - s.floor < one) return { kind: "blown", text: `only ${money(s.profit - s.floor)} above the trailing loss limit: less than 1 contract's stop (${money(one)}), so it can't trade again` };
+  }
   if (stage === "funded" && r.payout && s.winDays >= r.payout.winDays && s.profit >= r.payout.profit) {
     return { kind: "payout", text: `payout ready: ${s.winDays} winning days and ${money(s.profit)} profit. Request the payout and stop trading this account` };
   }
@@ -150,7 +155,7 @@ export function plan(card: Card, s: Stats, sig: Signal): Plan {
   const r = stageRules(card.firm, card.stage, card.dll);
   const wd = new Date(`${sig.tradingDay}T12:00:00Z`).getUTCDay();
   if (wd === 0 || wd === 6) return { take: false, reason: "no trading day (weekend)" };
-  const done = accountDone(card.stage, r, s);
+  const done = accountDone(card.stage, r, s, card.contracts);
   if (done) return { take: false, reason: done.text };
 
   const goal = dayGoal(card.stage, r, s);

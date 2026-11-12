@@ -1,10 +1,11 @@
 //@version=5
 // =============================================================================
 //  MNQ PASS PLAN [1m]   (scripts C and D, rules pack 11 Nov 2026)
-//  A strategy: the Strategy Tester trades one simulated account through the
-//  rules pack (EVAL -> FUNDED / PRE-LIVE -> payout, a new eval after a payout
-//  or a blow-up), with the stop, target and filters of its stage, so you can
-//  see the results. Pick Script C or D, Topstep or Lucid in the settings.
+//  A strategy: the Strategy Tester trades the plan every day on one account
+//  type (Eval or Funded, in the settings) with that type's risk, day cap,
+//  goal and filters. When an account passes, pays out or blows, a fresh one
+//  of the same type starts at once, and the table counts them. Pick Script
+//  A, C or D and Topstep or Lucid in the settings.
 //
 //  The alert is separate from the simulated account: every session's signal
 //  goes out with its 4H bias and value area, and the journal decides for each
@@ -31,6 +32,7 @@ grpT = "Strategy Tester (the simulated account)"
 inScript = input.string("A", "Script", options=["A", "C", "D"], group=grpT, tooltip="A: no filters ever. C: both filters always. D: no filter in EVAL, both filters once funded.")
 inFirm = input.string("Topstep", "Firm", options=["Topstep", "Lucid"], group=grpT)
 inDll = input.bool(true, "Topstep: bought with the daily loss limit ($4,000 payout)", group=grpT)
+inStage = input.string("Eval", "Account type", options=["Eval", "Funded"], group=grpT, tooltip="Which account the tester trades, every day: Eval (Topstep Combine / Lucid step 1) or Funded (Topstep Express / Lucid pre-live). When one passes, pays out or blows, a fresh one of the same type starts at once. On the website each of your accounts has its own type.")
 inQty = input.int(10, "Contracts (MNQ)", minval=1, maxval=50, group=grpT)
 
 TZ = "America/New_York"
@@ -185,7 +187,7 @@ if sess != ""
 
 // ---------------- the simulated account (section 5 and 6 of the rules pack) ----------------
 isLucid = inFirm == "Lucid"
-var string stage = "EVAL"
+stage = inStage == "Eval" ? "EVAL" : isLucid ? "PRELIVE" : "FUNDED"
 var float prof = 0.0
 var float today = 0.0
 var float best = 0.0
@@ -218,36 +220,33 @@ winNow = winDays + (today >= 150 ? 1 : 0)
 payoutAt = inDll ? 8000.0 : 4000.0
 cons = isLucid ? 0.40 : 0.55
 
-// Passed, payout, blown: checked whenever flat.
+risk = stage == "EVAL" ? 1000.0 : stage == "FUNDED" ? 750.0 : 1250.0
+oneContract = math.floor(risk / (inQty * 2) / 0.25) * 0.25 * 2  // $ risk of 1 contract at the full-size stop
+
+// Passed, payout, blown: checked whenever flat. Then a fresh account of the same type starts straight away.
 if strategy.position_size == 0
     bool reset = false
-    if prof <= floorP
+    // Blown: at the trailing limit, or less room left than 1 contract's stop (it could never trade again).
+    if prof <= floorP or prof - floorP < oneContract
         blown += 1
-        evals += 1
-        stage := "EVAL"
         reset := true
     else if stage == "EVAL" and prof >= 3000 and bestNow <= cons * prof
         passes += 1
-        stage := isLucid ? "PRELIVE" : "FUNDED"
         reset := true
     else if stage == "FUNDED" and winNow >= 5 and prof >= payoutAt
         payouts += 1
-        evals += 1
-        stage := "EVAL"
         reset := true
     else if stage == "PRELIVE" and prof >= 2000
         payouts += 1
-        evals += 1
-        stage := "EVAL"
         reset := true
     if reset
+        evals += 1
         prof := 0.0
         today := 0.0
         best := 0.0
         winDays := 0
         maxEod := 0.0
 
-risk = stage == "EVAL" ? 1000.0 : stage == "FUNDED" ? 750.0 : 1250.0
 cap = isLucid ? (stage == "EVAL" ? 1200.0 : 2000.0) : (stage == "EVAL" ? 1640.0 : (inDll ? 2500.0 : 1640.0))
 dllAmt = (not isLucid and inDll) ? 1000.0 : 1e9
 before = prof - today
@@ -288,7 +287,7 @@ if barstate.islast
     table.cell(t, 1, 2, "$" + str.tostring(today, "#,###") + " / $" + str.tostring(math.max(goal, 0), "#,###"), text_color=color.white)
     table.cell(t, 0, 3, "Best day / winning days", text_color=color.white)
     table.cell(t, 1, 3, "$" + str.tostring(bestNow, "#,###") + " / " + str.tostring(winNow), text_color=color.white)
-    table.cell(t, 0, 4, "Evals bought", text_color=color.white)
+    table.cell(t, 0, 4, stage == "EVAL" ? "Evals bought" : "Accounts used", text_color=color.white)
     table.cell(t, 1, 4, str.tostring(evals) + "  ($" + str.tostring(evals * fee, "#,###") + ")", text_color=color.white)
     table.cell(t, 0, 5, "Passed", text_color=color.white)
     table.cell(t, 1, 5, str.tostring(passes), text_color=color.lime)
