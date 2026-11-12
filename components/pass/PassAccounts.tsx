@@ -168,11 +168,11 @@ function Card({ a, options }: { a: PassAccountView; options: { id: number; name:
       </div>
       <div className="mt-3">
         <span className={lab}>Script</span>
-        <div className="grid grid-cols-2 gap-2">
-          {(["D", "C"] as const).map((sc) => (
+        <div className="grid grid-cols-3 gap-2">
+          {(["D", "C", "A"] as const).map((sc) => (
             <button key={sc} type="button" disabled={pending} className={chip(f.script === sc)} onClick={() => f.script !== sc && set({ script: sc })}>
               <span className="block text-[11px]">Script {sc}</span>
-              <span className="mt-0.5 block text-[9.5px] leading-[1.5] text-ink-4">{sc === "D" ? "fast eval: no filter in eval, both filters once funded" : "both filters in every stage (4H bias + outside value area)"}</span>
+              <span className="mt-0.5 block text-[9.5px] leading-[1.5] text-ink-4">{sc === "D" ? "fast eval: no filter in eval, both filters once funded" : sc === "C" ? "both filters in every stage (4H bias + outside value area)" : "no filters ever (the original)"}</span>
             </button>
           ))}
         </div>

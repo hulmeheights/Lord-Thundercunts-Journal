@@ -84,3 +84,8 @@ test("a few dollars short: the day cap stops the day, but the last bit to a pass
   const p = plan(evalD, fresh([{ day: "2026-11-10", pnl: 1630 }, { day: "2026-11-11", pnl: 1360 }]), sig());
   assert.ok(p.take && p.targetPts === 1.75);
 });
+
+test("script A never filters", () => {
+  assert.equal(filtersApply("A", "eval"), false);
+  assert.equal(filtersApply("A", "funded"), false);
+});

@@ -47,7 +47,7 @@ const Fields = z.object({
   label: z.string().trim().min(1).max(60),
   firm: z.enum(["topstep", "lucid"]),
   stage: z.enum(["eval", "funded", "prelive"]),
-  script: z.enum(["C", "D"]),
+  script: z.enum(["A", "C", "D"]),
   topstepAccount: z.string().trim().max(80),
   contracts: z.number().int().min(1).max(50),
   dll: z.boolean(),

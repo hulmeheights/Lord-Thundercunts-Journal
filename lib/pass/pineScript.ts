@@ -29,7 +29,7 @@ strategy("MNQ Pass Plan [1m]", overlay=true, max_labels_count=300, initial_capit
 
 secret = input.string("", "Webhook Secret (same as BOT_WEBHOOK_SECRET in Vercel)")
 grpT = "Strategy Tester (the simulated account)"
-inScript = input.string("D", "Script", options=["D", "C"], group=grpT, tooltip="D: no filter in EVAL, both filters once funded. C: both filters always.")
+inScript = input.string("D", "Script", options=["A", "C", "D"], group=grpT, tooltip="A: no filters ever. C: both filters always. D: no filter in EVAL, both filters once funded.")
 inFirm = input.string("Topstep", "Firm", options=["Topstep", "Lucid"], group=grpT)
 inDll = input.bool(true, "Topstep: bought with the daily loss limit ($4,000 payout)", group=grpT)
 inQty = input.int(10, "Contracts (MNQ)", minval=1, maxval=50, group=grpT)
@@ -257,7 +257,7 @@ left = goal - today
 // The last bit to a pass / payout (not just the day cap)? Then even a few dollars is worth one more trade.
 finishing = stage == "FUNDED" ? (winDays >= 5 and payoutAt - before <= cap) : stage == "PRELIVE" ? (2000 - before <= cap) : (math.max(3000 - before, best / cons - before) <= cap)
 room = math.min(prof - floorP, dllAmt + today)
-useFilters = inScript == "C" or stage != "EVAL"
+useFilters = inScript == "C" or (inScript == "D" and stage != "EVAL")
 take = sess != "" and strategy.position_size == 0 and left > 0 and (left >= 25 or finishing) and room >= 25 and (not useFilters or (agrees and outside))
 riskNow = math.min(risk, room)
 stopT = math.floor(riskNow / (inQty * 2) / 0.25)

@@ -837,4 +837,12 @@ export const MIGRATIONS: { version: number; sql: string }[] = [
       alter table pass_trades add column if not exists claimed_at timestamptz;
     `,
   },
+  {
+    version: 42,
+    sql: /* sql */ `
+      -- Pass plan: script A (no filters ever) next to C and D.
+      alter table pass_accounts drop constraint if exists pass_accounts_script_check;
+      alter table pass_accounts add constraint pass_accounts_script_check check (script in ('A', 'C', 'D'));
+    `,
+  },
 ];

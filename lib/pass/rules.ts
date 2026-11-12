@@ -7,7 +7,7 @@
 
 export type Firm = "topstep" | "lucid";
 export type Stage = "eval" | "funded" | "prelive";
-export type Script = "C" | "D";
+export type Script = "A" | "C" | "D";
 export type PassSession = "ASIA" | "LON" | "NY";
 export type Dir = "LONG" | "SHORT";
 
@@ -44,8 +44,8 @@ export function stageRules(firm: Firm, stage: Stage, withDll = true): StageRules
     : { risk: 750, cap: 1640, target: null, consistency: null, dll: null, mll: 2000, payout: { profit: 4000, winDays: 5, winDay: 150 }, fee: 120 };
 }
 
-/** Script C filters in every stage; script D only once the account is funded / pre-live. */
-export const filtersApply = (script: Script, stage: Stage) => script === "C" || stage !== "eval";
+/** Script A never filters; C filters in every stage; D only once the account is funded / pre-live. */
+export const filtersApply = (script: Script, stage: Stage) => script === "C" || (script === "D" && stage !== "eval");
 
 export type DayPnl = { day: string; pnl: number };
 export type Baseline = { profit: number; best: number; winDays: number };
