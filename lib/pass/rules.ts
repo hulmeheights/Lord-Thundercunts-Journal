@@ -110,6 +110,14 @@ export function accountDone(stage: Stage, r: StageRules, s: Stats): Done {
   return null;
 }
 
+/** True when today's goal is the last bit the account needs (to pass, or to the payout), not just the day cap. */
+export function finishing(stage: Stage, r: StageRules, s: Stats): boolean {
+  if (stage === "funded") return !!r.payout && s.winDaysBefore >= r.payout.winDays && r.payout.profit - s.before <= r.cap;
+  return Math.max((r.target ?? 0) - s.before, r.consistency ? s.bestBefore / r.consistency - s.before : 0) <= r.cap;
+}
+export const MIN_TARGET = 25; // never aim for less than $25 (after costs)
+export const COST_PER_CONTRACT = 1; // $ round trip, as tested
+
 /** Today's goal for the account (section 5), before what today has made. */
 export function dayGoal(stage: Stage, r: StageRules, s: Stats): number {
   if (stage === "funded") {
@@ -147,7 +155,9 @@ export function plan(card: Card, s: Stats, sig: Signal): Plan {
 
   const goal = dayGoal(card.stage, r, s);
   const left = goal - s.today;
-  if (left <= 0) return { take: false, reason: `today's goal reached (${money(s.today)} of ${money(goal)})` };
+  const last = finishing(card.stage, r, s);
+  // Under $25 left of a day cap: the day is done. The last few dollars to a pass or payout are still worth one more trade.
+  if (left <= 0 || (left < MIN_TARGET && !last)) return { take: false, reason: `today's goal reached (${money(s.today)} of ${money(goal)})` };
   if (r.dll !== null && s.today <= -r.dll) return { take: false, reason: `daily loss limit hit (${money(s.today)})` };
   const room = Math.min(s.profit - s.floor, r.dll !== null ? r.dll + s.today : Infinity);
   if (room < 25) return { take: false, reason: `less than $25 of room left (${money(room)})` };
@@ -161,7 +171,9 @@ export function plan(card: Card, s: Stats, sig: Signal): Plan {
   const qty = Math.max(1, card.contracts);
   const risk = Math.min(r.risk, room);
   const stopPts = floorTick(risk / (qty * DOLLARS_PER_POINT));
-  const targetPts = Math.max(TICK, floorTick(left / (qty * DOLLARS_PER_POINT)));
+  // The target covers the costs too, so hitting it really adds what's left (at least $25 when it finishes the account).
+  const aim = (last ? Math.max(left, MIN_TARGET) : left) + qty * COST_PER_CONTRACT;
+  const targetPts = Math.max(TICK, Math.ceil(aim / (qty * DOLLARS_PER_POINT) / TICK - 1e-9) * TICK);
   if (stopPts < TICK) return { take: false, reason: "stop would be under a tick" };
   return {
     take: true,
