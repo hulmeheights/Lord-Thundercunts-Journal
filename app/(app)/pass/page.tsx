@@ -48,11 +48,11 @@ export default async function PassPage() {
       <Section id="tradingview" n={2} label="TradingView" lead={<>One alert for <em>every</em> account.</>}>
         <ol className="max-w-3xl list-decimal space-y-2 pl-5 font-mono text-[11px] leading-[1.8] text-ink-3">
           <li>
-            Tap <b className="font-normal text-ink">Copy the script</b> below. In TradingView: Pine Editor → New → select everything and paste over it → Save as <b className="font-normal text-ink">MNQ Pass Plan - Signals [1m]</b> → Add to chart, on <b className="font-normal text-ink">CME_MINI:MNQ1!</b>, <b className="font-normal text-ink">1 minute</b>.
+            Tap <b className="font-normal text-ink">Copy the script</b> below. In TradingView: Pine Editor → New → select everything and paste over it → Save as <b className="font-normal text-ink">MNQ Pass Plan [1m]</b> → Add to chart, on <b className="font-normal text-ink">CME_MINI:MNQ1!</b>, <b className="font-normal text-ink">1 minute</b>.
           </li>
           <li>In the script&apos;s settings, put your Webhook Secret: the same one as the SOR script (BOT_WEBHOOK_SECRET in Vercel).</li>
           <li>
-            Create an alert: Condition = <b className="font-normal text-ink">MNQ Pass Plan - Signals [1m]</b> → <b className="font-normal text-ink">Any alert() function call</b>, Expiration = open-ended, Notifications → Webhook URL below, and tick Notify in app (so you hear if it ever stops). Leave the Message box as it is.
+            Create an alert: Condition = <b className="font-normal text-ink">MNQ Pass Plan [1m]</b> → <b className="font-normal text-ink">alert() function calls only</b> (not &quot;Order fills&quot;), Expiration = open-ended, Notifications → Webhook URL below, and tick Notify in app (so you hear if it ever stops). Leave the Message box as it is.
           </li>
           <li>It&apos;s a second alert next to the SOR one: both can run at once.</li>
         </ol>

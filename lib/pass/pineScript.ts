@@ -1,15 +1,19 @@
-/** The TradingView script "MNQ Pass Plan - Signals [1m]" (Pine v5), shown on the Pass plan page to copy. Keep in step with public/pass-plan-signals.pine. */
+/** The TradingView script "MNQ Pass Plan [1m]" (Pine v5 strategy), shown on the Pass plan page to copy. Keep in step with public/pass-plan-signals.pine. */
 export const PASS_PINE = String.raw`//@version=5
 // =============================================================================
-//  MNQ PASS PLAN - SIGNALS [1m]   (scripts C and D, rules pack 11 Nov 2026)
-//  One alert sends every Pass Plan signal: Asia, London and New York, each
-//  with the last finished 4H candle's bias and the value area. It doesn't know
-//  your accounts: the journal holds each account's stage (eval / funded /
-//  pre-live) and script (C or D), works out its stop and target, and your Mac
-//  places the orders.
+//  MNQ PASS PLAN [1m]   (scripts C and D, rules pack 11 Nov 2026)
+//  A strategy: the Strategy Tester trades one simulated account through the
+//  rules pack (EVAL -> FUNDED / PRE-LIVE -> payout, a new eval after a payout
+//  or a blow-up), with the stop, target and filters of its stage, so you can
+//  see the results. Pick Script C or D, Topstep or Lucid in the settings.
+//
+//  The alert is separate from the simulated account: every session's signal
+//  goes out with its 4H bias and value area, and the journal decides for each
+//  of YOUR accounts (its own stage and script); your Mac places the orders.
 //
 //  Chart: CME_MINI:MNQ1!, 1 minute.
-//  Alert: Condition = this script -> "Any alert() function call",
+//  Alert: Condition = this script -> "alert() function calls only"
+//         (NOT "Order fills": those aren't for the bot),
 //         Webhook URL = https://lord-thundercunts-journal.vercel.app/api/bot/webhook
 //         (leave the Message box as it is: the script writes its own message).
 //
@@ -21,9 +25,14 @@ export const PASS_PINE = String.raw`//@version=5
 //  Value area: 1-point volume profile from 20:00 New York (Asia: the previous
 //           24 hours), 70% around the POC.
 // =============================================================================
-indicator("MNQ Pass Plan - Signals [1m]", overlay=true, max_labels_count=300)
+strategy("MNQ Pass Plan [1m]", overlay=true, max_labels_count=300, initial_capital=50000, default_qty_type=strategy.fixed, default_qty_value=10, commission_type=strategy.commission.cash_per_contract, commission_value=0.5, slippage=1, pyramiding=0)
 
 secret = input.string("", "Webhook Secret (same as BOT_WEBHOOK_SECRET in Vercel)")
+grpT = "Strategy Tester (the simulated account)"
+inScript = input.string("D", "Script", options=["D", "C"], group=grpT, tooltip="D: no filter in EVAL, both filters once funded. C: both filters always.")
+inFirm = input.string("Topstep", "Firm", options=["Topstep", "Lucid"], group=grpT)
+inDll = input.bool(true, "Topstep: bought with the daily loss limit ($4,000 payout)", group=grpT)
+inQty = input.int(10, "Contracts (MNQ)", minval=1, maxval=50, group=grpT)
 
 TZ = "America/New_York"
 hr = hour(time, TZ)
@@ -166,12 +175,123 @@ if at(10, 10) and not na(nyRef) and dow != dayofweek.saturday and dow != dayofwe
     vaH := h
 
 num(x) => na(x) ? "null" : str.tostring(x)
+outside = not na(vaH) and (close > vaH or close < vaL)
+agrees = (dir == "LONG" and bias == "\"UP\"") or (dir == "SHORT" and bias == "\"DOWN\"")
+
+// ---------------- the alert: every signal, for the journal to decide per account ----------------
 if sess != ""
     tday = str.format_time(time + 6 * 3600000, "yyyy-MM-dd", TZ)
     msg = "{\"secret\":\"" + secret + "\",\"event\":\"pass\",\"session\":\"" + sess + "\",\"trading_day\":\"" + tday + "\",\"dir\":\"" + dir + "\",\"price\":" + str.tostring(close) + ",\"bias\":" + bias + ",\"vah\":" + num(vaH) + ",\"val\":" + num(vaL) + ",\"id\":\"" + str.tostring(time) + "-" + sess + "\"}"
     alert(msg, alert.freq_once_per_bar_close)
-    outside = not na(vaH) and (close > vaH or close < vaL)
-    agrees = (dir == "LONG" and bias == "\"UP\"") or (dir == "SHORT" and bias == "\"DOWN\"")
+
+// ---------------- the simulated account (section 5 and 6 of the rules pack) ----------------
+isLucid = inFirm == "Lucid"
+var string stage = "EVAL"
+var float prof = 0.0
+var float today = 0.0
+var float best = 0.0
+var int winDays = 0
+var float maxEod = 0.0
+var int evals = 1
+var int passes = 0
+var int payouts = 0
+var int blown = 0
+var float lastNet = 0.0
+
+net = strategy.netprofit
+if net != lastNet
+    prof += net - lastNet
+    today += net - lastNet
+    lastNet := net
+
+// A new trading day starts at 18:00 New York.
+tdayKey = str.format_time(time + 6 * 3600000, "yyyyMMdd", TZ)
+if bar_index > 0 and tdayKey != tdayKey[1]
+    best := math.max(best, today)
+    if today >= 150
+        winDays += 1
+    maxEod := math.max(maxEod, prof)
+    today := 0.0
+
+floorP = math.min(maxEod - 2000, 0)
+bestNow = math.max(best, today)
+winNow = winDays + (today >= 150 ? 1 : 0)
+payoutAt = inDll ? 8000.0 : 4000.0
+cons = isLucid ? 0.40 : 0.55
+
+// Passed, payout, blown: checked whenever flat.
+if strategy.position_size == 0
+    bool reset = false
+    if prof <= floorP
+        blown += 1
+        evals += 1
+        stage := "EVAL"
+        reset := true
+    else if stage == "EVAL" and prof >= 3000 and bestNow <= cons * prof
+        passes += 1
+        stage := isLucid ? "PRELIVE" : "FUNDED"
+        reset := true
+    else if stage == "FUNDED" and winNow >= 5 and prof >= payoutAt
+        payouts += 1
+        evals += 1
+        stage := "EVAL"
+        reset := true
+    else if stage == "PRELIVE" and prof >= 2000
+        payouts += 1
+        evals += 1
+        stage := "EVAL"
+        reset := true
+    if reset
+        prof := 0.0
+        today := 0.0
+        best := 0.0
+        winDays := 0
+        maxEod := 0.0
+
+risk = stage == "EVAL" ? 1000.0 : stage == "FUNDED" ? 750.0 : 1250.0
+cap = isLucid ? (stage == "EVAL" ? 1200.0 : 2000.0) : (stage == "EVAL" ? 1640.0 : (inDll ? 2500.0 : 1640.0))
+dllAmt = (not isLucid and inDll) ? 1000.0 : 1e9
+before = prof - today
+goal = stage == "FUNDED" ? (winDays >= 5 ? math.min(cap, payoutAt - before) : cap) : stage == "PRELIVE" ? math.min(cap, 2000 - before) : math.min(cap, math.max(3000 - before, best / cons - before))
+left = goal - today
+room = math.min(prof - floorP, dllAmt + today)
+useFilters = inScript == "C" or stage != "EVAL"
+take = sess != "" and strategy.position_size == 0 and left > 0 and room >= 25 and (not useFilters or (agrees and outside))
+riskNow = math.min(risk, room)
+stopT = math.floor(riskNow / (inQty * 2) / 0.25)
+tgtT = math.max(1, math.floor(left / (inQty * 2) / 0.25))
+if take and stopT >= 1
+    strategy.entry("Pass", dir == "LONG" ? strategy.long : strategy.short, qty=inQty, comment=sess + " " + stage)
+    strategy.exit("Pass out", "Pass", loss=stopT, profit=tgtT, comment_loss="stop", comment_profit="target")
+
+// Time exits (filled at the open of 02:59, 09:39, 16:09 New York).
+if at(2, 58) or at(9, 38) or at(16, 8)
+    strategy.close("Pass", comment="time exit")
+
+// ---------------- chart labels and the account table ----------------
+if sess != ""
     txt = sess + " " + dir + "\n4H " + (bias == "null" ? "flat" : str.replace_all(bias, "\"", "")) + (agrees ? " ✓" : " ✗") + "\nVA " + num(vaL) + "-" + num(vaH) + (outside ? " out ✓" : " in ✗")
     label.new(bar_index, dir == "LONG" ? low : high, txt, style=dir == "LONG" ? label.style_label_up : label.style_label_down, color=color.new(dir == "LONG" ? color.teal : color.maroon, 15), textcolor=color.white, size=size.small)
+
+var table t = table.new(position.top_right, 2, 9, bgcolor=color.new(color.black, 20), border_width=1)
+if barstate.islast
+    fee = isLucid ? 180 : 120
+    table.cell(t, 0, 0, "Stage", text_color=color.white)
+    table.cell(t, 1, 0, stage, text_color=color.yellow)
+    table.cell(t, 0, 1, "Profit (this stage)", text_color=color.white)
+    table.cell(t, 1, 1, "$" + str.tostring(prof, "#,###"), text_color=prof >= 0 ? color.lime : color.red)
+    table.cell(t, 0, 2, "Today / goal", text_color=color.white)
+    table.cell(t, 1, 2, "$" + str.tostring(today, "#,###") + " / $" + str.tostring(math.max(goal, 0), "#,###"), text_color=color.white)
+    table.cell(t, 0, 3, "Best day / winning days", text_color=color.white)
+    table.cell(t, 1, 3, "$" + str.tostring(bestNow, "#,###") + " / " + str.tostring(winNow), text_color=color.white)
+    table.cell(t, 0, 4, "Evals bought", text_color=color.white)
+    table.cell(t, 1, 4, str.tostring(evals) + "  ($" + str.tostring(evals * fee, "#,###") + ")", text_color=color.white)
+    table.cell(t, 0, 5, "Passed", text_color=color.white)
+    table.cell(t, 1, 5, str.tostring(passes), text_color=color.lime)
+    table.cell(t, 0, 6, isLucid ? "Pre-live done" : "Payouts", text_color=color.white)
+    table.cell(t, 1, 6, str.tostring(payouts), text_color=color.lime)
+    table.cell(t, 0, 7, "Blown", text_color=color.white)
+    table.cell(t, 1, 7, str.tostring(blown), text_color=color.red)
+    table.cell(t, 0, 8, "Script / firm", text_color=color.white)
+    table.cell(t, 1, 8, inScript + " / " + inFirm + (isLucid ? "" : inDll ? " (DLL)" : ""), text_color=color.white)
 `;
