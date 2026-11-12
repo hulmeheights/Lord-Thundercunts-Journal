@@ -6,6 +6,8 @@ import { Meta, PageHead, Section } from "@/components/m";
 import { PassAccounts, PassSwitch } from "@/components/pass/PassAccounts";
 import { SESSION_NAME } from "@/lib/pass/rules";
 import { Copy } from "@/components/autopilot/Copy";
+import { CopyScript } from "@/components/pass/CopyScript";
+import { PASS_PINE } from "@/lib/pass/pineScript";
 import { headers } from "next/headers";
 
 export const metadata = { title: "Pass plan" };
@@ -46,7 +48,7 @@ export default async function PassPage() {
       <Section id="tradingview" n={2} label="TradingView" lead={<>One alert for <em>every</em> account.</>}>
         <ol className="max-w-3xl list-decimal space-y-2 pl-5 font-mono text-[11px] leading-[1.8] text-ink-3">
           <li>
-            Open the script: <a className="text-gold underline" href="/pass-plan-signals.pine" target="_blank" rel="noreferrer">MNQ Pass Plan - Signals [1m]</a>. In TradingView: Pine Editor → New → paste it all → Save → Add to chart, on <b className="font-normal text-ink">CME_MINI:MNQ1!</b>, <b className="font-normal text-ink">1 minute</b>.
+            Tap <b className="font-normal text-ink">Copy the script</b> below. In TradingView: Pine Editor → New → select everything and paste over it → Save as <b className="font-normal text-ink">MNQ Pass Plan - Signals [1m]</b> → Add to chart, on <b className="font-normal text-ink">CME_MINI:MNQ1!</b>, <b className="font-normal text-ink">1 minute</b>.
           </li>
           <li>In the script&apos;s settings, put your Webhook Secret: the same one as the SOR script (BOT_WEBHOOK_SECRET in Vercel).</li>
           <li>
@@ -54,6 +56,9 @@ export default async function PassPage() {
           </li>
           <li>It&apos;s a second alert next to the SOR one: both can run at once.</li>
         </ol>
+        <div className="mt-5">
+          <CopyScript code={PASS_PINE} />
+        </div>
         <div className="mt-4 max-w-3xl">
           <Copy label="Webhook URL (the same as the SOR alert)" value={`${origin}/api/bot/webhook`} />
         </div>
