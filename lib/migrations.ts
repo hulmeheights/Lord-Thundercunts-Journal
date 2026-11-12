@@ -778,4 +778,56 @@ export const MIGRATIONS: { version: number; sql: string }[] = [
       );
     `,
   },
+  {
+    version: 40,
+    sql: /* sql */ `
+      -- MNQ Pass Plan (scripts C and D): its own switch, accounts and book, apart from Autopilot's SOR.
+      create table if not exists pass_settings (id int primary key check (id = 1), mode text not null default 'off' check (mode in ('off', 'on')));
+      insert into pass_settings (id) values (1) on conflict (id) do nothing;
+      create table if not exists pass_accounts (
+        id text primary key,
+        label text not null check (char_length(label) between 1 and 60),
+        firm text not null default 'topstep' check (firm in ('topstep', 'lucid')),
+        stage text not null default 'eval' check (stage in ('eval', 'funded', 'prelive')),
+        script text not null default 'D' check (script in ('C', 'D')),
+        topstep_account text check (topstep_account is null or char_length(topstep_account) <= 80),
+        contracts int not null default 10 check (contracts between 1 and 50),
+        dll boolean not null default true,
+        enabled boolean not null default false,
+        dry_run boolean not null default true,
+        base_profit float8 not null default 0,
+        base_best float8 not null default 0,
+        base_win_days int not null default 0 check (base_win_days >= 0),
+        done text check (done is null or done in ('passed', 'payout', 'blown')),
+        done_note text,
+        created_at timestamptz not null default now()
+      );
+      create table if not exists pass_trades (
+        id text primary key,
+        account_id text references pass_accounts (id) on delete set null,
+        account_label text not null,
+        mode text not null check (mode in ('live', 'dry', 'signal')),
+        stage text not null,
+        session text not null check (session in ('ASIA', 'LON', 'NY')),
+        trading_day text not null check (trading_day ~ '^\\d{4}-\\d{2}-\\d{2}$'),
+        dir text not null check (dir in ('LONG', 'SHORT')),
+        qty int not null,
+        entry_price float8 not null,
+        stop_price float8 not null,
+        target_price float8 not null,
+        status text not null check (status in ('pending', 'open', 'closed', 'skipped', 'error')),
+        reason text,
+        filters jsonb,
+        order_id text,
+        exit_price float8,
+        pnl float8,
+        fees float8,
+        exit_reason text,
+        entered_at timestamptz not null default now(),
+        exited_at timestamptz
+      );
+      create unique index if not exists pass_trades_once_idx on pass_trades (account_id, trading_day, session);
+      create index if not exists pass_trades_at_idx on pass_trades (entered_at desc);
+    `,
+  },
 ];

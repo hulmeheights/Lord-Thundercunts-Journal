@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { cn } from "@/lib/cn";
 import { isActive, NAV } from "./nav";
 
-const MOBILE = NAV.filter((n) => n.href !== "/guardian" && n.href !== "/observer" && n.href !== "/autopilot");
+const MOBILE = NAV.filter((n) => n.href !== "/guardian" && n.href !== "/observer" && n.href !== "/autopilot" && n.href !== "/pass");
 
 export function TabBar() {
   const pathname = usePathname();

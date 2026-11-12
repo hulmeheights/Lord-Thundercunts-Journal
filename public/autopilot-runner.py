@@ -42,7 +42,7 @@ try:
 except Exception:  # very old Python: fixed offsets are close enough for the logs, never used to place
     NY = None
 
-VERSION = "3.6"
+VERSION = "4.0"
 TOPSTEP = os.environ.get("THUNDER_TOPSTEP_URL", "https://api.topstepx.com")  # override only for testing
 TICKET_TTL_MS = 20_000  # never place a ticket older than this: a late entry is a different trade
 HOME = os.path.expanduser("~")
@@ -168,11 +168,11 @@ class Topstep:
     def trades(self, account_id, since):
         return [t for t in (self.call("/api/Trade/search", {"accountId": account_id, "startTimestamp": since}).get("trades") or []) if not t.get("voided")]
 
-    def bars(self, contract_id, start, end):
-        """1-minute bars (read-only market data) for following a dry-run trade to its stop or target."""
+    def bars(self, contract_id, start, end, limit=1000):
+        """1-minute bars (read-only market data): following a dry-run trade, and the pass plan's signals and filters."""
         d = self.call(
             "/api/History/retrieveBars",
-            {"contractId": contract_id, "live": False, "startTime": start, "endTime": end, "unit": 2, "unitNumber": 1, "limit": 1000, "includePartialBar": False},
+            {"contractId": contract_id, "live": False, "startTime": start, "endTime": end, "unit": 2, "unitNumber": 1, "limit": limit, "includePartialBar": False},
         )
         return sorted(d.get("bars") or [], key=lambda b: b["t"])
 
@@ -594,6 +594,270 @@ def cleanup(ts, m, label):
             log(f"CLEAN-UP {label}: couldn't cancel order {o['id']} ({e})")
 
 
+# ── MNQ Pass Plan (scripts C and D): the Mac reads the market itself, no TradingView alert ─────────
+# Times are New York. Each session: (when the order goes in, the time exit).
+PASS_EVENTS = {"ASIA": ((20, 1), (2, 59)), "LON": ((3, 31), (9, 39)), "NY": ((10, 11), (16, 9))}
+PASS_DONE = set()  # sessions already measured on this run (the journal also refuses a second decision)
+PASS_COMMISSION = 1.0  # $ per contract round trip, as tested
+
+
+def ny_at(d, h, m):
+    """A New York wall-clock time on date d, as UTC."""
+    return datetime(d.year, d.month, d.day, h, m, tzinfo=NY).astimezone(timezone.utc)
+
+
+def bar_at(bars, t):
+    for b in bars:
+        if iso(b["t"]) == t:
+            return b
+    return None
+
+
+def four_hour_bias(bars, start, end):
+    """The body of the 4H candle [start, end): UP, DOWN or None (no bars, or close = open). Wicks don't count."""
+    inside = [b for b in bars if start <= iso(b["t"]) < end]
+    if not inside:
+        return None
+    o, c = inside[0]["o"], inside[-1]["c"]
+    return "UP" if c > o else "DOWN" if c < o else None
+
+
+def value_area(bars, share=0.70):
+    """
+    Volume profile in 1-point bins: each bar's volume spread evenly over every bin from its low to its high.
+    POC = the busiest bin. The value area grows from the POC, each time taking the busier neighbour, until it
+    holds 70% of the volume. Returns (poc, val, vah) as prices (VAH = top of the highest bin), or Nones.
+    """
+    vol = defaultdict(float)
+    for b in bars:
+        lo, hi = math.floor(b["l"]), math.floor(b["h"])
+        v = float(b.get("v") or 0)
+        if v <= 0 or hi < lo:
+            continue
+        n = hi - lo + 1
+        for k in range(lo, hi + 1):
+            vol[k] += v / n
+    total = sum(vol.values())
+    if total <= 0:
+        return None, None, None
+    poc = max(sorted(vol), key=lambda k: vol[k])
+    lo = hi = poc
+    inside = vol[poc]
+    while inside < share * total:
+        up, down = vol.get(hi + 1, 0.0), vol.get(lo - 1, 0.0)
+        if up == 0 and down == 0:
+            # gaps: step over empty bins toward whichever side still has volume
+            above = [k for k in vol if k > hi]
+            below = [k for k in vol if k < lo]
+            if not above and not below:
+                break
+            if above and (not below or min(above) - hi <= lo - max(below)):
+                hi = min(above)
+                inside += vol[hi]
+            else:
+                lo = max(below)
+                inside += vol[lo]
+            continue
+        if up >= down:
+            hi += 1
+            inside += up
+        else:
+            lo -= 1
+            inside += down
+    return float(poc), float(lo), float(hi + 1)
+
+
+def pass_measure(bars, session, d):
+    """
+    One session's signal on New York date d, from 1-minute bars: direction, price, 4H bias and value area.
+    Returns None (no trade: weekend or no market) or "wait" (the signal bar isn't in yet).
+    """
+    wd = d.weekday()  # Mon 0 … Sun 6
+    if session == "ASIA":
+        if wd in (4, 5):  # Friday and Saturday evenings: no Asia trade
+            return None
+        sig_t = ny_at(d, 20, 0)
+        trading_day = d + timedelta(days=1)
+        bias = four_hour_bias(bars, ny_at(d, 14, 0), ny_at(d, 18, 0))
+        va_from = ny_at(d - timedelta(days=1), 20, 0)
+    else:
+        if wd in (5, 6):
+            return None
+        trading_day = d
+        va_from = ny_at(d - timedelta(days=1), 20, 0)
+        if session == "LON":
+            ref_t, sig_t = ny_at(d, 3, 1), ny_at(d, 3, 30)
+            bias = four_hour_bias(bars, ny_at(d - timedelta(days=1), 22, 0), ny_at(d, 2, 0))
+        else:
+            ref_t, sig_t = ny_at(d, 9, 41), ny_at(d, 10, 10)
+            bias = four_hour_bias(bars, ny_at(d, 2, 0), ny_at(d, 6, 0))
+    sb = bar_at(bars, sig_t)
+    if not sb:
+        return "wait"
+    price = float(sb["c"])
+    if session == "ASIA":
+        direction = "LONG"
+    else:
+        rb = bar_at(bars, ref_t)
+        if not rb:
+            return None
+        ref = float(rb["o"])
+        if session == "LON":
+            direction = "SHORT" if price > ref else "LONG"  # against the first 30 minutes
+        else:
+            direction = "LONG" if price >= ref else "SHORT"  # with the first 30 minutes
+    _, val, vah = value_area([b for b in bars if va_from <= iso(b["t"]) <= sig_t])
+    return {"session": session, "tradingDay": trading_day.isoformat(), "dir": direction, "price": price, "bias": bias, "vah": vah, "val": val, "barTime": sig_t.isoformat()}
+
+
+def pass_place(ts, p, sig, hedge_accounts):
+    """One account's order for a session (practice / Lucid: followed on the bars instead)."""
+    long = sig["dir"] == "LONG"
+    if p["mode"] != "live":
+        fill = sig["price"] + (TICK if long else -TICK)
+        log(f"PASS {'PRACTICE' if p['mode'] == 'dry' else 'LUCID (you place it)'} {sig['dir']} {p['qty']} MNQ on {p['label']}: stop {p['stopTicks'] / 4} pt, target {p['targetTicks'] / 4} pt")
+        return {"tradeId": p["tradeId"], "status": "open", "fill": fill}
+    try:
+        accts = ts.accounts()
+        contract = ts.mnq()
+        m = match_account(accts, p.get("account"))
+        if not m:
+            return {"tradeId": p["tradeId"], "status": "error", "reason": f"Topstep account \"{p.get('account') or 'none set'}\" not found"}
+        if ts.positions(m["id"]):
+            return {"tradeId": p["tradeId"], "status": "error", "reason": "already in a position on this account"}
+        against = 2 if long else 1  # ProjectX position type: 1 long, 2 short
+        for hint, label in hedge_accounts:
+            h = match_account(accts, hint)
+            if h and h["id"] != m["id"] and any(x.get("type") == against for x in ts.positions(h["id"])):
+                return {"tradeId": p["tradeId"], "status": "error", "reason": f"{label} holds the other side: not placed, so nothing is hedged"}
+        RECENT_PLACE[m["id"]] = time.time()
+        oid = ts.place(m["id"], contract, sig["dir"], p["qty"], p["stopTicks"], p["targetTicks"], f"ltj-pass-{p['tradeId'][3:13]}")
+        log(f"PASS PLACED {sig['dir']} {p['qty']} MNQ on {p['label']} (order {oid}; stop {p['stopTicks'] / 4} pt, target {p['targetTicks'] / 4} pt)")
+        fill = None
+        for _ in range(10):
+            pos = ts.positions(m["id"])
+            if pos and pos[0].get("averagePrice"):
+                fill = float(pos[0]["averagePrice"])
+                break
+            time.sleep(0.3)
+        out = {"tradeId": p["tradeId"], "status": "open", "orderId": oid}
+        if fill:
+            out["fill"] = fill
+        return out
+    except Exception as e:
+        log(f"PASS FAILED {sig['dir']} on {p['label']}: {e}")
+        return {"tradeId": p["tradeId"], "status": "error", "reason": str(e)[:400]}
+
+
+def pass_watch(base, auth, ts, pc, now):
+    """Follow each open pass trade to its stop, target or time exit (practice / Lucid on the 1-minute bars), and report it."""
+    for t in pc.get("open", []):
+        try:
+            exit_at = iso(t["exitAt"])
+            entered = iso(t["enteredAt"]).replace(second=0, microsecond=0)
+            sign = 1 if t["dir"] == "LONG" else -1
+            if t["mode"] != "live":
+                if now - entered < timedelta(minutes=1):
+                    continue
+                bars = ts.bars(ts.mnq(), entered.isoformat(), min(now, exit_at + timedelta(minutes=1)).isoformat(), 2000)
+                hit = None
+                for b in bars:
+                    bt = iso(b["t"])
+                    if bt < entered:
+                        continue
+                    if bt >= exit_at:
+                        hit = (float(b["o"]), "time", bt)
+                        break
+                    stop_hit = b["l"] <= t["stop"] if sign > 0 else b["h"] >= t["stop"]
+                    tgt_hit = b["h"] >= t["target"] if sign > 0 else b["l"] <= t["target"]
+                    if stop_hit:  # a bar that touches both counts as a loss, as tested
+                        hit = (t["stop"], "stop", bt)
+                        break
+                    if tgt_hit:
+                        hit = (t["target"], "target", bt)
+                        break
+                if not hit and now >= exit_at and bars:
+                    hit = (float(bars[-1]["c"]), "time", exit_at)
+                if hit:
+                    px, why, at = hit
+                    pnl = round((px - t["entry"]) * sign * 2 * t["qty"] - PASS_COMMISSION * t["qty"], 2)
+                    post(base, auth, {"type": "pass_closed", "tradeId": t["id"], "exitPrice": px, "pnl": pnl, "fees": PASS_COMMISSION * t["qty"], "reason": why, "exitedAt": at.isoformat()})
+                    log(f"PASS {t['label']} closed ({why}) @ {px}: {pnl:+.2f}")
+                continue
+            accts = ts.accounts()
+            m = match_account(accts, t.get("account"))
+            if not m:
+                continue
+            pos = ts.positions(m["id"])
+            if pos:
+                if now >= exit_at:
+                    for p in pos:
+                        ts.call("/api/Position/closeContract", {"accountId": m["id"], "contractId": p.get("contractId") or ts.mnq()})
+                    log(f"PASS TIME EXIT {t['label']}: closed at market")
+                continue
+            if now - iso(t["enteredAt"]) < timedelta(seconds=25):
+                continue
+            since = (iso(t["enteredAt"]) - timedelta(minutes=2)).isoformat()
+            fills = ts.trades(m["id"], since)
+            closing = [f for f in fills if f.get("profitAndLoss") is not None]
+            fees = sum(f.get("fees") or 0 for f in fills)
+            pnl = sum(f["profitAndLoss"] for f in closing) - fees
+            px = closing[-1]["price"] if closing else None
+            reason = "time" if now >= exit_at - timedelta(seconds=60) else "other"
+            if px is not None and abs(px - t["stop"]) <= 1:
+                reason = "stop"
+            elif px is not None and abs(px - t["target"]) <= 1:
+                reason = "target"
+            cleanup(ts, m, t.get("label", ""))
+            post(base, auth, {"type": "pass_closed", "tradeId": t["id"], "exitPrice": px, "pnl": round(pnl, 2), "fees": round(fees, 2), "reason": reason, "exitedAt": now.isoformat()})
+            log(f"PASS {t['label']} closed ({reason}){f' @ {px}' if px else ''}: {pnl:+.2f}")
+        except Exception as e:
+            log(f"PASS: couldn't check the trade on {t.get('label', '')} ({e}); trying again")
+
+
+def pass_tick(base, auth, ts, ctx, now=None):
+    """Every loop: follow open pass trades; at each session's moment, measure the market and send the signal."""
+    pc = ctx.get("pass") or {}
+    now = now or datetime.now(timezone.utc)
+    if pc.get("open"):
+        pass_watch(base, auth, ts, pc, now)
+    if not pc.get("on") or NY is None:
+        return False
+    waiting = False
+    n = now.astimezone(NY)
+    for session, ((h, m), _) in PASS_EVENTS.items():
+        at = n.replace(hour=h, minute=m, second=3, microsecond=0)
+        if not (at <= n < at + timedelta(minutes=5)):  # later than 5 minutes is a different trade: skipped
+            continue
+        key = f"{n.date()}-{session}"
+        if key in PASS_DONE:
+            continue
+        try:
+            contract = ts.mnq()
+            start = ny_at(n.date() - timedelta(days=1), 14, 0)
+            bars = ts.bars(contract, start.isoformat(), now.isoformat(), 3000)
+            sig = pass_measure(bars, session, n.date())
+        except Exception as e:
+            log(f"PASS {session}: couldn't read the market ({e}); trying again")
+            waiting = True
+            continue
+        if sig == "wait":  # the signal bar isn't at TopstepX yet: look again in a few seconds
+            waiting = True
+            continue
+        PASS_DONE.add(key)
+        if sig is None:
+            log(f"PASS {session}: no trade today (weekend or no market)")
+            continue
+        code, d = http("POST", base + "/api/bot/runner", {"type": "pass_signal", **sig}, auth, timeout=20)
+        plans = (d or {}).get("plans", []) if code == 200 else []
+        log(f"PASS {session} {sig['dir']} @ {sig['price']} · 4H {sig['bias'] or 'flat'} · value area {sig['val']}–{sig['vah']}: {len(plans)} to take")
+        hedge = [(c.get("topstepAccountId"), c.get("label", "")) for c in ctx.get("cards", [])] + [(a.get("account"), a.get("label", "")) for a in pc.get("accounts", [])]
+        results = [pass_place(ts, p, sig, hedge) for p in plans]
+        if results:
+            post(base, auth, {"type": "pass_results", "results": results})
+    return waiting
+
+
 def run():
     cfg = load_config()
     base = cfg["url"].rstrip("/")
@@ -638,7 +902,14 @@ def run():
                 last_ready = time.time()
             elif int(d.get("wait", 0)) > 300:
                 last_ready = 0  # napping between sessions: check again when the next one opens
+            busy = False
+            try:
+                busy = pass_tick(base, auth, ts, ctx)
+            except Exception as e:
+                log(f"PASS: {e}")
             wait = int(d.get("wait", 0))
+            if busy:
+                wait = min(wait, 5)
             if wait > 0:
                 time.sleep(min(wait, 900))
         except KeyboardInterrupt:

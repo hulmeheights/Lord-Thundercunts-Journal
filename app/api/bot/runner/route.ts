@@ -8,6 +8,7 @@ import { botNotify } from "@/lib/bot/notify";
 import { newsAround } from "@/lib/bot/newsFeed";
 import { SESSION_LABEL, type BotAccount, type Session } from "@/lib/bot/signal";
 import { barTimeOf } from "@/lib/bot/sor";
+import { passClosed, passContext, passResults, passSignal, passWaitSeconds } from "@/lib/pass/server";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
@@ -36,6 +37,8 @@ async function context() {
   const hints = new Map(every.map((a) => [a.id, a.topstep_account]));
   const labels = new Map(every.map((a) => [a.id, a.label]));
   return {
+    // The pass plan (scripts C/D): its own switch, accounts and open trades; the Mac measures and places, the journal decides.
+    pass: await passContext(),
     mode: s?.mode ?? "off",
     newsMinutes: s?.news_minutes ?? 0,
     news,
@@ -68,13 +71,19 @@ export async function GET(req: Request) {
   // Headers are plain ASCII: anything else (e.g. a "·" from an older Mac program) becomes " - ".
   const info = (req.headers.get("x-runner") ?? "").replace(/[^\x20-\x7e]+/g, " - ").replace(/\s+/g, " ").trim().slice(0, 120) || null;
   await sql`update bot_runner set last_seen = now(), info = coalesce(${info}, info) where id = 1`;
+  // Awake for every pass-plan entry and time exit, and every 30 seconds while a pass trade is open.
+  const passWait = (ctx: Awaited<ReturnType<typeof context>>, w: number) =>
+    Math.max(0, Math.min(w, ctx.pass.open.length ? 30 : Infinity, ctx.pass.on || ctx.pass.open.length ? passWaitSeconds() : Infinity));
   if (nap > 0) {
     const ctx = await context();
     // A trade still open outside a session: keep checking every 30 seconds so its close is caught and cleaned up.
-    return NextResponse.json({ alerts: [], wait: ctx.openTrades.length ? Math.min(nap, 30) : nap, context: ctx });
+    return NextResponse.json({ alerts: [], wait: passWait(ctx, ctx.openTrades.length ? Math.min(nap, 30) : nap), context: ctx });
   }
   const [{ mode }] = await sql<{ mode: string }[]>`select mode from bot_settings where id = 1`;
-  if (mode !== "live" && mode !== "paper") return NextResponse.json({ alerts: [], wait: 20, context: await context() });
+  if (mode !== "live" && mode !== "paper") {
+    const ctx = await context();
+    return NextResponse.json({ alerts: [], wait: passWait(ctx, 20), context: ctx });
+  }
   for (let waited = 0; waited < 20_000; waited += 400) {
     const alerts = await claimAlerts();
     if (alerts.length) return NextResponse.json({ alerts, wait: 0, context: await context() });
@@ -121,7 +130,34 @@ const TestSignal = z.object({
   target: z.number().finite().positive(),
 });
 const Ready = z.object({ type: z.literal("ready"), problems: z.array(z.string().max(300)).max(20), summary: z.string().max(400) });
+const PassSignal = z.object({
+  type: z.literal("pass_signal"),
+  session: z.enum(["ASIA", "LON", "NY"]),
+  tradingDay: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  dir: z.enum(["LONG", "SHORT"]),
+  price: z.number().finite().positive(),
+  bias: z.enum(["UP", "DOWN"]).nullable(),
+  vah: z.number().finite().nullable(),
+  val: z.number().finite().nullable(),
+  barTime: z.string().max(40),
+});
+const PassResults = z.object({
+  type: z.literal("pass_results"),
+  results: z.array(z.object({ tradeId: z.string().regex(/^pt_[A-Za-z0-9_-]{6,40}$/), status: z.enum(["open", "error"]), orderId: z.string().max(40).nullish(), fill: z.number().finite().positive().nullish(), reason: z.string().max(500).nullish() })).max(50),
+});
+const PassClosed = z.object({
+  type: z.literal("pass_closed"),
+  tradeId: z.string().regex(/^pt_[A-Za-z0-9_-]{6,40}$/),
+  exitPrice: z.number().finite().positive().nullable(),
+  pnl: z.number().finite(),
+  fees: z.number().finite().min(0).default(0),
+  reason: z.enum(["target", "stop", "time", "other"]),
+  exitedAt: z.string().datetime({ offset: true }),
+});
 const Report = z.discriminatedUnion("type", [
+  PassSignal,
+  PassResults,
+  PassClosed,
   Closed,
   Ready,
   TestSignal,
@@ -145,6 +181,15 @@ export async function POST(req: Request) {
   for (const p of "passed" in r ? r.passed : []) {
     const c = cards.get(p.cardId);
     if (c) await switchOff(c, p.profit);
+  }
+  if (r.type === "pass_signal") return NextResponse.json(await passSignal(r));
+  if (r.type === "pass_results") {
+    await passResults(r.results);
+    return NextResponse.json({ ok: true });
+  }
+  if (r.type === "pass_closed") {
+    await passClosed(r);
+    return NextResponse.json({ ok: true });
   }
   if (r.type === "ready") {
     // The Mac checks itself as each session starts. All good: one quiet log line. Anything wrong: log + push, at most every 3 hours per problem.

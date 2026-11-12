@@ -16,6 +16,11 @@ export async function hideBotCopies(): Promise<number> {
       where b.mode = 'live' and b.status in ('open', 'closed') and coalesce(b.order_id, '') <> ''
         and lower(b.dir) = t.direction and b.qty = t.qty
         and t.entry_time between b.entered_at - interval '1 minute' and b.entered_at + interval '3 minutes'
+    ) or not t.by_bot and t.root in ('MNQ', 'NQ') and exists (
+      select 1 from pass_trades p
+      where p.mode = 'live' and p.status in ('open', 'closed') and coalesce(p.order_id, '') <> ''
+        and lower(p.dir) = t.direction and p.qty = t.qty
+        and t.entry_time between p.entered_at - interval '1 minute' and p.entered_at + interval '3 minutes'
     )
     returning t.id
   `;
