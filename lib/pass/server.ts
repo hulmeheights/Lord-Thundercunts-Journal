@@ -51,16 +51,19 @@ export function exitAt(session: PassSession, tradingDay: string): Date {
   return zonedToUtc(tradingDay, h! * 60 + m!, NY);
 }
 
-/** Seconds until the next pass event (an entry or a time exit), so the Mac is awake for it. */
+/** How long the Mac may sleep: every 5 s from 1 minute before an entry to 3 minutes after, else until the next entry or time exit. */
 export function passWaitSeconds(now = new Date()): number {
   const ny = new Intl.DateTimeFormat("en-GB", { timeZone: NY, hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23" }).formatToParts(now);
   const g = (t: string) => Number(ny.find((p) => p.type === t)!.value);
   const s = g("hour") * 3600 + g("minute") * 60 + g("second");
-  const events = Object.values(SESSION_TIMES).flatMap((t) => [t.signal, t.exit]).map((x) => {
+  const sec = (x: string) => {
     const [h, m] = x.split(":").map(Number);
-    return h! * 3600 + m! * 60 + 3;
-  });
-  return Math.min(...events.map((e) => (e - s + 86_400) % 86_400));
+    return h! * 3600 + m! * 60;
+  };
+  const entries = Object.values(SESSION_TIMES).map((t) => sec(t.signal) - 60); // the bar closes a minute before the order time
+  const exits = Object.values(SESSION_TIMES).map((t) => sec(t.exit) + 3);
+  if (entries.some((e) => { const d = (s - e + 86_400) % 86_400; return d >= 0 && d <= 240; })) return 5;
+  return Math.max(5, Math.min(...[...entries.map((e) => e - 60), ...exits].map((e) => (e - s + 86_400) % 86_400)));
 }
 
 /** What the Mac needs for the pass plan: is it on, the accounts it may touch, and the trades it's following. */
@@ -72,7 +75,31 @@ export async function passContext() {
     select id, account_id, mode, session, trading_day, dir, qty, entry_price, stop_price, target_price, entered_at, order_id from pass_trades where status = 'open'
   `;
   const byId = new Map(cards.map((c) => [c.id, c]));
+  // Live orders from a TradingView signal, each handed to the Mac once. Not picked up within 45 seconds: missed.
+  const stale = await sql<{ account_label: string }[]>`
+    update pass_trades set status = 'error', reason = 'your Mac didn''t pick it up in time: nothing placed'
+    where status = 'pending' and ((claimed_at is null and entered_at < now() - interval '45 seconds') or claimed_at < now() - interval '3 minutes')
+    returning account_label
+  `;
+  if (stale.length) {
+    await logEvent("error", `Pass plan: ${stale.map((x) => x.account_label).join(", ")} missed (Mac didn't pick the order up)`);
+    await botNotify(`⚠ Pass plan order missed\n${stale.map((x) => x.account_label).join(", ")}: your Mac didn't pick it up. Check it's on and online.`, { push: true, telegram: false, critical: true, always: true, url: "/pass" });
+  }
+  const pending = await sql<{ id: string; account_id: string | null; account_label: string; dir: string; qty: number; stop_price: number; target_price: number; entry_price: number }[]>`
+    update pass_trades set claimed_at = now() where status = 'pending' and claimed_at is null returning id, account_id, account_label, dir, qty, stop_price, target_price, entry_price
+  `;
   return {
+    pending: pending.map((t) => ({
+      tradeId: t.id,
+      label: t.account_label,
+      account: (t.account_id && byId.get(t.account_id)?.topstep_account) || null,
+      mode: "live" as const,
+      dir: t.dir,
+      qty: t.qty,
+      price: t.entry_price,
+      stopTicks: Math.round(Math.abs(t.entry_price - t.stop_price) * 4),
+      targetTicks: Math.round(Math.abs(t.target_price - t.entry_price) * 4),
+    })),
     on: s?.mode === "on" && cards.some((c) => c.enabled),
     accounts: cards.filter((c) => c.enabled && modeOf(c) === "live").map((c) => ({ cardId: c.id, label: c.label, account: c.topstep_account })),
     open: open.map((t) => ({
@@ -121,15 +148,21 @@ export async function passSignal(sig: Signal & { barTime: string }) {
     const ins = await sql`
       insert into pass_trades (id, account_id, account_label, mode, stage, session, trading_day, dir, qty, entry_price, stop_price, target_price, status, reason, filters, entered_at)
       values (${id}, ${a.id}, ${a.label}, ${mode}, ${a.stage}, ${sig.session}, ${sig.tradingDay}, ${sig.dir}, ${a.contracts}, ${sig.price}, ${stop}, ${target},
-        ${p.take ? "pending" : "skipped"}, ${p.reason}, ${sql.json({ bias: sig.bias, vah: sig.vah, val: sig.val, barTime: sig.barTime } as never)}, now())
+        ${p.take ? (mode === "live" ? "pending" : "open") : "skipped"}, ${p.reason}, ${sql.json({ bias: sig.bias, vah: sig.vah, val: sig.val, barTime: sig.barTime } as never)}, now())
       on conflict (account_id, trading_day, session) do nothing returning id
     `;
     if (!ins.length) continue; // already decided for this session
     lines.push(`• ${a.label}: ${p.take ? `${mode === "live" ? "placing" : mode === "dry" ? "practice" : "YOURS TO PLACE"} · SL ${stop} · TP ${target}` : `skip (${p.reason})`}`);
     if (!p.take) continue;
+    if (mode !== "live") {
+      // Practice and Lucid: followed on the 1-minute bars from here (entries fill a tick worse, as tested).
+      const fill = sig.price + long * 0.25;
+      await sql`update pass_trades set entry_price = ${fill}, stop_price = ${stop + long * 0.25}, target_price = ${target + long * 0.25} where id = ${id}`;
+    }
     if (mode === "signal") {
       await botNotify(`📣 ${a.label}: ${sig.dir} ${a.contracts} MNQ now\nPass plan · ${SESSION_NAME[sig.session]} · @ ~${sig.price} · stop ${stop} · target ${target} · close it at ${clock(sig.session)} if neither is hit`, { push: true, telegram: false, critical: true, always: true, url: "/pass" });
     }
+    if (mode !== "live") continue;
     plans.push({ tradeId: id, cardId: a.id, label: a.label, account: a.topstep_account, mode, dir: sig.dir, qty: a.contracts, stopTicks: p.stopTicks, targetTicks: p.targetTicks });
   }
   await logEvent("info", `Pass plan · ${head}: ${plans.length} to take`);

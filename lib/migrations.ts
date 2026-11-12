@@ -830,4 +830,11 @@ export const MIGRATIONS: { version: number; sql: string }[] = [
       create index if not exists pass_trades_at_idx on pass_trades (entered_at desc);
     `,
   },
+  {
+    version: 41,
+    sql: /* sql */ `
+      -- Pass plan: a live order waiting for the Mac is handed over exactly once.
+      alter table pass_trades add column if not exists claimed_at timestamptz;
+    `,
+  },
 ];

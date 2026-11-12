@@ -4,6 +4,21 @@ import { Alert } from "@/lib/bot/signal";
 import { secretOf, SorSignal } from "@/lib/bot/sor";
 import { handleAlert, handleSignal, logEvent } from "@/lib/bot/engine";
 import { webhookSecret } from "@/lib/bot/config";
+import { z } from "zod";
+
+/** The Pass Plan script's alert: a session's signal with its 4H bias and value area (no account rules: the journal holds those). */
+const PassAlert = z.object({
+  secret: z.string(),
+  event: z.literal("pass"),
+  session: z.enum(["ASIA", "LON", "NY"]),
+  trading_day: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  dir: z.enum(["LONG", "SHORT"]),
+  price: z.number().finite().positive(),
+  bias: z.enum(["UP", "DOWN"]).nullable(),
+  vah: z.number().finite().nullable(),
+  val: z.number().finite().nullable(),
+  id: z.string().max(60),
+});
 
 export const dynamic = "force-dynamic";
 // Orders on several accounts can take a few seconds; they run after the reply (below).
@@ -38,6 +53,24 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false }, { status: 401 });
   }
   const received = new Date();
+  // MNQ Pass Plan: {"event":"pass", …}. Every account decides; live orders wait for the Mac, practice and Lucid start at once.
+  if (typeof body === "object" && body && (body as { event?: unknown }).event === "pass") {
+    const pa = PassAlert.safeParse(body);
+    if (!pa.success) {
+      await logEvent("error", `Pass plan alert didn't look right: ${pa.error.issues[0]?.path.join(".")} ${pa.error.issues[0]?.message}`);
+      return NextResponse.json({ ok: false, error: "bad pass alert" }, { status: 400 });
+    }
+    const a = pa.data;
+    after(async () => {
+      try {
+        const { passSignal } = await import("@/lib/pass/server");
+        await passSignal({ session: a.session, tradingDay: a.trading_day, dir: a.dir, price: a.price, bias: a.bias, vah: a.vah, val: a.val, barTime: a.id });
+      } catch (e) {
+        await logEvent("error", `Pass plan webhook error: ${e instanceof Error ? e.message : String(e)}`).catch(() => {});
+      }
+    });
+    return NextResponse.json({ ok: true, received: received.toISOString() });
+  }
   // MNQ SOR v2: the script sends {"event":"signal", …} itself (alert() with its own message).
   if (typeof body === "object" && body && (body as { event?: unknown }).event === "signal") {
     const sig = SorSignal.safeParse(body);

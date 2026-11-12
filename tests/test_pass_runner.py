@@ -1,5 +1,5 @@
 """
-Mac bot: the MNQ Pass Plan's market reading (signals, 4H bias, value area) and practice exits.
+Mac bot: the MNQ Pass Plan's practice exits (stop, target, time exit) on the 1-minute bars.
 Run: python3 -m unittest tests/test_pass_runner.py -v
 """
 import importlib.util
@@ -37,57 +37,6 @@ def setbar(bars, t, **k):
 
 
 THU = date(2026, 11, 12)
-
-
-class PassMarket(unittest.TestCase):
-    def test_value_area_70_percent_around_the_poc(self):
-        bars = [bar(R.ny_at(THU, 3, 0), 100, 100.5, 100, 100, 600), bar(R.ny_at(THU, 4, 0), 101, 101.5, 101, 101, 200), bar(R.ny_at(THU, 5, 0), 99, 99.5, 99, 99, 100), bar(R.ny_at(THU, 6, 0), 110, 110.5, 110, 110, 100)]
-        poc, val, vah = R.value_area(bars)
-        self.assertEqual(poc, 100)
-        # 1,000 total: POC 600, then 101 (200) → 800 ≥ 700.
-        self.assertEqual((val, vah), (100, 102))
-
-    def test_volume_spread_evenly_over_the_bar_range(self):
-        poc, val, vah = R.value_area([bar(R.ny_at(THU, 3, 0), 100, 103.9, 100, 103, 400)])
-        self.assertEqual(poc, 100)
-        self.assertEqual(val, 100)
-        self.assertEqual(vah, 103)  # 100, 101, 102 = 75%
-
-    def test_four_hour_bias_is_the_body_only(self):
-        bars = [bar(R.ny_at(THU, 2, 0), 100, 120, 90, 101), bar(R.ny_at(THU, 5, 59), 101, 130, 80, 99)]
-        self.assertEqual(R.four_hour_bias(bars, R.ny_at(THU, 2, 0), R.ny_at(THU, 6, 0)), "DOWN")
-        self.assertIsNone(R.four_hour_bias(bars, R.ny_at(THU, 10, 0), R.ny_at(THU, 14, 0)))
-
-    def test_new_york_trades_with_the_first_30_minutes(self):
-        bars = flat_day(THU)
-        setbar(bars, R.ny_at(THU, 9, 41), o=25000.0)
-        setbar(bars, R.ny_at(THU, 10, 10), c=25040.0, h=25041.0)
-        s = R.pass_measure(bars, "NY", THU)
-        self.assertEqual((s["dir"], s["price"], s["tradingDay"]), ("LONG", 25040.0, "2026-11-12"))
-        self.assertGreater(s["price"], s["vah"])  # well above a flat day's value area
-        setbar(bars, R.ny_at(THU, 10, 10), c=24990.0, l=24989.0)
-        self.assertEqual(R.pass_measure(bars, "NY", THU)["dir"], "SHORT")
-        setbar(bars, R.ny_at(THU, 10, 10), c=25000.0)
-        self.assertEqual(R.pass_measure(bars, "NY", THU)["dir"], "LONG")  # at the open counts as up
-
-    def test_london_trades_against_the_first_30_minutes(self):
-        bars = flat_day(THU)
-        setbar(bars, R.ny_at(THU, 3, 1), o=25000.0)
-        setbar(bars, R.ny_at(THU, 3, 30), c=25010.0, h=25011.0)
-        self.assertEqual(R.pass_measure(bars, "LON", THU)["dir"], "SHORT")
-        setbar(bars, R.ny_at(THU, 3, 30), c=25000.0)
-        self.assertEqual(R.pass_measure(bars, "LON", THU)["dir"], "LONG")
-
-    def test_asia_is_long_belongs_to_the_next_day_and_skips_friday_and_saturday(self):
-        bars = flat_day(THU)
-        s = R.pass_measure(bars, "ASIA", THU)
-        self.assertEqual((s["dir"], s["tradingDay"]), ("LONG", "2026-11-13"))
-        self.assertIsNone(R.pass_measure(bars, "ASIA", date(2026, 11, 13)))  # Friday evening
-        self.assertIsNone(R.pass_measure(bars, "NY", date(2026, 11, 14)))  # Saturday
-
-    def test_waits_for_the_signal_bar(self):
-        bars = [b for b in flat_day(THU) if R.iso(b["t"]) < R.ny_at(THU, 10, 10)]
-        self.assertEqual(R.pass_measure(bars, "NY", THU), "wait")
 
 
 class FakeTs:

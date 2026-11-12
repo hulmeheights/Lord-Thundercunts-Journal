@@ -8,7 +8,7 @@ import { botNotify } from "@/lib/bot/notify";
 import { newsAround } from "@/lib/bot/newsFeed";
 import { SESSION_LABEL, type BotAccount, type Session } from "@/lib/bot/signal";
 import { barTimeOf } from "@/lib/bot/sor";
-import { passClosed, passContext, passResults, passSignal, passWaitSeconds } from "@/lib/pass/server";
+import { passClosed, passContext, passResults, passWaitSeconds } from "@/lib/pass/server";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
@@ -87,6 +87,8 @@ export async function GET(req: Request) {
   for (let waited = 0; waited < 20_000; waited += 400) {
     const alerts = await claimAlerts();
     if (alerts.length) return NextResponse.json({ alerts, wait: 0, context: await context() });
+    const [pp] = await sql<{ n: number }[]>`select count(*)::int as n from pass_trades where status = 'pending' and claimed_at is null`;
+    if (pp?.n) return NextResponse.json({ alerts: [], wait: 0, context: await context() });
     if (waited === 0) {
       const [b] = await sql<{ balances_due: Date | null }[]>`select balances_due from bot_settings where id = 1`;
       if (b?.balances_due) return NextResponse.json({ alerts: [], wait: 0, context: await context() });
@@ -130,17 +132,6 @@ const TestSignal = z.object({
   target: z.number().finite().positive(),
 });
 const Ready = z.object({ type: z.literal("ready"), problems: z.array(z.string().max(300)).max(20), summary: z.string().max(400) });
-const PassSignal = z.object({
-  type: z.literal("pass_signal"),
-  session: z.enum(["ASIA", "LON", "NY"]),
-  tradingDay: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  dir: z.enum(["LONG", "SHORT"]),
-  price: z.number().finite().positive(),
-  bias: z.enum(["UP", "DOWN"]).nullable(),
-  vah: z.number().finite().nullable(),
-  val: z.number().finite().nullable(),
-  barTime: z.string().max(40),
-});
 const PassResults = z.object({
   type: z.literal("pass_results"),
   results: z.array(z.object({ tradeId: z.string().regex(/^pt_[A-Za-z0-9_-]{6,40}$/), status: z.enum(["open", "error"]), orderId: z.string().max(40).nullish(), fill: z.number().finite().positive().nullish(), reason: z.string().max(500).nullish() })).max(50),
@@ -155,7 +146,6 @@ const PassClosed = z.object({
   exitedAt: z.string().datetime({ offset: true }),
 });
 const Report = z.discriminatedUnion("type", [
-  PassSignal,
   PassResults,
   PassClosed,
   Closed,
@@ -182,7 +172,6 @@ export async function POST(req: Request) {
     const c = cards.get(p.cardId);
     if (c) await switchOff(c, p.profit);
   }
-  if (r.type === "pass_signal") return NextResponse.json(await passSignal(r));
   if (r.type === "pass_results") {
     await passResults(r.results);
     return NextResponse.json({ ok: true });
