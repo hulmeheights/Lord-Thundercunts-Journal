@@ -41,7 +41,7 @@ export default async function PassPage() {
       <Section id="switch" n={1} label="The switch" lead={<>On or <em>off</em>.</>}>
         <PassSwitch on={p.on} />
         <p className="mt-5 max-w-2xl font-mono text-[10.5px] leading-[1.8] text-ink-4">
-          Separate from Autopilot&apos;s switch. Off stops new trades; open ones keep their stop and target and still get their time exit. Your Mac must be running the bot (Autopilot → Your Mac), version 4.0 or later, and the TradingView alert must be active.
+          Separate from Autopilot&apos;s switch. Off stops new trades; open ones keep their stop and target and still get their time exit. Your Mac must be running the bot (Autopilot → Your Mac), version 4.1 or later, and the TradingView alert must be active.
         </p>
       </Section>
 

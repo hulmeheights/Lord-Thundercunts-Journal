@@ -42,7 +42,7 @@ try:
 except Exception:  # very old Python: fixed offsets are close enough for the logs, never used to place
     NY = None
 
-VERSION = "4.0"
+VERSION = "4.1"
 TOPSTEP = os.environ.get("THUNDER_TOPSTEP_URL", "https://api.topstepx.com")  # override only for testing
 TICKET_TTL_MS = 20_000  # never place a ticket older than this: a late entry is a different trade
 HOME = os.path.expanduser("~")
@@ -476,6 +476,11 @@ def handle_signal(base, auth, ts, alert, ctx, now=None):
             mm = match_account(accts or [], c.get("topstepAccountId")) if not c.get("dry", True) else None
             if mm:
                 watched[mm["id"]] = c["label"]
+        # The Pass plan's live accounts too: an SOR trade never goes the other way to an open pass trade.
+        for pa in (ctx.get("pass") or {}).get("accounts", []):
+            mm = match_account(accts or [], pa.get("account"))
+            if mm:
+                watched.setdefault(mm["id"], pa.get("label", ""))
         opposite = []
         for aid, label in watched.items():
             try:
