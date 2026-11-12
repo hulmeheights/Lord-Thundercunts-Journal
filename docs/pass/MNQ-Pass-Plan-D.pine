@@ -32,6 +32,7 @@ inScript = input.string("D", "Script", options=["A", "C", "D"], group=grpT, tool
 inFirm = input.string("Topstep", "Firm", options=["Topstep", "Lucid"], group=grpT)
 inDll = input.bool(true, "Topstep: bought with the daily loss limit ($4,000 payout)", group=grpT)
 inQty = input.int(10, "Contracts (MNQ)", minval=1, maxval=50, group=grpT)
+inAfter = input.string("New eval", "After a pass", options=["New eval", "Go funded"], group=grpT, tooltip="New eval: a pass ends that eval and a fresh one starts the next trading day (counts passes per eval bought). Go funded: the same account carries on as FUNDED (Topstep) / PRE-LIVE (Lucid) to the payout.")
 
 TZ = "America/New_York"
 hr = hour(time, TZ)
@@ -196,6 +197,7 @@ var int passes = 0
 var int payouts = 0
 var int blown = 0
 var float lastNet = 0.0
+var string restDay = ""
 
 net = strategy.netprofit
 if net != lastNet
@@ -228,7 +230,10 @@ if strategy.position_size == 0
         reset := true
     else if stage == "EVAL" and prof >= 3000 and bestNow <= cons * prof
         passes += 1
-        stage := isLucid ? "PRELIVE" : "FUNDED"
+        if inAfter == "New eval"
+            evals += 1
+        else
+            stage := isLucid ? "PRELIVE" : "FUNDED"
         reset := true
     else if stage == "FUNDED" and winNow >= 5 and prof >= payoutAt
         payouts += 1
@@ -241,6 +246,7 @@ if strategy.position_size == 0
         stage := "EVAL"
         reset := true
     if reset
+        restDay := tdayKey  // done for today: the next account starts on the next trading day
         prof := 0.0
         today := 0.0
         best := 0.0
@@ -257,7 +263,7 @@ left = goal - today
 finishing = stage == "FUNDED" ? (winDays >= 5 and payoutAt - before <= cap) : stage == "PRELIVE" ? (2000 - before <= cap) : (math.max(3000 - before, best / cons - before) <= cap)
 room = math.min(prof - floorP, dllAmt + today)
 useFilters = inScript == "C" or (inScript == "D" and stage != "EVAL")
-take = sess != "" and strategy.position_size == 0 and left > 0 and (left >= 25 or finishing) and room >= 25 and (not useFilters or (agrees and outside))
+take = sess != "" and tdayKey != restDay and strategy.position_size == 0 and left > 0 and (left >= 25 or finishing) and room >= 25 and (not useFilters or (agrees and outside))
 riskNow = math.min(risk, room)
 stopT = math.floor(riskNow / (inQty * 2) / 0.25)
 // The target covers the $1/contract costs, so hitting it really adds what's left (at least $25 when it finishes the account).
