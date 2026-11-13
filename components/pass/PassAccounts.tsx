@@ -45,7 +45,7 @@ export function PassSwitch({ on }: { on: boolean }) {
 const STAGES = {
   topstep: [
     ["eval", "Eval / Combine", "$1,000 risk · $1,640 day cap · pass at $3,000 with best day ≤ 55%"],
-    ["funded", "Funded / Express", "$750 risk · $2,500 day cap · 5 winning days, then to $8,000 · payout"],
+    ["funded", "Funded / Express", "$1,000 risk · $1,640 day cap · 5 winning days, then to $8,000 · payout"],
   ],
   lucid: [
     ["eval", "Step 1 (eval)", "$1,000 risk · $1,200 day cap · pass at $3,000 with best day ≤ 40%"],

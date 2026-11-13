@@ -845,4 +845,11 @@ export const MIGRATIONS: { version: number; sql: string }[] = [
       alter table pass_accounts add constraint pass_accounts_script_check check (script in ('A', 'C', 'D'));
     `,
   },
+  {
+    version: 43,
+    sql: /* sql */ `
+      -- Rules pack v2: script C is the plan (D no longer used); new cards start on C.
+      alter table pass_accounts alter column script set default 'C';
+    `,
+  },
 ];

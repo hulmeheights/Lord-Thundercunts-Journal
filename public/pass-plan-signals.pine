@@ -1,39 +1,47 @@
 //@version=5
 // =============================================================================
-//  Pass Plan 1 - All signals, no filter [1m]
+//  MNQ PASS PLAN - SCRIPT C (final, 12 Nov 2026)
+//  4H candle bias + outside the value area, in every stage. Sizes down when an
+//  account is short of room (same stop distance, fewer contracts).
 //
-//  Plain trades, like the SOR script: every Pass Plan signal traded the same
-//  way every day. No simulated account, no eval/funded stages, no pass logic:
-//  your website does all of that for each of your accounts.
+//  ALERTS: every C trade goes out, every time, whatever the chart is doing.
+//  Nothing in the script ever stops the alerts. Your website decides, per
+//  account (eval or funded), whether to take it and with what target and size.
 //
-//  THIS ONE: every signal is traded (no filter). It's the trade list your
-//  EVAL accounts on script A or D follow. Put your bot ALERT on this script.
+//  CHART (Strategy Tester) has two modes, it does NOT affect the alerts:
+//   "Every C trade"     - takes every C signal at full size: 50-point stop,
+//                         82-point target ($1,640), time exit. Never stops.
+//   "Simulated account" - one pretend account through EVAL -> FUNDED / PRE-LIVE
+//                         -> payout -> new eval, with day goals, so you can see
+//                         pass rates and fees.
 //
-//  Each trade: 10 MNQ, stop = the risk below (50 points for $1,000 on 10),
-//  target = what's left of the day cap ($1,640 a day, costs included), out at
-//  the time exit (02:59, 09:39, 16:09 New York). The day stops at the cap or
-//  at the daily loss limit; if the loss limit has less room than a full stop,
-//  the trade is smaller (fewer contracts), never a tighter stop.
 //
-//  ASIA    close of the 20:00 New York bar -> LONG (not Friday/Saturday evening)
+//  Chart: CME_MINI:MNQ1!, 1 minute. All times New York.
+//  Alert: Condition = this script -> "alert() function calls only",
+//         Webhook URL = https://lord-thundercunts-journal.vercel.app/api/bot/webhook,
+//         leave the Message box as it is (the script writes its own message).
+//
+//  ASIA    close of the 20:00 bar -> LONG (not Friday or Saturday evening)
 //  LONDON  close of the 03:30 bar vs the 03:01 open: above -> SHORT, else LONG
 //  NY      close of the 10:10 bar vs the 09:41 open: at/above -> LONG, else SHORT
-//  Filters: the last finished 4H candle's body points the trade's way, and
-//           price is outside the 70% value area (volume profile from 20:00 NY).
-//
-//  Alert: Condition = this script -> "alert() function calls only" (NOT "Order fills"),
-//         Webhook URL = https://lord-thundercunts-journal.vercel.app/api/bot/webhook.
-//         It sends EVERY signal with its filter results; the website decides per account.
+//  Filter 1: body of the last finished 4H candle (18/22/02/06/10/14) must point
+//            the same way: Asia uses 14:00-18:00, London 22:00-02:00, NY 02:00-06:00
+//  Filter 2: price must be outside the 70% value area of the 1-point volume
+//            profile from 20:00 (Asia: the previous 24 hours)
+//  Time exits: 02:59, 09:39, 16:09
 // =============================================================================
-strategy("Pass Plan 1 - All signals, no filter [1m]", overlay=true, max_labels_count=300, initial_capital=50000, default_qty_type=strategy.fixed, default_qty_value=10, commission_type=strategy.commission.cash_per_contract, commission_value=0.5, slippage=1, pyramiding=0)
+strategy("MNQ Pass C - 4H bias + value area [1m]", overlay=true, max_labels_count=300, initial_capital=50000, default_qty_type=strategy.fixed, default_qty_value=10, commission_type=strategy.commission.cash_per_contract, commission_value=0.5, slippage=1, pyramiding=0)
 
 secret = input.string("", "Webhook Secret (same as BOT_WEBHOOK_SECRET in Vercel)")
-grpT = "Strategy Tester"
-inFilter = input.bool(false, "Only trade when BOTH filters pass (4H bias + outside value area)", group=grpT)
+grpT = "Strategy Tester (the simulated account)"
+inFirm = input.string("Topstep", "Firm", options=["Topstep", "Lucid"], group=grpT)
+inDll = input.bool(true, "Topstep: bought with the daily loss limit ($4,000 payout)", group=grpT)
 inQty = input.int(10, "Contracts (MNQ)", minval=1, maxval=50, group=grpT)
-inRisk = input.float(1000, "Risk per trade $ (eval 1,000 · Topstep funded 750)", minval=50, group=grpT)
-inCap = input.float(1640, "Day cap $ (eval 1,640 · Topstep funded 2,500 · Lucid 1,200)", minval=100, group=grpT)
-inDll = input.float(1000, "Daily loss limit $ (0 = none)", minval=0, group=grpT)
+inEvalR = input.float(1000, "Eval risk per trade ($)", step=50, group=grpT)
+inFundR = input.float(1000, "Topstep funded risk per trade ($)", step=50, group=grpT)
+inPreR = input.float(1250, "Lucid Pre-Live risk per trade ($)", step=50, group=grpT)
+inLabels = input.bool(true, "Show a label on every session signal", group=grpT)
+inMode = input.string("Every C trade", "Chart mode", options=["Every C trade", "Simulated account"], group=grpT, tooltip="Only changes what the Strategy Tester shows. Alerts always go out for every C trade.")
 
 TZ = "America/New_York"
 hr = hour(time, TZ)
@@ -178,42 +186,165 @@ if at(10, 10) and not na(nyRef) and dow != dayofweek.saturday and dow != dayofwe
 num(x) => na(x) ? "null" : str.tostring(x)
 outside = not na(vaH) and (close > vaH or close < vaL)
 agrees = (dir == "LONG" and bias == "\"UP\"") or (dir == "SHORT" and bias == "\"DOWN\"")
+cOk = sess != "" and agrees and outside
 
-// ---------------- the alert: every signal, for the journal to decide per account ----------------
-if sess != ""
+// ---------------- the alert: every C trade, always ----------------
+// Fires on every signal that passes both filters. It does not look at the
+// simulated account, open positions or anything else, so it never stops.
+stopPtsE = math.floor(inEvalR / (inQty * 2) / 0.25) * 0.25
+stopPtsF = math.floor(inFundR / (inQty * 2) / 0.25) * 0.25
+stopPtsP = math.floor(inPreR / (inQty * 2) / 0.25) * 0.25
+if cOk
     tday = str.format_time(time + 6 * 3600000, "yyyy-MM-dd", TZ)
-    msg = "{\"secret\":\"" + secret + "\",\"event\":\"pass\",\"session\":\"" + sess + "\",\"trading_day\":\"" + tday + "\",\"dir\":\"" + dir + "\",\"price\":" + str.tostring(close) + ",\"bias\":" + bias + ",\"vah\":" + num(vaH) + ",\"val\":" + num(vaL) + ",\"id\":\"" + str.tostring(time) + "-" + sess + "\"}"
+    exitBy = sess == "ASIA" ? "02:59" : sess == "LON" ? "09:39" : "16:09"
+    msg = "{\"secret\":\"" + secret + "\",\"event\":\"pass\",\"script\":\"C\",\"session\":\"" + sess + "\",\"trading_day\":\"" + tday + "\",\"dir\":\"" + dir + "\",\"price\":" + str.tostring(close) + ",\"bias\":" + bias + ",\"vah\":" + num(vaH) + ",\"val\":" + num(vaL) + ",\"c_ok\":true" + ",\"qty\":" + str.tostring(inQty) + ",\"stop_pts_eval\":" + str.tostring(stopPtsE) + ",\"stop_pts_funded\":" + str.tostring(stopPtsF) + ",\"stop_pts_prelive\":" + str.tostring(stopPtsP) + ",\"day_cap_topstep\":1640,\"day_cap_lucid_eval\":1200,\"exit_by\":\"" + exitBy + "\",\"id\":\"" + str.tostring(time) + "-" + sess + "\"}"
     alert(msg, alert.freq_once_per_bar_close)
 
-
-// ---------------- the trades (plain, every day) ----------------
+// ---------------- the simulated account ----------------
+isLucid = inFirm == "Lucid"
+var string stage = "EVAL"
+var float prof = 0.0
 var float today = 0.0
+var float best = 0.0
+var int winDays = 0
+var float maxEod = 0.0
+var int evals = 1
+var int passes = 0
+var int payouts = 0
+var int blown = 0
+var int stuck = 0
 var float lastNet = 0.0
+var int nTrades = 0
+var int nSignalsOk = 0
+var int firstTime = na
+if na(firstTime)
+    firstTime := time
+
 net = strategy.netprofit
 if net != lastNet
+    prof += net - lastNet
     today += net - lastNet
     lastNet := net
+
+// A new trading day starts at 18:00 New York.
 tdayKey = str.format_time(time + 6 * 3600000, "yyyyMMdd", TZ)
 if bar_index > 0 and tdayKey != tdayKey[1]
+    best := math.max(best, today)
+    if today >= 150
+        winDays += 1
+    maxEod := math.max(maxEod, prof)
     today := 0.0
 
-stopT = math.floor(inRisk / (inQty * 2) / 0.25)
-oneContract = stopT * 0.25 * 2
-room = inDll > 0 ? inDll + today : 1e9
-left = inCap - today
-qtyNow = room >= inRisk ? inQty : math.min(inQty, int(math.floor(room / oneContract)))
-// The target covers the $1/contract costs, so a hit really adds what's left of the day cap.
-tgtT = math.max(1, math.ceil((left + inQty * 1.0) / (inQty * 2) / 0.25 - 1e-9))
-take = sess != "" and strategy.position_size == 0 and left >= 25 and qtyNow >= 1 and stopT >= 1 and (not inFilter or (agrees and outside))
-if take
-    strategy.entry("Pass", dir == "LONG" ? strategy.long : strategy.short, qty=qtyNow, comment=sess + (qtyNow < inQty ? " x" + str.tostring(qtyNow) : ""))
+payoutAt = inDll ? 8000.0 : 4000.0
+cons = isLucid ? 0.40 : 0.55
+riskOf(st) => st == "EVAL" ? inEvalR : st == "FUNDED" ? inFundR : inPreR
+stopTOf(st) => math.floor(riskOf(st) / (inQty * 2) / 0.25)
+
+// Passed, payout, blown: checked whenever flat.
+if strategy.position_size == 0
+    floorP0 = math.min(maxEod - 2000, 0)
+    bestNow0 = math.max(best, today)
+    winNow0 = winDays + (today >= 150 ? 1 : 0)
+    oneLot = stopTOf(stage) * 0.25 * 2
+    bool reset = false
+    if prof <= floorP0
+        blown += 1
+        evals += 1
+        stage := "EVAL"
+        reset := true
+    else if prof - floorP0 < oneLot
+        // Not enough room left for even one contract at the full stop: the account is finished.
+        blown += 1
+        stuck += 1
+        evals += 1
+        stage := "EVAL"
+        reset := true
+    else if stage == "EVAL" and prof >= 3000 and bestNow0 <= cons * prof
+        passes += 1
+        stage := isLucid ? "PRELIVE" : "FUNDED"
+        reset := true
+    else if stage == "FUNDED" and winNow0 >= 5 and prof >= payoutAt
+        payouts += 1
+        evals += 1
+        stage := "EVAL"
+        reset := true
+    else if stage == "PRELIVE" and prof >= 2000
+        payouts += 1
+        evals += 1
+        stage := "EVAL"
+        reset := true
+    if reset
+        prof := 0.0
+        today := 0.0
+        best := 0.0
+        winDays := 0
+        maxEod := 0.0
+
+floorP = math.min(maxEod - 2000, 0)
+bestNow = math.max(best, today)
+winNow = winDays + (today >= 150 ? 1 : 0)
+risk = riskOf(stage)
+cap = isLucid ? (stage == "EVAL" ? 1200.0 : 2000.0) : 1640.0
+dllAmt = (not isLucid and inDll) ? 1000.0 : 1e9
+before = prof - today
+goal = stage == "FUNDED" ? (winDays >= 5 ? math.min(cap, payoutAt - before) : cap) : stage == "PRELIVE" ? math.min(cap, 2000 - before) : math.min(cap, math.max(3000 - before, best / cons - before))
+left = goal - today
+// The last bit to a pass / payout (not just the day cap)? Then even a few dollars is worth one more trade.
+finishing = stage == "FUNDED" ? (winDays >= 5 and payoutAt - before <= cap) : stage == "PRELIVE" ? (2000 - before <= cap) : (math.max(3000 - before, best / cons - before) <= cap)
+room = math.min(prof - floorP, dllAmt + today)
+if cOk
+    nSignalsOk += 1
+take = cOk and strategy.position_size == 0 and left > 0 and (left >= 25 or finishing) and room >= 25
+// Always the full-size stop; when a loss limit has less room, fewer contracts (never a tighter stop).
+stopT = stopTOf(stage)
+qtyNow = room >= risk ? inQty : math.min(inQty, int(math.floor(room / (stopT * 0.25 * 2))))
+// The target covers the $1/contract costs, so hitting it really adds what's left (at least $25 when it finishes the account).
+aim = (finishing ? math.max(left, 25) : left) + inQty * 1.0
+tgtT = math.max(1, math.ceil(aim / (inQty * 2) / 0.25 - 1e-9))
+plainMode = inMode == "Every C trade"
+if plainMode and cOk and strategy.position_size == 0
+    stopP = math.floor(inEvalR / (inQty * 2) / 0.25)
+    tgtP = math.ceil((1640.0 + inQty * 1.0) / (inQty * 2) / 0.25 - 1e-9)
+    nTrades += 1
+    strategy.entry("Pass", dir == "LONG" ? strategy.long : strategy.short, qty=inQty, comment=sess)
+    strategy.exit("Pass out", "Pass", loss=stopP, profit=tgtP, comment_loss="stop", comment_profit="target")
+if not plainMode and take and stopT >= 1 and qtyNow >= 1
+    nTrades += 1
+    strategy.entry("Pass", dir == "LONG" ? strategy.long : strategy.short, qty=qtyNow, comment=sess + " " + stage + (qtyNow < inQty ? " x" + str.tostring(qtyNow) : ""))
     strategy.exit("Pass out", "Pass", loss=stopT, profit=tgtT, comment_loss="stop", comment_profit="target")
 
 // Time exits (filled at the open of 02:59, 09:39, 16:09 New York).
 if at(2, 58) or at(9, 38) or at(16, 8)
     strategy.close("Pass", comment="time exit")
 
-// ---------------- chart labels ----------------
-if sess != ""
-    txt = sess + " " + dir + "\n4H " + (bias == "null" ? "flat" : str.replace_all(bias, "\"", "")) + (agrees ? " ✓" : " ✗") + "\nVA " + num(vaL) + "-" + num(vaH) + (outside ? " out ✓" : " in ✗")
-    label.new(bar_index, dir == "LONG" ? low : high, txt, style=dir == "LONG" ? label.style_label_up : label.style_label_down, color=color.new(dir == "LONG" ? color.teal : color.maroon, 15), textcolor=color.white, size=size.small)
+// ---------------- chart labels and the account table ----------------
+if sess != "" and inLabels
+    txt = sess + " " + dir + "\n4H " + (bias == "null" ? "flat" : str.replace_all(bias, "\"", "")) + (agrees ? " ✓" : " ✗") + "\nVA " + num(vaL) + "-" + num(vaH) + (outside ? " out ✓" : " in ✗") + (cOk ? "\nTAKE" : "\nskip")
+    label.new(bar_index, dir == "LONG" ? low : high, txt, style=dir == "LONG" ? label.style_label_up : label.style_label_down, color=color.new(cOk ? (dir == "LONG" ? color.teal : color.maroon) : color.gray, 15), textcolor=color.white, size=size.small)
+
+var table t = table.new(position.top_right, 2, 11, bgcolor=color.new(color.black, 20), border_width=1)
+if barstate.islast
+    fee = isLucid ? 180 : 120
+    weeks = math.max((time - firstTime) / (7 * 86400000.0), 1)
+    table.cell(t, 0, 0, "Stage", text_color=color.white)
+    table.cell(t, 1, 0, plainMode ? "every C trade" : stage, text_color=color.yellow)
+    table.cell(t, 0, 1, "Profit (this stage)", text_color=color.white)
+    table.cell(t, 1, 1, "$" + str.tostring(prof, "#,###"), text_color=prof >= 0 ? color.lime : color.red)
+    table.cell(t, 0, 2, "Today / goal", text_color=color.white)
+    table.cell(t, 1, 2, "$" + str.tostring(today, "#,###") + " / $" + str.tostring(math.max(goal, 0), "#,###"), text_color=color.white)
+    table.cell(t, 0, 3, "Best day / winning days", text_color=color.white)
+    table.cell(t, 1, 3, "$" + str.tostring(bestNow, "#,###") + " / " + str.tostring(winNow), text_color=color.white)
+    table.cell(t, 0, 4, "Evals bought", text_color=color.white)
+    table.cell(t, 1, 4, str.tostring(evals) + "  ($" + str.tostring(evals * fee, "#,###") + ")", text_color=color.white)
+    table.cell(t, 0, 5, "Passed", text_color=color.white)
+    table.cell(t, 1, 5, str.tostring(passes), text_color=color.lime)
+    table.cell(t, 0, 6, isLucid ? "Pre-live done" : "Payouts", text_color=color.white)
+    table.cell(t, 1, 6, str.tostring(payouts), text_color=color.lime)
+    table.cell(t, 0, 7, "Blown (of which out of room)", text_color=color.white)
+    table.cell(t, 1, 7, str.tostring(blown) + " (" + str.tostring(stuck) + ")", text_color=color.red)
+    table.cell(t, 0, 8, "C signals / trades taken", text_color=color.white)
+    table.cell(t, 1, 8, str.tostring(nSignalsOk) + " / " + str.tostring(nTrades), text_color=color.white)
+    table.cell(t, 0, 9, "Trades per week", text_color=color.white)
+    table.cell(t, 1, 9, str.tostring(nTrades / weeks, "#.#"), text_color=color.white)
+    table.cell(t, 0, 10, "Firm", text_color=color.white)
+    table.cell(t, 1, 10, inFirm + (isLucid ? "" : inDll ? " (DLL)" : ""), text_color=color.white)

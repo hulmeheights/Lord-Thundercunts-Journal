@@ -32,7 +32,7 @@ export type StageRules = {
   fee: number; // eval price, for the books
 };
 
-/** Section 5. Topstep: eval and funded. Lucid (LucidMaxx): step 1 (eval) and pre-live. */
+/** Rules pack v2 (12 Nov 2026), section 5. Topstep eval and funded: the same trade ($1,000 risk = 50 pt on 10 MNQ, $1,640 day cap). Lucid (LucidMaxx): step 1 and pre-live. */
 export function stageRules(firm: Firm, stage: Stage, withDll = true): StageRules {
   if (firm === "lucid") {
     if (stage === "eval") return { risk: 1000, cap: 1200, target: 3000, consistency: 0.4, dll: null, mll: 2000, payout: null, fee: 180 };
@@ -40,8 +40,8 @@ export function stageRules(firm: Firm, stage: Stage, withDll = true): StageRules
   }
   if (stage === "eval") return { risk: 1000, cap: 1640, target: 3000, consistency: 0.55, dll: withDll ? 1000 : null, mll: 2000, payout: null, fee: 120 };
   return withDll
-    ? { risk: 750, cap: 2500, target: null, consistency: null, dll: 1000, mll: 2000, payout: { profit: 8000, winDays: 5, winDay: 150 }, fee: 120 }
-    : { risk: 750, cap: 1640, target: null, consistency: null, dll: null, mll: 2000, payout: { profit: 4000, winDays: 5, winDay: 150 }, fee: 120 };
+    ? { risk: 1000, cap: 1640, target: null, consistency: null, dll: 1000, mll: 2000, payout: { profit: 8000, winDays: 5, winDay: 150 }, fee: 120 }
+    : { risk: 1000, cap: 1640, target: null, consistency: null, dll: null, mll: 2000, payout: { profit: 4000, winDays: 5, winDay: 150 }, fee: 120 };
 }
 
 /** Script A never filters; C filters in every stage; D only once the account is funded / pre-live. */

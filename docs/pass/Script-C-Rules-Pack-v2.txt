@@ -1,0 +1,196 @@
+=====================================================================
+MNQ PASS PLAN - SCRIPT C - FULL RULES PACK v2 (12 Nov 2026)
+=====================================================================
+Paste this whole file into the other chat. It replaces the earlier
+"Rules Pack for Scripts C and D". Script D is no longer used.
+
+---------------------------------------------------------------------
+1. HOW THE PIECES FIT
+---------------------------------------------------------------------
+TradingView script  "MNQ Pass C - 4H bias + value area [1m]"
+  - Finds the C trades and sends an alert for EVERY one of them, always.
+  - It never stops sending. It does not know or care which of your
+    accounts are eval or funded, passed, blown or paid out.
+  - The chart (Strategy Tester) is only for looking at results and has
+    no effect on the alerts.
+
+Website (journal) + Mac bot
+  - Each real account is toggled EVAL or FUNDED on the website.
+  - On every alert, the website decides for EACH account whether it
+    takes the trade, and with what size and target, from that
+    account's own stage and numbers (section 5).
+  - The Mac places the orders.
+
+---------------------------------------------------------------------
+2. THE TRADES (New York time, MNQ 1-minute chart)
+---------------------------------------------------------------------
+Three possible trades per trading day, one per session:
+
+  ASIA    Signal on the close of the 20:00 bar. Direction: LONG.
+          No Asia trade on Friday or Saturday evenings.
+          Time exit 02:59.
+  LONDON  Note the open of the 03:01 bar. On the close of the 03:30 bar:
+          price ABOVE that open -> SHORT, otherwise -> LONG
+          (against the first 30 minutes). Time exit 09:39.
+  NY      Note the open of the 09:41 bar. On the close of the 10:10 bar:
+          price at or above that open -> LONG, otherwise -> SHORT
+          (with the first 30 minutes). Time exit 16:09.
+
+The trading day runs 18:00 to 17:00 New York, so the Asia evening
+belongs to the next calendar day.
+
+---------------------------------------------------------------------
+3. THE TWO FILTERS (both must pass, or there is no trade and no alert)
+---------------------------------------------------------------------
+FILTER 1: 4H candle bias
+  4H candles start 18:00, 22:00, 02:00, 06:00, 10:00, 14:00 New York.
+  Bias = body of the last FINISHED 4H candle: close above open = UP,
+  close below open = DOWN. Wicks are ignored.
+    ASIA uses the 14:00-18:00 candle
+    LONDON uses the 22:00-02:00 candle
+    NY uses the 02:00-06:00 candle (not the 06:00-10:00 one)
+  The trade direction must match the bias.
+
+FILTER 2: outside the value area
+  Volume profile of the day so far, from 20:00 New York up to the
+  signal. 1-point bins; each bar's volume spread evenly from its low
+  to its high. POC = busiest bin. Value area = grow out from the POC,
+  adding the busier neighbouring bin each time, until 70% of volume
+  is inside. VAH = top, VAL = bottom.
+  ASIA uses the previous 24 hours (20:00 yesterday to 20:00 today).
+  Price at the signal must be ABOVE VAH or BELOW VAL.
+
+Do NOT wait for price to come back to the value area or POC, and do
+NOT add extra entries later in the session. Both tested worse.
+
+---------------------------------------------------------------------
+4. THE ALERT
+---------------------------------------------------------------------
+Sent on the close of the signal bar, for every C trade:
+{"secret":"...","event":"pass","script":"C","session":"NY",
+ "trading_day":"2026-11-12","dir":"LONG","price":21000.25,
+ "bias":"UP","vah":20990,"val":20950,"c_ok":true,"qty":10,
+ "stop_pts_eval":50,"stop_pts_funded":50,"stop_pts_prelive":62.5,
+ "day_cap_topstep":1640,"day_cap_lucid_eval":1200,
+ "exit_by":"16:09","id":"...-NY"}
+Orders fill at the open of the next bar.
+
+---------------------------------------------------------------------
+5. WHAT THE WEBSITE DOES FOR EACH ACCOUNT ON EACH ALERT
+---------------------------------------------------------------------
+The website keeps, per account: stage (EVAL / FUNDED / PRELIVE),
+profit so far in this stage, highest end-of-day profit, best day,
+today's profit, winning days ($150+), and whether it has a daily loss
+limit.
+
+STEP 1. Work out today's goal for the account.
+  TOPSTEP EVAL:    goal = smaller of $1,640 and "still needed", where
+                   still needed = larger of ($3,000 - profit) and
+                   (best day / 0.55 - profit).
+                   Worked example: fresh account, goal $1,640. If day 1
+                   ends +$1,640, day 2's goal is $3,000 - $1,640 =
+                   $1,360 (+$10 margin = about $1,370), and $1,640 is
+                   then 54.7% of $3,010, inside the 55% rule. If a day
+                   loses, the goal is again up to $1,640 the next day.
+  TOPSTEP FUNDED:  goal = $1,640, until 5 winning days are banked;
+                   after that, the smaller of $1,640 and
+                   ($8,000 - profit).
+                   (This replaced the earlier $750 risk / $2,500 day
+                   cap for funded: the 12 Nov audit found $1,000 risk
+                   with a $1,640 cap reaches the $8,000 payout more
+                   often, 31% against 25.5%, and faster.)
+  LUCID STEP 1:    goal = smaller of $1,200 and the larger of
+                   ($3,000 - profit) and (best day / 0.40 - profit).
+  LUCID PRE-LIVE:  goal = $2,000 - profit (no day cap).
+  Left today = goal - today's profit.
+
+STEP 2. Skip the account for this alert if:
+  - left today is $0 or less (day goal reached), or
+  - it already has an open position, or
+  - its daily loss limit is used up, or
+  - it is payout-ready (FUNDED: 5 winning days AND profit >= $8,000)
+    -> stop trading it and request the payout, or
+  - the account is passed/blown and waiting for you to change it.
+
+STEP 3. Stop and size.
+  Risk per trade: $1,000 in Topstep EVAL and FUNDED (50 points on
+  10 MNQ), $1,000 in Lucid step 1, $1,250 in Lucid Pre-Live (62.5 pts).
+  Room = profit - loss floor, where the loss floor trails the highest
+  end-of-day profit by $2,000 and stops at 0 (= starting balance).
+  With a daily loss limit, room = the smaller of that and
+  ($1,000 + today's profit).
+  Contracts = 10 if room >= risk, otherwise
+              floor(room / (stop points x $2)) - never tighten the stop.
+  If that is 0, the account cannot trade: in EVAL treat it as finished.
+
+STEP 4. Target.
+  Target points = (left today + $1 x contracts) / (contracts x $2),
+  rounded up to the tick. If this trade would finish the account
+  (pass or payout), aim for at least $25.
+
+STEP 5. Exit.
+  Bracket order: stop and target. If neither is hit, close at exit_by.
+
+STEP 6. After the trade and at 18:00 each day, update the numbers.
+  EVAL passes when profit >= $3,000 AND best day <= 55% of profit
+  (Lucid: 40%). You then switch the account to FUNDED on the website.
+
+---------------------------------------------------------------------
+6. ACCOUNT SETTINGS AND PAYOUTS
+---------------------------------------------------------------------
+Topstep: buy the 50K Combine with the daily loss limit added at
+checkout (this doubles the payout cap to $4,000). $120 per eval.
+Funded plan: run each account to an $8,000 balance with 5 winning
+days, then request $4,000 (you receive $3,600). After a payout the
+loss limit moves to $0 for good, so the remaining $4,000 is the buffer.
+
+Being moved to Live: Topstep calls traders up at its discretion
+(most between their 3rd and 5th payout). You cannot decline. All
+Express Funded Accounts close when it happens, but a payout can be
+requested from each one during the move. Check whether your bot's
+API connection works on a Live account before relying on it there.
+
+---------------------------------------------------------------------
+7. BACKTEST RESULTS (MNQ 1-minute data, Nov 2019 - Nov 2026)
+---------------------------------------------------------------------
+Costs included: $1 per contract round trip, 1 tick slippage on stops,
+a bar touching both stop and target counts as a loss.
+
+EVAL (Topstep 55% rule)
+  Pass rate 49% (2019-22: 48%, 2023-26: 50%), worst year 41% (2022)
+  Profit factor 1.33, every year between 1.20 and 1.46
+  Trade win rate 53%
+  Median 7 trading days to pass; about 15-17 trading days per pass
+  on one account (about 1.2 passes a month)
+  Fees per pass about $245; most failed evals in a row: 6
+
+TRADES
+  About 0.7 a day, 3.5 a week (median 4). No trade on 43% of days.
+  Longest run of days with no trade: 7.
+
+FUNDED (Topstep, $1,000 risk, $1,640 day cap)
+  Reach $4,000 balance + 5 winning days: 41% of funded accounts
+  Reach $8,000 balance + 5 winning days: 30.5%
+  Typical balance when the 5th winning day is banked: about $3,800
+
+FIRST EVAL TO PAYOUT (fees at $120, averages)
+  $4,000 funded -> $2,000 payout: about 5 evals, $610, about 3 months
+  $8,000 funded -> $4,000 payout: about 7 evals, $840, about 4.5 months
+  5 accounts copying, 5 x $4,000 payouts: about 35 evals, $4,190 on
+  average; budget $9,000 for a bad run.
+
+LUCIDMAXX (40% rule, then Pre-Live)
+  Step 1 46%, Pre-Live 59%, both 27%; about 3.7 evals ($660 at $180)
+
+---------------------------------------------------------------------
+8. HONEST LIMITS
+---------------------------------------------------------------------
+- Backtest only. Expect live pass rates a few points lower (43-47%).
+- About 200 variations of C were tested on 12 Nov; none improved the
+  eval pass rate and speed together. Speed comes from running more
+  accounts at once, not from loosening the filters.
+- Funded and payout figures rest on smaller samples than the eval
+  figures.
+- Not tested: trading on after the first payout, Lucid's live
+  account, Lucid's Pre-Live scaling limits.
+- Run on the practice account first.

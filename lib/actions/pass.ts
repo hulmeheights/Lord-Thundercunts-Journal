@@ -37,7 +37,7 @@ export async function addPassAccount(firm: "topstep" | "lucid") {
     const sql = await db();
     const [{ n }] = await sql<{ n: number }[]>`select count(*)::int as n from pass_accounts`;
     if (n >= 30) return { error: "That's the most cards (30)." };
-    await sql`insert into pass_accounts (id, label, firm, script) values (${`pa_${randomToken(9)}`}, ${`${firm === "lucid" ? "Lucid" : "Topstep"} ${n + 1}`}, ${firm}, ${firm === "lucid" ? "C" : "D"})`;
+    await sql`insert into pass_accounts (id, label, firm, script) values (${`pa_${randomToken(9)}`}, ${`${firm === "lucid" ? "Lucid" : "Topstep"} ${n + 1}`}, ${firm}, ${"C"})`;
     done();
     return { ok: true };
   });

@@ -50,10 +50,10 @@ test("script D: no filters in eval, both filters once funded; script C: always",
   assert.ok(plan({ ...evalD, stage: "funded" }, fresh([], "2026-11-12", "funded"), sig({ price: 24940, dir: "LONG" })).take); // below VAL, bias up
 });
 
-test("funded: $750 risk (37.5 pt), $2,500 cap; after 5 winning days the goal shrinks to what's left to $8,000; then payout", () => {
+test("funded (rules pack v2): $1,000 risk (50 pt), $1,640 cap; after 5 winning days the goal shrinks to what's left to $8,000; then payout", () => {
   const funded: Card = { ...evalD, stage: "funded" };
   const p = plan(funded, fresh([], "2026-11-20", "funded"), sig({ tradingDay: "2026-11-20" }));
-  assert.ok(p.take && p.stopPts === 37.5 && p.targetPts === 125.5);
+  assert.ok(p.take && p.stopPts === 50 && p.targetPts === 82.5);
   const five = [1, 2, 3, 4, 5].map((i) => ({ day: `2026-11-1${i}`, pnl: 1400 }));
   const s = fresh(five, "2026-11-20", "funded");
   assert.equal(s.winDaysBefore, 5);
