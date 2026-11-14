@@ -33,6 +33,19 @@ export async function setPassMode(on: boolean) {
   });
 }
 
+/** How many minutes either side of high-impact US news the pass plan stays out (0 = off). */
+export async function setPassNewsMinutes(minutes: number) {
+  await assertSession();
+  return safely(async () => {
+    const m = z.number().int().min(0).max(120).parse(minutes);
+    const sql = await db();
+    await sql`update pass_settings set news_minutes = ${m} where id = 1`;
+    await logEvent("info", m ? `Pass plan · news blackout set to ${m} minutes either side` : "Pass plan · news blackout switched off");
+    done();
+    return { ok: true };
+  });
+}
+
 export async function addPassAccount(firm: "topstep" | "lucid") {
   await assertSession();
   return safely(async () => {

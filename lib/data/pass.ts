@@ -51,7 +51,7 @@ const PREVIEW = { session: "NY", tradingDay: "2026-01-05", dir: "LONG", price: 2
 
 export async function passState() {
   const sql = await db();
-  const [s] = await sql<{ mode: string; sor_health: string }[]>`select mode, sor_health from pass_settings where id = 1`;
+  const [s] = await sql<{ mode: string; sor_health: string; news_minutes: number }[]>`select mode, sor_health, news_minutes from pass_settings where id = 1`;
   const today = passTradingDay(new Date());
   const sorToday = await sql<{ session: "LON" | "NYAM"; safe_ok: boolean; note: string | null; at: Date }[]>`select session, safe_ok, note, at from pass_sor_sessions where trading_day = ${today}`;
   const events = await sql<{ level: string; message: string; created_at: Date }[]>`select level, message, created_at from bot_events where message like 'Pass plan%' order by created_at desc limit 60`;
@@ -93,6 +93,7 @@ export async function passState() {
   return {
     on: s?.mode === "on",
     sorHealth: (s?.sor_health ?? "LIVE") as "LIVE" | "PAUSED",
+    newsMinutes: s?.news_minutes ?? 0,
     today,
     sorToday: sorToday.map((x) => ({ session: x.session, safe: x.safe_ok, note: x.note, at: x.at.toISOString() })),
     events: events.map((e) => ({ level: e.level, message: e.message, at: e.created_at.toISOString() })),

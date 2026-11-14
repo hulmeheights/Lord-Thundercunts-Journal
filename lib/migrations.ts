@@ -885,4 +885,13 @@ export const MIGRATIONS: { version: number; sql: string }[] = [
       );
     `,
   },
+  {
+    version: 45,
+    sql: /* sql */ `
+      -- Pass plan: its own news blackout (minutes either side of high-impact US releases, 0 = off).
+      -- It starts on whatever Autopilot's is set to, so both bots stand aside for the same windows.
+      alter table pass_settings add column if not exists news_minutes int not null default 0 check (news_minutes between 0 and 120);
+      update pass_settings set news_minutes = coalesce((select news_minutes from bot_settings where id = 1), 0) where id = 1;
+    `,
+  },
 ];

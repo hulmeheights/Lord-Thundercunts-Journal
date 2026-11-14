@@ -198,5 +198,54 @@ class GoalGuard(unittest.TestCase):
         self.assertEqual([c[1].get("stopPrice") or c[1].get("limitPrice") for c in ts.calls], [24965.0, 25070.0])
 
 
+class HedgeTs(LiveTs):
+    """Three accounts under one login: ours is flat, the others hold whatever the test says."""
+
+    def __init__(self, held):
+        super().__init__([], [], position=False)
+        self.held, self.placed = held, []
+
+    def accounts(self):
+        return [{"id": 7, "name": "50KTC-V2-1"}, {"id": 8, "name": "EXPRESS-2"}, {"id": 9, "name": "MANUAL-3"}]
+
+    def positions(self, account_id):
+        if account_id == 7:
+            return [{"size": 10, "type": 1, "averagePrice": 25000.0}] if self.placed else []
+        v = self.held.get(account_id, [])
+        if isinstance(v, Exception):
+            raise v
+        return v
+
+    def place(self, *a):
+        self.placed.append(a)
+        return "o1"
+
+
+class HedgeBlocker(unittest.TestCase):
+    """No order goes in while any other Topstep account under the login holds the other side."""
+
+    ORDER = {"tradeId": "pt_hedge00001", "label": "Eval 1", "account": "50KTC-V2-1", "strategy": "C", "dir": "SHORT", "qty": 10, "stopTicks": 200, "targetTicks": 330}
+
+    def setUp(self):
+        R.time.sleep = lambda s: None
+
+    def test_another_account_long_blocks_a_short_even_if_it_has_no_card(self):
+        ts = HedgeTs({9: [{"size": 3, "type": 1}]})  # MANUAL-3 is long, placed by hand, no card
+        out = R.pass_place(ts, dict(self.ORDER), [])
+        self.assertEqual((out["status"], ts.placed), ("error", []))
+        self.assertIn("MANUAL-3 holds the other side", out["reason"])
+
+    def test_same_side_elsewhere_is_fine(self):
+        ts = HedgeTs({8: [{"size": 7, "type": 2}]})  # EXPRESS-2 is short too
+        self.assertEqual(R.pass_place(ts, dict(self.ORDER), [])["status"], "open")
+        self.assertEqual(len(ts.placed), 1)
+
+    def test_an_account_that_cant_be_checked_blocks_too(self):
+        ts = HedgeTs({8: RuntimeError("searchOpen failed (500)")})
+        out = R.pass_place(ts, dict(self.ORDER), [])
+        self.assertEqual((out["status"], ts.placed), ("error", []))
+        self.assertIn("couldn't check EXPRESS-2", out["reason"])
+
+
 if __name__ == "__main__":
     unittest.main()

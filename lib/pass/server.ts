@@ -2,6 +2,8 @@ import { db } from "../db";
 import { randomToken } from "../crypto";
 import { zonedToUtc } from "../analytics/time";
 import { logEvent } from "../bot/engine";
+import { newsBlock } from "../bot/news";
+import { newsAround } from "../bot/newsFeed";
 import { botNotify } from "../bot/notify";
 import { accountDone, accountStats, money, passTradingDay, plan, planSor, resolve, SESSION_NAME, SESSION_TIMES, SOR_EXIT, SOR_SESSIONS, sorValid, type AnySession, type Card, type Firm, type PassSession, type RawSor, type SavedSettings, type Script, type Signal, type Stage, type StageCfg, type Stats, type Strategy } from "./rules";
 
@@ -53,6 +55,35 @@ export async function statsFor(a: PassAccountRow, now = new Date()): Promise<Sta
     cfgOf(a),
     a.floor_locked,
   );
+}
+
+/**
+ * What stops a signal for every account before any card looks at it:
+ * the news blackout (your minutes either side of a high-impact US release).
+ */
+async function newsStop(now: Date): Promise<string | null> {
+  const sql = await db();
+  const [s] = await sql<{ news_minutes: number }[]>`select news_minutes from pass_settings where id = 1`;
+  const minutes = s?.news_minutes ?? 0;
+  if (!minutes) return null;
+  const hits = newsBlock(now, await newsAround(new Date(now.getTime() - minutes * 60_000), new Date(now.getTime() + minutes * 60_000)), minutes);
+  return hits.length ? `news blackout: ${[...new Set(hits.map((e) => e.title))].join(", ")} (±${minutes} min)` : null;
+}
+
+/**
+ * The hedge blocker, in the book: no account goes one way while any other
+ * account (pass plan or Autopilot, real or practice) is open the other way.
+ * The Mac checks the same thing again at Topstep before it places.
+ */
+async function hedgeStop(accountId: string, dir: "LONG" | "SHORT"): Promise<string | null> {
+  const sql = await db();
+  const other = dir === "LONG" ? "SHORT" : "LONG";
+  const [p] = await sql<{ account_label: string }[]>`
+    select account_label from pass_trades where status in ('open', 'pending') and dir = ${other} and account_id is distinct from ${accountId} limit 1
+  `;
+  if (p) return `${p.account_label} is ${other.toLowerCase()}: no ${dir.toLowerCase()} on another account, so nothing is hedged`;
+  const [b] = await sql<{ account_label: string }[]>`select account_label from bot_trades where status = 'open' and mode = 'live' and dir = ${other} limit 1`;
+  return b ? `${b.account_label} (Autopilot) is ${other.toLowerCase()}: no ${dir.toLowerCase()} here, so nothing is hedged` : null;
 }
 
 /** One position per account at a time, C or SOR. */
@@ -180,11 +211,13 @@ export async function passSignal(sig: Signal & { barTime: string }) {
   const plans: { tradeId: string; cardId: string; label: string; account: string | null; mode: PassMode; dir: string; qty: number; stopTicks: number; targetTicks: number }[] = [];
   const lines: string[] = [];
   let taken = 0;
+  const news = await newsStop(new Date());
   for (const a of cards) {
     const st = await statsFor(a);
     const card = toCard(a);
-    // One position per account: a C signal never goes on top of an open trade (C or SOR).
-    const p = (await busy(a.id)) ? ({ take: false, reason: "a trade is already open on this account" } as const) : plan(card, st, sig);
+    // Before the account's own rules: the news blackout, one position per account (C or SOR), and no hedging across accounts.
+    const block = news ?? ((await busy(a.id)) ? "a trade is already open on this account" : await hedgeStop(a.id, sig.dir));
+    const p = block ? ({ take: false, reason: block } as const) : plan(card, st, sig);
     const mode = modeOf(a);
     const id = `pt_${randomToken(10)}`;
     const long = sig.dir === "LONG" ? 1 : -1;
@@ -234,7 +267,7 @@ export async function passSor(sig: SorAlert, now = new Date()): Promise<{ status
   }
   const day = passTradingDay(now);
   const head = `SOR ${SESSION_NAME[v.session]} ${sig.dir} @ ${sig.entry} · SL ${sig.stop} · TP ${v.target}`;
-  const note = !sig.safe_ok ? "first valid signal was not safe: no SOR this session" : s.sor_health === "PAUSED" ? "SOR is paused (health)" : null;
+  const note = !sig.safe_ok ? "first valid signal was not safe: no SOR this session" : s.sor_health === "PAUSED" ? "SOR is paused (health)" : await newsStop(now);
   const first = await sql`
     insert into pass_sor_sessions (trading_day, session, tv_id, safe_ok, note) values (${day}, ${v.session}, ${sig.id.slice(0, 80)}, ${sig.safe_ok}, ${note})
     on conflict (trading_day, session) do nothing returning session
@@ -261,7 +294,8 @@ export async function passSor(sig: SorAlert, now = new Date()): Promise<{ status
     const card = toCard(a);
     if (!card.cfg.sorOn) continue; // C-only accounts (funded, Lucid) never see SOR
     const st = await statsFor(a);
-    const p = (await busy(a.id)) ? ({ take: false, reason: "a trade is already open on this account" } as const) : planSor(card, st, { session: v.session, dir: sig.dir, entry: sig.entry, stop: sig.stop, target: v.target });
+    const block = (await busy(a.id)) ? "a trade is already open on this account" : await hedgeStop(a.id, sig.dir);
+    const p = block ? ({ take: false, reason: block } as const) : planSor(card, st, { session: v.session, dir: sig.dir, entry: sig.entry, stop: sig.stop, target: v.target });
     const mode = modeOf(a);
     const id = `pt_${randomToken(10)}`;
     // Practice and Lucid fill a tick worse, as tested. The stop is SOR's own price; a capped target sits a distance from the fill.

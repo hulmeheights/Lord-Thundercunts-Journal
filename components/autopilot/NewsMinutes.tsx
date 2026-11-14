@@ -5,14 +5,14 @@ import { useRouter } from "next/navigation";
 import { setNewsMinutes } from "@/lib/actions/bot";
 
 /** Minutes either side of high-impact news with no new entries (0 = off). */
-export function NewsMinutes({ initial }: { initial: number }) {
+export function NewsMinutes({ initial, action = setNewsMinutes }: { initial: number; action?: (minutes: number) => Promise<{ ok?: boolean; error?: string } | { error: string }> }) {
   const router = useRouter();
   const [v, setV] = useState(String(initial));
   const [msg, setMsg] = useState<string | null>(null);
   const [pending, start] = useTransition();
   const save = () =>
     start(async () => {
-      const r = await setNewsMinutes(Math.round(Number(v) || 0));
+      const r = await action(Math.round(Number(v) || 0));
       setMsg("error" in r && r.error ? r.error : "Saved");
       router.refresh();
     });

@@ -11,6 +11,10 @@ import { Runner } from "@/components/autopilot/Runner";
 import { CopyScript } from "@/components/pass/CopyScript";
 import { PASS_PINE, PASS_PINE_NAME } from "@/lib/pass/pineScript";
 import { headers } from "next/headers";
+import { NewsMinutes } from "@/components/autopilot/NewsMinutes";
+import { setPassNewsMinutes } from "@/lib/actions/pass";
+import { windows } from "@/lib/bot/news";
+import { newsAround, newsFreshness, refreshNews } from "@/lib/bot/newsFeed";
 
 export const metadata = { title: "Pass plan" };
 
@@ -19,11 +23,15 @@ const money = (n: number) => `${n < 0 ? "−" : n > 0 ? "+" : ""}$${Math.abs(Mat
 const NEEDS = 5;
 
 export default async function PassPage() {
-  const [p, runner, settings, h] = await Promise.all([passState(), runnerStatus(), getSettings(), headers()]);
+  await refreshNews();
+  const [p, runner, settings, h, upcoming, fresh] = await Promise.all([passState(), runnerStatus(), getSettings(), headers(), newsAround(new Date(Date.now() - 60 * 60_000), new Date(Date.now() + 8 * 86_400_000)), newsFreshness()]);
   const host = h.get("x-forwarded-host") ?? h.get("host") ?? "lord-thundercunts-journal.vercel.app";
   const origin = `${host.startsWith("localhost") ? "http" : "https"}://${host}`;
   const tz = settings.profile.timezone;
   const when = (iso: string) => new Date(iso).toLocaleString("en-GB", { timeZone: tz, weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+  const blackouts = windows(upcoming, p.newsMinutes);
+  const nyTime = (iso: string) => new Date(iso).toLocaleString("en-GB", { timeZone: "America/New_York", weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+  const local = (iso: string) => new Date(iso).toLocaleTimeString("en-GB", { timeZone: tz, hour: "2-digit", minute: "2-digit" });
   const on = p.accounts.filter((a) => a.enabled);
   const live = on.filter((a) => a.mode === "live");
   const closed = p.trades.filter((t) => t.status === "closed" && t.pnl !== null);
@@ -39,7 +47,7 @@ export default async function PassPage() {
   const sorCards = on.filter((a) => a.cfg.sorOn);
   return (
     <>
-      <SectionIndex ids={["switch", "mac", "tradingview", "accounts", "now", "book", "rules", "log"]} />
+      <SectionIndex ids={["switch", "mac", "tradingview", "accounts", "news", "now", "book", "rules", "log"]} />
       <PageHead
         eyebrow="08 — Pass plan"
         title={
@@ -105,7 +113,35 @@ export default async function PassPage() {
         </p>
       </Section>
 
-      <Section id="now" n={5} label="Right now" lead={<>Open trades and today&apos;s <em>SOR</em>.</>}>
+      <Section id="news" n={5} label="News and hedging" lead={<>Out of the way of the <em>big</em> releases.</>}>
+        <div className="max-w-3xl">
+          <NewsMinutes initial={p.newsMinutes} action={setPassNewsMinutes} />
+          <ul className="mt-6">
+            {p.newsMinutes === 0 && <li className="font-mono text-[11px] text-gold">Blackout is off: the pass plan trades straight through news.</li>}
+            {p.newsMinutes > 0 && blackouts.length === 0 && <li className="font-mono text-[11px] text-ink-3">No high-impact US releases in the next week.</li>}
+            {p.newsMinutes > 0 &&
+              blackouts.map((w) => (
+                <li key={w.at} className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-0.5 border-b border-line py-2.5 font-mono text-[11px]">
+                  <span className="text-ink">{w.titles.join(" · ")}</span>
+                  <span className="text-ink-2">{nyTime(w.at)} NY</span>
+                  <span className="col-span-2 text-[10px] text-ink-4">
+                    No entries {local(w.from)}–{local(w.to)} your time
+                  </span>
+                </li>
+              ))}
+          </ul>
+          <div className="mt-4 space-y-2 font-mono text-[10.5px] leading-[1.8] text-ink-4">
+            <p>
+              Its own setting, separate from Autopilot&apos;s (it started on the same number). Any number of minutes from 0 to 120; 0 switches it off. A C or SOR signal that arrives inside a window is skipped on every account and written in the book with the release that blocked it. A trade already open keeps its stop and target through the news; only new entries wait. High-impact US releases from the Forex Factory calendar{fresh ? `, last refreshed ${when(fresh.toISOString())}` : ""}. The 7-year backtest had no news rule, so a blackout will skip some trades the test took.
+            </p>
+            <p>
+              <b className="font-normal text-ink-2">Hedge blocker, always on.</b> No account goes one way while another is open the other way. It is checked twice: here in the book (every open pass-plan and Autopilot trade), and again by your Mac at Topstep, across every account your login can see, including trades you placed by hand. If any account holds the other side, or can&apos;t be checked, the order is not placed and your phone is told.
+            </p>
+          </div>
+        </div>
+      </Section>
+
+      <Section id="now" n={6} label="Right now" lead={<>Open trades and today&apos;s <em>SOR</em>.</>}>
         <div className="grid max-w-4xl gap-8 lg:grid-cols-2">
           <div>
             <div className="mb-3 font-mono text-[9px] tracking-[0.24em] text-ink-4 uppercase">Open positions</div>
@@ -148,7 +184,7 @@ export default async function PassPage() {
         </div>
       </Section>
 
-      <Section id="book" n={6} label="The book" lead={<>Every signal, every <em>account</em>.</>}>
+      <Section id="book" n={7} label="The book" lead={<>Every signal, every <em>account</em>.</>}>
         <div className="mb-4 space-y-1 font-mono text-[11px] text-ink-3">
           <div>All · {tally(closed)}</div>
           <div className="text-ink-4">C · {tally(closed.filter((t) => t.strategy === "C"))}</div>
@@ -175,7 +211,7 @@ export default async function PassPage() {
         </ul>
       </Section>
 
-      <Section id="rules" n={7} label="The rules" lead={<>What the bot <em>does</em>.</>}>
+      <Section id="rules" n={8} label="The rules" lead={<>What the bot <em>does</em>.</>}>
         <div className="max-w-3xl space-y-3 font-mono text-[11px] leading-[1.8] text-ink-3">
           <p>
             <b className="font-normal text-ink">Script C</b> (every account). Asia: the 20:00 New York bar closes → LONG, out by 02:59 (not Friday or Saturday evening). London: the 03:30 bar closes above the 03:01 open → SHORT, otherwise LONG, out by 09:39. New York: the 10:10 bar closes at or above the 09:41 open → LONG, otherwise SHORT, out by 16:09. The script only sends a trade when the last finished 4H candle points the same way and price is outside the 70% value area, so nothing is re-checked here.
@@ -196,7 +232,7 @@ export default async function PassPage() {
         </div>
       </Section>
 
-      <Section id="log" n={8} label="Log">
+      <Section id="log" n={9} label="Log">
         <ul>
           {p.events.length === 0 && <li className="font-mono text-[11.5px] text-ink-3">Quiet so far.</li>}
           {p.events.map((e, i) => (

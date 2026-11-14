@@ -645,10 +645,23 @@ def pass_place(ts, p, hedge_accounts):
             return {"tradeId": p["tradeId"], "status": "error", "reason": f"Topstep account \"{p.get('account') or 'none set'}\" not found"}
         if ts.positions(m["id"]):
             return {"tradeId": p["tradeId"], "status": "error", "reason": "already in a position on this account"}
+        # The hedge blocker, at Topstep itself: EVERY account this login can see (card or not, bot trade or one you
+        # placed by hand) is checked. If any holds the other side, or can't be checked, nothing is placed.
         against = 2 if long else 1  # ProjectX position type: 1 long, 2 short
+        names = {}
         for hint, label in hedge_accounts:
             h = match_account(accts, hint)
-            if h and h["id"] != m["id"] and any(x.get("type") == against for x in ts.positions(h["id"])):
+            if h:
+                names[h["id"]] = label
+        for other in accts:
+            if other["id"] == m["id"]:
+                continue
+            label = names.get(other["id"]) or other.get("name") or str(other["id"])
+            try:
+                held = ts.positions(other["id"])
+            except Exception as e:
+                return {"tradeId": p["tradeId"], "status": "error", "reason": f"couldn't check {label} for an opposite position ({str(e)[:120]}): not placed, so nothing can be hedged"}
+            if any(x.get("type") == against for x in held):
                 return {"tradeId": p["tradeId"], "status": "error", "reason": f"{label} holds the other side: not placed, so nothing is hedged"}
         RECENT_PLACE[m["id"]] = time.time()
         oid = ts.place(m["id"], contract, sig["dir"], p["qty"], p["stopTicks"], p["targetTicks"], f"ltj-pass-{p['tradeId'][3:13]}")
