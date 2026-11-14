@@ -259,7 +259,7 @@ export function LiveChart({
         const above = ay - 10 > 6;
         // On a narrow chart the label would sit on the running figure; the page names it instead.
         if (F >= 120) text(ahead.label, right, above ? ay - 10 : ay + 11, `rgba(${rgb.gold},${0.45 + 0.5 * fade})`, "right");
-        if (ahead.sub && fade > 0) text(ahead.sub, right, above ? ay + 11 : ay + 24, `rgba(${rgb.ink},${0.55 * fade})`, "right");
+        if (ahead.sub && fade > 0 && F >= 120) text(ahead.sub, right, above ? ay + 11 : ay + 24, `rgba(${rgb.ink},${0.55 * fade})`, "right");
         if (fade > 0 && hover === null) {
           const ex = right - 5;
           ctx.setLineDash([3, 5]); ctx.lineDashOffset = -drift * 16;
@@ -289,7 +289,8 @@ export function LiveChart({
         }
         // Under the line, so it never sits on the running figure riding the tip.
         const rise = out(Math.min(1, b * 2)) * 5;
-        if (b < 1) text(c.label, x, y + 22 - rise < H - 6 ? y + 22 - rise : y - 16, `rgba(${rgb.gold},${1 - b * b})`, "center");
+        // Right at the tip the running figure is already there: no second label on top of it.
+        if (b < 1 && x < PW - 70) text(c.label, x, y + 22 - rise < H - 6 ? y + 22 - rise : y - 16, `rgba(${rgb.gold},${1 - b * b})`, "center");
       }
 
       // Motes: while the line is climbing, small lights rise off the head.

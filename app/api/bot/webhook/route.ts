@@ -20,6 +20,18 @@ const PassAlert = z.object({
   id: z.string().max(60),
 });
 
+/** The Sniper script's trade: its own stop and target prices. Its "qty" is ignored: each account sizes it. */
+const SniperAlert = z.object({
+  secret: z.string(),
+  event: z.literal("signal"),
+  strategy: z.literal("SNIPER"),
+  dir: z.enum(["LONG", "SHORT"]),
+  entry: z.number().finite().positive(),
+  stop: z.number().finite().positive(),
+  target: z.number().finite().positive(),
+  id: z.string().min(1).max(80),
+});
+
 export const dynamic = "force-dynamic";
 // Orders on several accounts can take a few seconds; they run after the reply (below).
 export const maxDuration = 60;
@@ -82,8 +94,33 @@ export async function POST(req: Request) {
     await logEvent("warn", "A health alert came with no PAUSED / LIVE state: nothing changed");
     return NextResponse.json({ ok: true, ignored: true });
   }
-  // Sniper is not traded: its signals, day summaries and exits are dropped without a word.
-  if (ev.strategy === "SNIPER" || ev.event === "sniper_day") return NextResponse.json({ ok: true, ignored: true });
+  // MNQ Sniper [5m]: the day's call (information only), the trade, and its 15:55 exit (the Mac closes on its own clock too).
+  if (ev.event === "sniper_day") {
+    const dir = (body as { dir?: unknown }).dir;
+    if (dir === "LONG" || dir === "SHORT") after(() => import("@/lib/pass/server").then((m) => m.sniperDay(dir, received)).catch(() => {}));
+    return NextResponse.json({ ok: true, received: received.toISOString() });
+  }
+  if (ev.strategy === "SNIPER") {
+    if (ev.event === "exit") {
+      await logEvent("info", "Pass plan · Sniper time exit (15:55 New York): your Mac closes any Sniper position still open");
+      return NextResponse.json({ ok: true, received: received.toISOString() });
+    }
+    const sn = SniperAlert.safeParse(body);
+    if (!sn.success) {
+      await logEvent("error", `Sniper alert didn't look right: ${sn.error.issues[0]?.path.join(".")} ${sn.error.issues[0]?.message}`);
+      return NextResponse.json({ ok: false, error: "bad sniper alert" }, { status: 400 });
+    }
+    const d = sn.data;
+    after(async () => {
+      try {
+        const { passSniper } = await import("@/lib/pass/server");
+        await passSniper({ dir: d.dir, entry: d.entry, stop: d.stop, target: d.target, id: d.id }, received);
+      } catch (e) {
+        await logEvent("error", `Pass plan Sniper error: ${e instanceof Error ? e.message : String(e)}`).catch(() => {});
+      }
+    });
+    return NextResponse.json({ ok: true, received: received.toISOString() });
+  }
   // MNQ SOR v2: the script sends {"event":"signal", …} itself (alert() with its own message).
   if (typeof body === "object" && body && (body as { event?: unknown }).event === "signal") {
     const sig = SorSignal.safeParse(body);

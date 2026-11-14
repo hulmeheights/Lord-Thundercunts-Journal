@@ -5,7 +5,7 @@ import { logEvent } from "../bot/engine";
 import { newsBlock } from "../bot/news";
 import { newsAround } from "../bot/newsFeed";
 import { botNotify } from "../bot/notify";
-import { accountDone, accountStats, money, passTradingDay, plan, planSor, resolve, SESSION_NAME, SESSION_TIMES, SOR_EXIT, SOR_SESSIONS, sorValid, type AnySession, type Card, type Firm, type PassSession, type RawSor, type SavedSettings, type Script, type Signal, type Stage, type StageCfg, type Stats, type Strategy } from "./rules";
+import { accountDone, accountStats, money, passTradingDay, plan, planSniper, planSor, resolve, SESSION_NAME, SESSION_TIMES, SNIPER_EXIT, sniperQty, SOR_EXIT, SOR_SESSIONS, sorValid, type AnySession, type Card, type Firm, type PassSession, type RawSor, type SavedSettings, type Script, type Signal, type Stage, type StageCfg, type Stats, type Strategy } from "./rules";
 
 const NY = "America/New_York";
 export type PassMode = "live" | "dry" | "signal";
@@ -118,7 +118,7 @@ async function busy(accountId: string): Promise<boolean> {
 
 /** When a session's trade must be out (its time exit), as an instant. */
 export function exitAt(session: AnySession, tradingDay: string, strategy: Strategy = "C"): Date {
-  const [h, m] = (strategy === "SOR" || session === "NYAM" ? SOR_EXIT : SESSION_TIMES[session].exit).split(":").map(Number);
+  const [h, m] = (strategy === "SNIPER" ? SNIPER_EXIT : strategy === "SOR" || session === "NYAM" ? SOR_EXIT : SESSION_TIMES[session].exit).split(":").map(Number);
   return zonedToUtc(tradingDay, h! * 60 + m!, NY);
 }
 
@@ -132,7 +132,7 @@ export function passWaitSeconds(now = new Date()): number {
     return h! * 3600 + m! * 60;
   };
   const entries = Object.values(SESSION_TIMES).map((t) => sec(t.signal) - 60); // the bar closes a minute before the order time
-  const exits = Object.values(SESSION_TIMES).map((t) => sec(t.exit) + 3);
+  const exits = [...Object.values(SESSION_TIMES).map((t) => t.exit), SNIPER_EXIT].map((x) => sec(x) + 3);
   if (entries.some((e) => { const d = (s - e + 86_400) % 86_400; return d >= 0 && d <= 240; })) return 5;
   return Math.max(5, Math.min(...[...entries.map((e) => e - 60), ...exits].map((e) => (e - s + 86_400) % 86_400)));
 }
@@ -144,14 +144,24 @@ export function sorWindowNow(now = new Date()): boolean {
   return Object.values(SOR_SESSIONS).some((w) => m >= w.start - 2 && m <= w.start + w.window + 2);
 }
 
-/** Does the Mac need to hold the line open right now: the plan is on, a card trades SOR, and a SOR window is open. */
+/** Sniper's entry window: 10:00 to 15:00 New York, with a little slack. */
+export function sniperWindowNow(now = new Date()): boolean {
+  const ny = new Intl.DateTimeFormat("en-GB", { timeZone: NY, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(now);
+  const m = Number(ny.find((p) => p.type === "hour")!.value) * 60 + Number(ny.find((p) => p.type === "minute")!.value);
+  return m >= 598 && m <= 907;
+}
+
+/** Does the Mac need to hold the line open right now: the plan is on, and a real card trades SOR or Sniper while that window is open. */
 export async function passListening(now = new Date()): Promise<boolean> {
-  if (!sorWindowNow(now)) return false;
-  const sql = await db();
-  const [s] = await sql<{ mode: string }[]>`select mode from pass_settings where id = 1`;
-  if (s?.mode !== "on") return false;
-  const cards = await sql<PassAccountRow[]>`select * from pass_accounts where enabled`;
-  return cards.some((c) => modeOf(c) === "live" && cfgOf(c).sorOn);
+  const sor = sorWindowNow(now), sniper = sniperWindowNow(now);
+  if (!sor && !sniper) return false;
+  {
+    const sql = await db();
+    const [s] = await sql<{ mode: string }[]>`select mode from pass_settings where id = 1`;
+    if (s?.mode !== "on") return false;
+    const cards = await sql<PassAccountRow[]>`select * from pass_accounts where enabled`;
+    return cards.some((c) => modeOf(c) === "live" && ((sor && cfgOf(c).sorOn) || (sniper && cfgOf(c).sniperOn)));
+  }
 }
 
 /** What the Mac needs for the pass plan: is it on, the accounts it may touch, and the trades it's following. */
@@ -190,8 +200,8 @@ export async function passContext() {
       targetTicks: Math.round(Math.abs(t.target_price - t.entry_price) * 4),
       // SOR trades to its own PRICES: once filled, the Mac moves the stop (and an uncapped target) onto them.
       // A capped target, like every C level, stays a distance from the real fill.
-      stopPrice: t.strategy === "SOR" ? t.stop_price : null,
-      targetPrice: t.strategy === "SOR" && !t.filters?.capped ? t.target_price : null,
+      stopPrice: t.strategy !== "C" ? t.stop_price : null,
+      targetPrice: t.strategy !== "C" && !t.filters?.capped ? t.target_price : null,
     })),
     on: s?.mode === "on" && cards.some((c) => c.enabled),
     accounts: cards.filter((c) => c.enabled && modeOf(c) === "live").map((c) => ({ cardId: c.id, label: c.label, account: c.topstep_account })),
@@ -218,7 +228,9 @@ export async function passContext() {
 }
 
 const r2 = (x: number) => Math.round(x / 0.25) * 0.25;
-const clock = (session: AnySession, strategy: Strategy = "C") => `${strategy === "SOR" || session === "NYAM" ? SOR_EXIT : SESSION_TIMES[session].exit} New York`;
+const clock = (session: AnySession, strategy: Strategy = "C") => `${strategy === "SNIPER" ? SNIPER_EXIT : strategy === "SOR" || session === "NYAM" ? SOR_EXIT : SESSION_TIMES[session].exit} New York`;
+/** "SOR London", "Sniper", "New York" (plain C): how a trade is named in messages. */
+const tradeName = (session: AnySession, strategy: Strategy) => (strategy === "SNIPER" ? "Sniper" : `${strategy === "SOR" ? "SOR " : ""}${SESSION_NAME[session]}`);
 
 /**
  * A session's signal from your Mac (measured on the 1-minute bars): every
@@ -350,6 +362,72 @@ export async function passSor(sig: SorAlert, now = new Date()): Promise<{ status
   return { status: "decided" };
 }
 
+export type SniperAlert = { dir: "LONG" | "SHORT"; entry: number; stop: number; target: number; id: string };
+
+/**
+ * The day's Sniper trade (Sniper rules, section 4): at most one a day, between
+ * 10:00 and 15:00 New York. Each card with Sniper on sizes it from its own
+ * risk and the alert's stop, keeps the alert's stop PRICE, and caps the target
+ * at what's left of its day goal. C always has priority: never on top of an open trade.
+ */
+export async function passSniper(sig: SniperAlert, now = new Date()): Promise<{ status: string }> {
+  const sql = await db();
+  const sign = sig.dir === "LONG" ? 1 : -1;
+  const stopDist = (sig.entry - sig.stop) * sign;
+  if (!(stopDist >= 0.25) || !((sig.target - sig.entry) * sign >= 0.25)) {
+    await logEvent("error", `Pass plan · Sniper alert didn't look right (entry ${sig.entry}, stop ${sig.stop}, target ${sig.target}): nothing placed`);
+    return { status: "invalid" };
+  }
+  const day = passTradingDay(now);
+  // The track record follows it whatever the switches say, at the tested $700 risk.
+  await track({ strategy: "SNIPER", session: "NY", tradingDay: day, dir: sig.dir, qty: sniperQty(700, stopDist), price: sig.entry, stop: sig.stop, target: sig.target, tvId: sig.id, filters: { sniper: true } }).catch(() => {});
+  const [s] = await sql<{ mode: string }[]>`select mode from pass_settings where id = 1`;
+  if (s?.mode !== "on") return { status: "off" };
+  const head = `Sniper ${sig.dir} @ ${sig.entry} · SL ${sig.stop} · TP ${sig.target}`;
+  // A C alert on the same bar (10:10) comes first.
+  if (new Intl.DateTimeFormat("en-GB", { timeZone: NY, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(now) === "10:11") await new Promise((r) => setTimeout(r, 5000));
+  const news = await newsStop(now);
+  const cards = await sql<PassAccountRow[]>`select * from pass_accounts where enabled order by created_at`;
+  const lines: string[] = [];
+  let taken = 0;
+  for (const a of cards) {
+    const card = toCard(a);
+    if (!card.cfg.sniperOn) continue; // evals and Lucid never see Sniper unless you switch it on
+    const st = await statsFor(a);
+    const block = (card.cfg.news ? news : null) ?? ((await busy(a.id)) ? "a trade is already open on this account" : await hedgeStop(a.id, sig.dir));
+    const p = block ? ({ take: false, reason: block } as const) : planSniper(card, st, sig);
+    const mode = modeOf(a);
+    const id = `pt_${randomToken(10)}`;
+    const slip = mode === "live" ? 0 : sign * 0.25;
+    const entry = sig.entry + slip;
+    const target = p.take && p.capped ? r2(entry + sign * p.targetPts) : sig.target;
+    const ins = await sql`
+      insert into pass_trades (id, account_id, account_label, mode, stage, session, strategy, guard, tv_id, trading_day, dir, qty, entry_price, stop_price, target_price, status, reason, filters, entered_at)
+      values (${id}, ${a.id}, ${a.label}, ${mode}, ${a.stage}, 'NY', 'SNIPER', ${card.cfg.guard}, ${sig.id.slice(0, 80)}, ${day}, ${sig.dir}, ${p.take ? p.qty : sniperQty(card.cfg.sniperRisk, stopDist)}, ${entry}, ${sig.stop}, ${target},
+        ${p.take ? (mode === "live" ? "pending" : "open") : "skipped"}, ${p.reason}, ${sql.json({ sniper: true, capped: p.take ? p.capped : false } as never)}, now())
+      on conflict (account_id, trading_day, session, strategy) do nothing returning id
+    `;
+    if (!ins.length) continue;
+    lines.push(`• ${a.label}: ${p.take ? `${mode === "live" ? "placing" : mode === "dry" ? "dry run" : "YOURS TO PLACE"} ${p.qty} MNQ · SL ${sig.stop} · TP ${target}${p.capped ? " (capped)" : ""}` : `skip (${p.reason})`}`);
+    if (!p.take) continue;
+    taken++;
+    if (mode === "signal") {
+      await botNotify(`📣 ${a.label}: ${sig.dir} ${p.qty} MNQ now\nPass plan · Sniper · @ ~${sig.entry} · stop ${sig.stop} · target ${target} · close it at ${SNIPER_EXIT} New York if neither is hit`, { push: true, telegram: false, critical: true, always: true, url: "/pass" });
+    }
+  }
+  await logEvent("info", `Pass plan · ${head}: ${taken} to take`);
+  if (lines.length) await sql`insert into bot_events (level, message) values ('info', ${`Pass plan · ${head}\n${lines.join("\n")}`.slice(0, 1900)})`;
+  return { status: "decided" };
+}
+
+/** 09:30 New York on a sniper day: information only. Shown on the page; nothing is placed. */
+export async function sniperDay(dir: "LONG" | "SHORT", now = new Date()) {
+  const sql = await db();
+  const day = passTradingDay(now);
+  const ch = await sql`update pass_settings set sniper_day = ${day}, sniper_dir = ${dir} where id = 1 and (sniper_day is distinct from ${day} or sniper_dir is distinct from ${dir}) returning id`;
+  if (ch.length) await logEvent("info", `Pass plan · Sniper day: ${dir} only. A trade follows only if the 09:30-10:00 range breaks that way between 10:00 and 15:00 New York.`);
+}
+
 /** The SOR health switch (spec 4.6): PAUSED stops SOR on every account, LIVE allows it again. C is never paused. */
 export async function setSorHealth(state: "LIVE" | "PAUSED") {
   const sql = await db();
@@ -381,7 +459,7 @@ export async function passResults(results: { tradeId: string; status: "open" | "
       update pass_trades set status = 'open', order_id = ${r.orderId ?? null}, entry_price = ${fill}, stop_price = ${stop}, target_price = ${target}, entered_at = now()
       where id = ${r.tradeId}
     `;
-    if (t.mode === "live") await botNotify(`Pass plan · ${t.dir} ${t.qty} MNQ on ${t.account_label}\n${t.strategy === "SOR" ? "SOR " : ""}${SESSION_NAME[t.session]} · in @ ${fill} · SL ${stop} · TP ${target}`, { push: true, telegram: false, always: true, url: "/pass" });
+    if (t.mode === "live") await botNotify(`Pass plan · ${t.dir} ${t.qty} MNQ on ${t.account_label}\n${tradeName(t.session, t.strategy)} · in @ ${fill} · SL ${stop} · TP ${target}`, { push: true, telegram: false, always: true, url: "/pass" });
   }
 }
 
@@ -398,7 +476,7 @@ export async function passClosed(r: { tradeId: string; exitPrice: number | null;
   const lucidTimeExit = t.mode === "signal" && r.reason === "time";
   await botNotify(
     lucidTimeExit
-      ? `⏰ ${t.account_label}: close your ${t.dir} now\nPass plan · ${t.strategy === "SOR" ? "SOR " : ""}${SESSION_NAME[t.session]} time exit (${clock(t.session, t.strategy)})`
+      ? `⏰ ${t.account_label}: close your ${t.dir} now\nPass plan · ${tradeName(t.session, t.strategy)} time exit (${clock(t.session, t.strategy)})`
       : `Pass plan closed · ${money(r.pnl)}\n${t.account_label}${t.mode === "live" ? "" : t.mode === "dry" ? " (practice)" : " (yours)"} · ${how}`,
     { push: t.mode !== "dry", telegram: false, critical: lucidTimeExit, always: true, url: "/pass" },
   );

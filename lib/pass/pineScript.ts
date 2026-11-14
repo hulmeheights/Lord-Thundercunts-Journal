@@ -848,3 +848,155 @@ if barstate.islast
     tRow(11, "C trades (W) · net", str.tostring(cN) + " (" + str.tostring(cW) + ") · $" + str.tostring(cNet, "#,###"), color.white)
     tRow(12, "SOR trades (W) · net", str.tostring(sorN) + " (" + str.tostring(sorW) + ") · $" + str.tostring(sorNet, "#,###"), color.fuchsia)
 `;
+
+/** The TradingView script "MNQ Sniper [5m]" (Pine v5): its own alert, on a 5-minute chart. Keep in step with public/sniper-signals.pine. */
+export const SNIPER_PINE_NAME = "MNQ Sniper [5m]";
+export const SNIPER_PINE = String.raw`//@version=5
+// =============================================================================
+//  MNQ SNIPER [5-minute chart]  (stand-alone, 14 Nov 2026)
+//  A rare trend-day breakout. About 18 trades a year.
+//  Chart: CME_MINI:MNQ1!, 5 minute. All times New York.
+//
+//  A = average daily range (high - low) of the last 14 trading days.
+//  A trading day runs 18:00 to 17:00 New York.
+//
+//  1) At 09:30 it decides if today is a "sniper day". All three must be true:
+//       - the overnight move (18:00 open to 09:30) is at least 0.20 x A
+//       - yesterday's range was below 1.10 x A
+//       - A is at least its own 100-day average
+//     The direction is the direction of the overnight move.
+//  2) It marks the high and low of 09:30-10:00.
+//  3) From 10:00 to 15:00, on each 5-minute close, the FIRST close beyond that
+//     range by 0.05 x A decides the day:
+//       - break in the sniper direction  -> enter at that close
+//       - break the other way            -> no trade today
+//  4) Stop = 0.40 x A from entry. Target = 2 x the stop. Out by 15:55.
+//     Contracts = risk $ / (stop points x $2), at least 1.
+//
+//  ALERT: Condition = this script -> "alert() function calls only".
+// =============================================================================
+strategy("MNQ Sniper [5m]", overlay=true, initial_capital=50000, default_qty_type=strategy.fixed, default_qty_value=1, commission_type=strategy.commission.cash_per_contract, commission_value=0.62, slippage=1, process_orders_on_close=true, max_labels_count=300, max_lines_count=300)
+
+inSecret = input.string("", "Webhook Secret")
+inAlerts = input.bool(true, "Send alerts")
+inRisk = input.float(700, "Risk per trade ($) (website resizes per account)", step=50)
+inOnMin = input.float(0.20, "Overnight move at least (x A)", step=0.01)
+inPrMax = input.float(1.10, "Yesterday's range below (x A)", step=0.05)
+inReg = input.float(1.00, "A at least (x its 100-day average)", step=0.05)
+inStopA = input.float(0.40, "Stop (x A)", step=0.01)
+inRR = input.float(2.0, "Target (x stop)", step=0.25)
+inBuf = input.float(0.05, "Breakout buffer (x A)", step=0.01)
+
+TZ = "America/New_York"
+qM = hour(time, TZ) * 60 + minute(time, TZ)
+tdow = dayofweek(time + 6 * 3600000, TZ)
+newTD = tdow != tdow[1]
+tfOk = timeframe.period == "5"
+
+// ---------------- daily range and its averages ----------------
+var float dHi = na
+var float dLo = na
+var float dOpen = na
+var rngs = array.new_float()
+var avgs = array.new_float()
+var float A = na
+var float A100 = na
+var float prevR = na
+var float rH = na
+var float rL = na
+var bool done = false
+var bool isDay = false
+var int dayDir = 0
+if newTD
+    if not na(dHi)
+        prevR := dHi - dLo
+        array.push(rngs, prevR)
+        if array.size(rngs) > 14
+            array.shift(rngs)
+    A := array.size(rngs) >= 5 ? array.avg(rngs) : na
+    if not na(A)
+        array.push(avgs, A)
+        if array.size(avgs) > 100
+            array.shift(avgs)
+    A100 := array.size(avgs) >= 20 ? array.avg(avgs) : na
+    dHi := high
+    dLo := low
+    dOpen := open
+    rH := na
+    rL := na
+    done := false
+    isDay := false
+    dayDir := 0
+else
+    dHi := math.max(dHi, high)
+    dLo := math.min(dLo, low)
+
+// ---------------- 09:30 decision (close of the 09:25 bar) ----------------
+if qM == 565
+    mv = close - dOpen
+    isDay := not na(A) and not na(A100) and not na(prevR) and math.abs(mv) >= inOnMin * A and prevR < inPrMax * A and A >= inReg * A100
+    dayDir := isDay ? (mv > 0 ? 1 : -1) : 0
+    if isDay
+        label.new(bar_index, high, "SNIPER DAY: " + (dayDir == 1 ? "LONG" : "SHORT") + " only", style=label.style_label_down, color=color.purple, textcolor=color.white, size=size.small)
+        if inAlerts
+            alert("{\"secret\":\"" + inSecret + "\",\"event\":\"sniper_day\",\"dir\":\"" + (dayDir == 1 ? "LONG" : "SHORT") + "\"}", alert.freq_once_per_bar_close)
+
+// ---------------- 09:30-10:00 range ----------------
+if qM >= 570 and qM <= 595
+    rH := na(rH) ? high : math.max(rH, high)
+    rL := na(rL) ? low : math.min(rL, low)
+
+// ---------------- breakout, 10:00-15:00 ----------------
+var float eP = na
+var float sP = na
+var float tP = na
+var line lS = na
+var line lT = na
+if qM >= 600 and qM <= 895 and not done and not na(rH) and not na(A)
+    upB = close >= rH + inBuf * A
+    dnB = close <= rL - inBuf * A
+    if upB or dnB
+        done := true
+        d = upB ? 1 : -1
+        if isDay and d == dayDir and strategy.position_size == 0
+            stopPts = inStopA * A
+            eP := close
+            sP := math.round_to_mintick(close - d * stopPts)
+            tP := math.round_to_mintick(close + d * inRR * stopPts)
+            q = math.max(1, math.floor(inRisk / (stopPts * syminfo.pointvalue)))
+            strategy.entry("Sniper", d == 1 ? strategy.long : strategy.short, qty=q)
+            strategy.exit("Sniper out", "Sniper", stop=sP, limit=tP, comment_loss="stop", comment_profit="target")
+            lS := line.new(bar_index, sP, bar_index + 60, sP, color=color.red, style=line.style_dashed)
+            lT := line.new(bar_index, tP, bar_index + 60, tP, color=color.lime, style=line.style_dashed)
+            label.new(bar_index, close, "SNIPER " + (d == 1 ? "LONG" : "SHORT") + "\nqty " + str.tostring(q) + "  stop " + str.tostring(stopPts, "#.#") + " pts", style=d == 1 ? label.style_label_up : label.style_label_down, color=color.purple, textcolor=color.white, size=size.small)
+            if inAlerts
+                alert("{\"secret\":\"" + inSecret + "\",\"event\":\"signal\",\"strategy\":\"SNIPER\",\"dir\":\"" + (d == 1 ? "LONG" : "SHORT") + "\",\"entry\":" + str.tostring(close) + ",\"stop\":" + str.tostring(sP) + ",\"target\":" + str.tostring(tP) + ",\"qty\":" + str.tostring(q) + ",\"risk_usd\":" + str.tostring(inRisk) + ",\"exit_by\":\"15:55\",\"id\":\"SNIPER-" + str.tostring(time) + "\"}", alert.freq_once_per_bar_close)
+
+// ---------------- time exit at 15:55 ----------------
+if qM == 950 and strategy.position_size != 0
+    strategy.close("Sniper", comment="time exit")
+    if inAlerts
+        alert("{\"secret\":\"" + inSecret + "\",\"event\":\"exit\",\"strategy\":\"SNIPER\",\"reason\":\"time\",\"id\":\"SNIPER-EXIT-" + str.tostring(time) + "\"}", alert.freq_once_per_bar_close)
+
+// ---------------- chart ----------------
+plot(qM >= 570 and qM <= 900 ? rH : na, "Range high", color=color.new(color.yellow, 30), style=plot.style_linebr)
+plot(qM >= 570 and qM <= 900 ? rL : na, "Range low", color=color.new(color.yellow, 30), style=plot.style_linebr)
+bgcolor(isDay and qM >= 570 and qM < 960 ? color.new(color.purple, 92) : na)
+
+var table tb = table.new(position.top_right, 2, 6, bgcolor=color.new(#131722, 5), border_width=1, border_color=color.new(color.gray, 85))
+if barstate.islast
+    nT = strategy.closedtrades
+    pfv = strategy.grossloss != 0 ? strategy.grossprofit / math.abs(strategy.grossloss) : na
+    table.cell(tb, 0, 0, "Chart", text_color=color.gray, text_size=size.small)
+    table.cell(tb, 1, 0, tfOk ? "5m OK" : "SWITCH TO 5m", text_color=tfOk ? color.lime : color.red, text_size=size.small)
+    table.cell(tb, 0, 1, "Sniper today", text_color=color.gray, text_size=size.small)
+    table.cell(tb, 1, 1, na(A100) ? "warming up (needs ~25 days)" : qM < 565 or qM >= 1080 ? "decided at 09:30 NY" : isDay ? (dayDir == 1 ? "YES, LONG only" : "YES, SHORT only") : "no", text_color=isDay ? color.fuchsia : color.white, text_size=size.small)
+    table.cell(tb, 0, 2, "A (avg day range)", text_color=color.gray, text_size=size.small)
+    table.cell(tb, 1, 2, na(A) ? "-" : str.tostring(A, "#") + " pts", text_color=color.white, text_size=size.small)
+    table.cell(tb, 0, 3, "Stop today", text_color=color.gray, text_size=size.small)
+    table.cell(tb, 1, 3, na(A) ? "-" : str.tostring(inStopA * A, "#") + " pts, " + str.tostring(math.max(1, math.floor(inRisk / (inStopA * A * syminfo.pointvalue)))) + " MNQ", text_color=color.white, text_size=size.small)
+    table.cell(tb, 0, 4, "Trades / wins", text_color=color.gray, text_size=size.small)
+    table.cell(tb, 1, 4, str.tostring(nT) + " / " + str.tostring(strategy.wintrades), text_color=color.white, text_size=size.small)
+    table.cell(tb, 0, 5, "Profit factor", text_color=color.gray, text_size=size.small)
+    table.cell(tb, 1, 5, na(pfv) ? "-" : str.tostring(pfv, "#.##"), text_color=color.white, text_size=size.small)
+`;

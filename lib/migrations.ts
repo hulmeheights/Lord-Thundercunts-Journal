@@ -902,4 +902,14 @@ export const MIGRATIONS: { version: number; sql: string }[] = [
       update pass_accounts set dll = false;
     `,
   },
+  {
+    version: 47,
+    sql: /* sql */ `
+      -- Pass plan: Sniper (a rare trend-day breakout) next to C and SOR, and today's "sniper day" call.
+      alter table pass_trades drop constraint if exists pass_trades_strategy_check;
+      alter table pass_trades add constraint pass_trades_strategy_check check (strategy in ('C', 'SOR', 'SNIPER'));
+      alter table pass_settings add column if not exists sniper_day text;
+      alter table pass_settings add column if not exists sniper_dir text;
+    `,
+  },
 ];

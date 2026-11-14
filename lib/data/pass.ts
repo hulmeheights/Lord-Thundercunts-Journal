@@ -51,7 +51,7 @@ const PREVIEW = { session: "NY", tradingDay: "2026-01-05", dir: "LONG", price: 2
 
 export async function passState() {
   const sql = await db();
-  const [s] = await sql<{ mode: string; sor_health: string; news_minutes: number }[]>`select mode, sor_health, news_minutes from pass_settings where id = 1`;
+  const [s] = await sql<{ mode: string; sor_health: string; news_minutes: number; sniper_day: string | null; sniper_dir: string | null }[]>`select mode, sor_health, news_minutes, sniper_day, sniper_dir from pass_settings where id = 1`;
   const today = passTradingDay(new Date());
   const sorToday = await sql<{ session: "LON" | "NYAM"; safe_ok: boolean; note: string | null; at: Date }[]>`select session, safe_ok, note, at from pass_sor_sessions where trading_day = ${today}`;
   const events = await sql<{ level: string; message: string; created_at: Date }[]>`select level, message, created_at from bot_events where message like 'Pass plan%' order by created_at desc limit 60`;
@@ -94,6 +94,8 @@ export async function passState() {
     on: s?.mode === "on",
     sorHealth: (s?.sor_health ?? "LIVE") as "LIVE" | "PAUSED",
     newsMinutes: s?.news_minutes ?? 0,
+    /** Today's sniper-day call, if the script made one at 09:30 New York. */
+    sniperToday: s?.sniper_day === today ? (s.sniper_dir as "LONG" | "SHORT") : null,
     today,
     sorToday: sorToday.map((x) => ({ session: x.session, safe: x.safe_ok, note: x.note, at: x.at.toISOString() })),
     events: events.map((e) => ({ level: e.level, message: e.message, at: e.created_at.toISOString() })),

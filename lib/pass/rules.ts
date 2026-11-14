@@ -12,7 +12,7 @@ export type Script = "A" | "C" | "D";
 export type PassSession = "ASIA" | "LON" | "NY";
 export type SorSession = "LON" | "NYAM";
 export type AnySession = PassSession | SorSession;
-export type Strategy = "C" | "SOR";
+export type Strategy = "C" | "SOR" | "SNIPER";
 export type Dir = "LONG" | "SHORT";
 
 export const SESSION_NAME: Record<AnySession, string> = { ASIA: "Asia", LON: "London", NY: "New York", NYAM: "NY AM" };
@@ -24,6 +24,8 @@ export const SESSION_TIMES: Record<PassSession, { signal: string; exit: string }
 };
 /** Every SOR trade is flat by 16:09 New York. */
 export const SOR_EXIT = "16:09";
+/** Every Sniper trade is flat by 15:55 New York. */
+export const SNIPER_EXIT = "15:55";
 /** SOR's own sessions (New York minutes of the day) and how long into each a first signal still counts. */
 export const SOR_SESSIONS: Record<SorSession, { start: number; window: number }> = { LON: { start: 180, window: 150 }, NYAM: { start: 570, window: 90 } };
 export const DOLLARS_PER_POINT = 2; // one MNQ
@@ -72,6 +74,11 @@ export type StageCfg = {
   sorNyam: boolean;
   sorCapAtGoal: boolean; // the SOR target never reaches past what's left of today's goal
   sorHalfStop: boolean; // skip when the capped reward is under half the stop (unless it finishes the account)
+  // Sniper add-on (a rare trend-day breakout, about 18 trades a year; tested on Topstep funded)
+  sniperOn: boolean;
+  sniperRisk: number; // $ at the stop; contracts = this / (stop points x $2), at least 1
+  sniperCapAtGoal: boolean;
+  sniperHalfStop: boolean;
 };
 
 /** The tested defaults (website spec, sections 0b and B5/B6). */
@@ -82,6 +89,7 @@ export function defaults(firm: Firm, stage: Stage, withDll = false): StageCfg {
     passTarget: 3000, consistency: 0.55, passMargin: 10, mll: 2000, dllAmount: null,
     payoutBalance: null, payoutAmount: 2000, winDaysNeeded: 5, winDay: 150, fee: 120,
     sorOn: false, sorContracts: 5, sorLon: true, sorNyam: true, sorCapAtGoal: true, sorHalfStop: true,
+    sniperOn: false, sniperRisk: 700, sniperCapAtGoal: true, sniperHalfStop: true,
   };
   if (firm === "lucid") {
     if (stage === "eval") return { ...base, dayGoal: 1200, consistency: 0.4, passMargin: 0, fee: 180 };
@@ -89,18 +97,18 @@ export function defaults(firm: Firm, stage: Stage, withDll = false): StageCfg {
   }
   const dllAmount = withDll ? 1000 : null;
   if (stage === "eval") return { ...base, dllAmount, sorOn: true };
-  // Topstep funded: 7 MNQ ($700 risk), $1,000 day goal, payout at $4,000 ($8,000 with the daily loss limit).
-  return { ...base, contracts: 7, dayGoal: 1000, targetValue: 71.5, passTarget: null, consistency: null, passMargin: 0, dllAmount, payoutBalance: withDll ? 8000 : 4000, payoutAmount: withDll ? 4000 : 2000 };
+  // Topstep funded: C at 7 MNQ ($700 risk) plus Sniper, $1,000 day goal, payout at $4,000 ($8,000 with the daily loss limit).
+  return { ...base, sniperOn: true, contracts: 7, dayGoal: 1000, targetValue: 71.5, passTarget: null, consistency: null, passMargin: 0, dllAmount, payoutBalance: withDll ? 8000 : 4000, payoutAmount: withDll ? 4000 : 2000 };
 }
 
 const NUM: Record<string, [number, number]> = {
   contracts: [1, 50], stopPts: [1, 500], dayGoal: [25, 100_000], targetValue: [0.25, 100_000], maxTradesDay: [1, 10], stopAfterLosses: [0, 10], minTarget: [0, 1000],
-  passMargin: [0, 1000], mll: [100, 100_000], payoutAmount: [0, 100_000], winDaysNeeded: [0, 60], winDay: [0, 10_000], fee: [0, 10_000], sorContracts: [1, 20],
+  passMargin: [0, 1000], mll: [100, 100_000], payoutAmount: [0, 100_000], winDaysNeeded: [0, 60], winDay: [0, 10_000], fee: [0, 10_000], sorContracts: [1, 20], sniperRisk: [50, 20_000],
   passTarget: [100, 100_000], consistency: [0.05, 1], dllAmount: [50, 100_000], payoutBalance: [100, 200_000], dayLossStop: [25, 100_000],
 };
 const INT = new Set(["contracts", "maxTradesDay", "stopAfterLosses", "winDaysNeeded", "sorContracts"]);
 const NULLABLE = new Set(["passTarget", "consistency", "dllAmount", "payoutBalance", "dayLossStop"]);
-const BOOL = new Set(["capAtGoal", "asia", "lon", "ny", "sizeDown", "guard", "news", "sorOn", "sorLon", "sorNyam", "sorCapAtGoal", "sorHalfStop"]);
+const BOOL = new Set(["capAtGoal", "asia", "lon", "ny", "sizeDown", "guard", "news", "sorOn", "sorLon", "sorNyam", "sorCapAtGoal", "sorHalfStop", "sniperOn", "sniperCapAtGoal", "sniperHalfStop"]);
 
 /** Only what's a real, in-range setting survives; anything else falls back to the default. */
 export function cleanOverrides(raw: unknown): Partial<StageCfg> {
@@ -288,36 +296,35 @@ export function plan(card: Card, s: Stats, sig: Signal): Plan {
 }
 
 export type SorSig = { session: SorSession; dir: Dir; entry: number; stop: number; target: number };
+export type PricedSig = { dir: Dir; entry: number; stop: number; target: number };
 export type SorPlan =
   | { take: false; reason: string }
   | { take: true; reason: string; qty: number; risk: number; goalLeft: number; stop: number; targetPts: number; stopTicks: number; targetTicks: number; capped: boolean };
 
 /**
- * One account, the session's SOR SAFE trade (spec 4.3 to 4.5): SOR's own stop
- * PRICE, its target capped at what's left of today's goal, fewer contracts when
- * room is short, and never a moved stop. Whether the signal is the session's
- * first valid, safe one is decided once for every account, before this.
+ * A trade that comes with its own stop and target PRICES (SOR, Sniper): the
+ * stop is never moved, the target is capped at what's left of today's goal,
+ * and when room is short it trades fewer contracts (none = skip: an account
+ * is never ended over an add-on trade).
  */
-export function planSor(card: Card, s: Stats, sig: SorSig): SorPlan {
-  const c = card.cfg;
-  if (!c.sorOn) return { take: false, reason: "SOR add-on is off for this stage" };
-  if (!(sig.session === "LON" ? c.sorLon : c.sorNyam)) return { take: false, reason: `SOR ${SESSION_NAME[sig.session]} is switched off for this stage` };
+function planPriced(card: Card, s: Stats, sig: PricedSig, o: { name: string; want: (stopDist: number) => number; capAtGoal: boolean; halfStop: boolean }): SorPlan {
   const sign = sig.dir === "LONG" ? 1 : -1;
   const stopDist = (sig.entry - sig.stop) * sign;
   const tgtDist = (sig.target - sig.entry) * sign;
   if (!(stopDist >= TICK) || !(tgtDist >= TICK)) return { take: false, reason: "the stop and target aren't on the right sides of the entry" };
   const g = gate(card, s);
   if ("stop" in g) return { take: false, reason: g.stop };
+  const full = Math.max(1, o.want(stopDist));
   // Loss at the stop, one contract: the distance plus a tick of slip, plus costs.
   const perC = (stopDist + TICK) * DOLLARS_PER_POINT + SOR_COST_PER_CONTRACT;
-  const qty = g.room >= perC * c.sorContracts ? c.sorContracts : Math.min(c.sorContracts, Math.floor(g.room / perC + 1e-9));
-  if (qty < 1) return { take: false, reason: `only ${money(g.room)} of room: not enough for 1 contract at SOR's ${stopDist}-point stop` };
+  const qty = g.room >= perC * full ? full : Math.min(full, Math.floor(g.room / perC + 1e-9));
+  if (qty < 1) return { take: false, reason: `only ${money(g.room)} of room: not enough for 1 contract at ${o.name}'s ${stopDist}-point stop` };
   let targetPts = tgtDist;
   let capped = false;
-  if (c.sorCapAtGoal) {
+  if (o.capAtGoal) {
     const capPts = ceilTick((g.left + SOR_COST_PER_CONTRACT * qty) / (DOLLARS_PER_POINT * qty));
     if (tgtDist > capPts) {
-      if (c.sorHalfStop && capPts < 0.5 * stopDist && !g.last) return { take: false, reason: `only ${money(g.left)} left of today's goal: under half of SOR's stop, not worth the trade` };
+      if (o.halfStop && capPts < 0.5 * stopDist && !g.last) return { take: false, reason: `only ${money(g.left)} left of today's goal: under half of ${o.name}'s stop, not worth the trade` };
       targetPts = capPts;
       capped = true;
     }
@@ -325,7 +332,7 @@ export function planSor(card: Card, s: Stats, sig: SorSig): SorPlan {
   const risk = Math.round(perC * qty * 100) / 100;
   return {
     take: true,
-    reason: `SOR · ${qty} MNQ${qty < c.sorContracts ? ` (cut from ${c.sorContracts}: ${money(g.room)} of room)` : ""} · stop ${sig.stop} (${money(risk)}) · target ${targetPts} pt${capped ? ` (capped at what's left of today's ${money(g.goal)})` : ""}`,
+    reason: `${o.name} · ${qty} MNQ${qty < full ? ` (cut from ${full}: ${money(g.room)} of room)` : ""} · stop ${sig.stop} (${money(risk)}) · target ${targetPts} pt${capped ? ` (capped at what's left of today's ${money(g.goal)})` : ""}`,
     qty,
     risk,
     goalLeft: g.left,
@@ -335,6 +342,28 @@ export function planSor(card: Card, s: Stats, sig: SorSig): SorPlan {
     targetTicks: Math.round(targetPts / TICK),
     capped,
   };
+}
+
+/**
+ * One account, the session's SOR SAFE trade (spec 4.3 to 4.5). Whether the
+ * signal is the session's first valid, safe one is decided once for every
+ * account, before this.
+ */
+export function planSor(card: Card, s: Stats, sig: SorSig): SorPlan {
+  const c = card.cfg;
+  if (!c.sorOn) return { take: false, reason: "SOR add-on is off for this stage" };
+  if (!(sig.session === "LON" ? c.sorLon : c.sorNyam)) return { take: false, reason: `SOR ${SESSION_NAME[sig.session]} is switched off for this stage` };
+  return planPriced(card, s, sig, { name: "SOR", want: () => c.sorContracts, capAtGoal: c.sorCapAtGoal, halfStop: c.sorHalfStop });
+}
+
+/** Sniper's size: its risk over the stop, at least 1 contract. */
+export const sniperQty = (risk: number, stopDist: number) => Math.max(1, Math.floor(risk / (stopDist * DOLLARS_PER_POINT) + 1e-9));
+
+/** One account, the day's Sniper trade (Sniper rules, section 4): sized from its own stop, its own prices, target capped at the day goal. */
+export function planSniper(card: Card, s: Stats, sig: PricedSig): SorPlan {
+  const c = card.cfg;
+  if (!c.sniperOn) return { take: false, reason: "Sniper is off for this stage" };
+  return planPriced(card, s, sig, { name: "Sniper", want: (d) => sniperQty(c.sniperRisk, d), capAtGoal: c.sniperCapAtGoal, halfStop: c.sniperHalfStop });
 }
 
 export type RawSor = { swing: string; session: string; dow: string; mins_in: number; quiet: boolean; target: number | null; quiet_target: number | null; strategy?: string | null };

@@ -1,0 +1,85 @@
+=====================================================================
+SNIPER ON TOPSTEP FUNDED ACCOUNTS - WEBSITE RULES (14 Nov 2026)
+Add this to the existing MNQ bot rules. It changes ONE thing: Topstep
+FUNDED accounts now trade C + Sniper (before: C only). Evals, Lucid
+and everything about C and SOR stay exactly as they are.
+=====================================================================
+
+1. WHERE SNIPER COMES FROM
+---------------------------------------------------------------------
+A separate TradingView script, "MNQ Sniper [5m]", on a 5-MINUTE
+MNQ1! chart, with its own alert ("alert() function calls only", same
+webhook). Keep "Send Sniper signals" OFF in the SOR v4 script so
+Sniper never arrives twice.
+
+It sends three kinds of message:
+  a) At 09:30 New York on a sniper day only:
+     {"event":"sniper_day","dir":"LONG|SHORT"}
+     -> information only. Log it / show it on the site. Place nothing.
+  b) The trade (at most one a day, between 10:00 and 15:00 New York):
+     {"event":"signal","strategy":"SNIPER","dir":"LONG|SHORT",
+      "entry":<price>,"stop":<price>,"target":<price>,"qty":<n>,
+      "risk_usd":700,"exit_by":"15:55","id":"SNIPER-<time>"}
+  c) If still open at 15:55 New York:
+     {"event":"exit","strategy":"SNIPER","reason":"time",
+      "id":"SNIPER-EXIT-<time>"}
+     -> close any open Sniper position on every account.
+Deduplicate on "id" like every other alert.
+
+2. ROUTING (replaces the old "IGNORE SNIPER" lines)
+---------------------------------------------------------------------
+  "event":"pass" + "script":"C"               -> C trade (unchanged)
+  "event":"signal" + no "strategy"            -> SOR (unchanged)
+  "event":"signal" + "strategy":"SNIPER"      -> SNIPER trade (below)
+  "event":"exit" + "strategy":"SNIPER"        -> close Sniper positions
+  "event":"sniper_day"                        -> log only
+
+3. WHICH ACCOUNTS TAKE SNIPER
+---------------------------------------------------------------------
+  Topstep FUNDED           YES
+  Topstep EVAL             NO
+  Lucid (any stage)        NO
+  Personal live account    optional (own sizing, see the Sniper file)
+
+4. SNIPER ON A FUNDED ACCOUNT, STEP BY STEP
+---------------------------------------------------------------------
+  a) Skip if the account already has an open position (a C trade).
+     One position at a time. C always has priority.
+  b) Skip if today's goal is reached (left today <= 0), or the account
+     is payout-ready, paused for a payout, or blown.
+  c) Size: contracts = floor($700 / (stop distance in points x $2)),
+     at least 1. Stop distance = |entry - stop| from the alert.
+     Ignore the alert's "qty"; the website sizes it.
+     Typical stop is about 155 points (range 33-404), so usually 2 MNQ.
+  d) Room check: loss at stop = (stop distance + 0.25) x $2 x contracts
+     + $1.24 x contracts. If that is more than the room (balance minus
+     loss floor), use fewer contracts. If 0 contracts fit, skip the
+     trade (do not end the account over a Sniper trade).
+  e) Stop = the alert's "stop" PRICE. Never move it.
+  f) Target = the alert's "target" PRICE, CAPPED at the day goal:
+       cap price = fill +/- (left today + $1.24 x contracts) / (contracts x $2)
+     (+ for longs, - for shorts). If the cap is nearer than the alert's
+     target, use the cap. If the capped reward is less than half the
+     stop distance, skip the trade, unless it would make the account
+     payout-ready.
+  g) Bracket order: stop + target. Close at 15:55 New York if still
+     open (the exit alert also tells you).
+  h) Sniper P&L counts toward today's profit, the $1,000 day goal,
+     winning days ($150+), the balance and the loss floor, exactly
+     like a C trade.
+
+5. FUNDED SUMMARY AFTER THIS CHANGE
+---------------------------------------------------------------------
+  Stage           Trades          Size / risk                Day goal
+  Topstep EVAL    C + SOR SAFE    C 10 MNQ ($1,000), SOR 5   $1,640 then rest
+  Topstep FUNDED  C + SNIPER      C 7 MNQ ($700),            $1,000
+                                  Sniper ~$700 (usually 2 MNQ)
+  Payout: $2,000 at a $4,000 balance + 5 winning days, then keep
+  trading the same account (loss floor fixed at $0).
+
+6. WHY (backtest, one account, Jan 2020 - Nov 2026)
+---------------------------------------------------------------------
+  Funded C only:      77 evals, 37 payouts, net +$57,360
+  Funded C + Sniper:  78 evals, 38 payouts, net +$59,040
+  Better on all 7 start dates tested (+$1,700 each). Small but steady.
+  Sniper on its own (no C) was safe but slow: 8 payouts in 7 years.

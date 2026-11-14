@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { accountDone, accountStats, cleanOverrides, dayGoal, defaults, fullRisk, passTradingDay, plan, planSor, resolve, sorValid, type Card, type Signal, type Stage, type StageCfg } from "../lib/pass/rules";
+import { accountDone, accountStats, cleanOverrides, dayGoal, defaults, fullRisk, passTradingDay, plan, planSniper, planSor, resolve, sniperQty, sorValid, type Card, type Signal, type Stage, type StageCfg } from "../lib/pass/rules";
 
 const sig = (o: Partial<Signal> = {}): Signal => ({ session: "NY", tradingDay: "2026-11-12", dir: "LONG", price: 25000, bias: "UP", vah: 24990, val: 24950, ...o });
 const card = (stage: Stage = "eval", o: Partial<StageCfg> = {}, dll = false, firm: "topstep" | "lucid" = "topstep"): Card => ({ firm, stage, cfg: { ...defaults(firm, stage, dll), ...o } });
@@ -11,7 +11,7 @@ test("the tested sizes by stage: eval 10 MNQ / $1,000 / $1,640, Topstep funded 7
   const e = defaults("topstep", "eval");
   assert.deepEqual([e.contracts, e.stopPts, fullRisk(e), e.dayGoal, e.sorOn], [10, 50, 1000, 1640, true]);
   const f = defaults("topstep", "funded");
-  assert.deepEqual([f.contracts, f.stopPts, fullRisk(f), f.dayGoal, f.sorOn, f.payoutBalance, f.payoutAmount], [7, 50, 700, 1000, false, 4000, 2000]);
+  assert.deepEqual([f.contracts, f.stopPts, fullRisk(f), f.dayGoal, f.sorOn, f.sniperOn, f.payoutBalance, f.payoutAmount], [7, 50, 700, 1000, false, true, 4000, 2000]);
   assert.deepEqual([defaults("topstep", "funded", true).payoutBalance, defaults("topstep", "funded", true).dllAmount], [8000, 1000]);
   const l1 = defaults("lucid", "eval");
   assert.deepEqual([l1.contracts, l1.dayGoal, l1.consistency, l1.sorOn], [10, 1200, 0.4, false]);
@@ -197,6 +197,35 @@ test("SOR: 5 MNQ at its own stop price; target capped at what's left today; fewe
   // A short: stop above, target below.
   const sh = planSor(c, s0, { session: "NYAM", dir: "SHORT", entry: 25000, stop: 25040, target: 24900 });
   assert.ok(sh.take && sh.stopTicks === 160 && sh.targetPts === 100);
+});
+
+test("Sniper on funded: sized from $700 over its own stop, its own prices, target capped at the day goal, never ends the account", () => {
+  const f = card("funded");
+  assert.equal(f.cfg.sniperOn, true);
+  assert.equal(card("eval").cfg.sniperOn, false);
+  assert.equal(card("eval", {}, false, "lucid").cfg.sniperOn, false);
+  assert.deepEqual([sniperQty(700, 155), sniperQty(700, 33), sniperQty(700, 404)], [2, 10, 1]);
+  // 155-point stop, 310-point target: 2 MNQ. The $1,000 day goal caps the target at (1,000 + 2.48) / 4 = 250.62 → 250.75 pt.
+  const sn = { dir: "LONG" as const, entry: 25000, stop: 24845, target: 25310 };
+  const p = planSniper(f, stats(f), sn);
+  assert.ok(p.take);
+  if (!p.take) return;
+  assert.deepEqual([p.qty, p.stop, p.stopTicks, p.targetPts, p.capped], [2, 24845, 620, 250.75, true]);
+  // With the cap off it keeps Sniper's own target.
+  const free = planSniper(card("funded", { sniperCapAtGoal: false }), stats(f), sn);
+  assert.ok(free.take && free.targetPts === 310 && !free.capped);
+  // $60 left today: under half the stop → skip.
+  assert.match(why(planSniper(f, stats(f, [{ day: "2026-11-12", pnl: 940 }]), sn)), /under half/);
+  // Room $400 (after a payout, floor at $0): one contract loses (155 + 0.25) x 2 + 1.24 = $311.74 → 1 MNQ.
+  const thin = stats(f, [], "2026-11-12", true, { profit: 400, best: 0, winDays: 0 });
+  const p1 = planSniper(f, thin, sn);
+  assert.ok(p1.take && p1.qty === 1);
+  // Room $300: not even one contract → skipped, the account is not ended over it.
+  assert.match(why(planSniper(f, stats(f, [], "2026-11-12", true, { profit: 300, best: 0, winDays: 0 }), sn)), /not enough for 1 contract/);
+  assert.match(why(planSniper(card("eval"), stats(card("eval")), sn)), /Sniper is off/);
+  // Your own Sniper risk: $1,400 over 155 points → 4 MNQ.
+  const big = planSniper(card("funded", { sniperRisk: 1400, sniperCapAtGoal: false }), stats(f), sn);
+  assert.ok(big.take && big.qty === 4);
 });
 
 test("a card's own settings: only real, in-range values are kept; the rest follow the tested defaults", () => {

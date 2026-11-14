@@ -9,7 +9,7 @@ import { SESSION_NAME, SOR_SESSIONS } from "@/lib/pass/rules";
 import { Copy } from "@/components/autopilot/Copy";
 import { Runner } from "@/components/autopilot/Runner";
 import { CopyScript } from "@/components/pass/CopyScript";
-import { PASS_PINE, PASS_PINE_NAME } from "@/lib/pass/pineScript";
+import { PASS_PINE, PASS_PINE_NAME, SNIPER_PINE, SNIPER_PINE_NAME } from "@/lib/pass/pineScript";
 import { headers } from "next/headers";
 import { NewsMinutes } from "@/components/autopilot/NewsMinutes";
 import { setPassNewsMinutes } from "@/lib/actions/pass";
@@ -48,6 +48,7 @@ export default async function PassPage() {
   const version = Number(/bot (\d+(?:\.\d+)?)/.exec(runner.info ?? "")?.[1] ?? NaN);
   const oldBot = runner.paired && Number.isFinite(version) && version < NEEDS;
   const sorCards = on.filter((a) => a.cfg.sorOn);
+  const sniperCards = on.filter((a) => a.cfg.sniperOn);
   return (
     <>
       <SectionIndex ids={["switch", "mac", "tradingview", "accounts", "news", "now", "book", "rules", "log"]} />
@@ -105,7 +106,22 @@ export default async function PassPage() {
           <CopyScript code={PASS_PINE} />
         </div>
         <div className="mt-4 max-w-3xl">
-          <Copy label="Webhook URL" value={`${origin}/api/bot/webhook`} />
+          <Copy label="Webhook URL (the same for both scripts)" value={`${origin}/api/bot/webhook`} />
+        </div>
+        <div className="mt-10 max-w-3xl border-t border-line pt-6">
+          <div className="mb-3 font-mono text-[9px] tracking-[0.24em] text-gold uppercase">Second script · Sniper (funded accounts)</div>
+          <ol className="list-decimal space-y-2 pl-5 font-mono text-[11px] leading-[1.8] text-ink-3">
+            <li>
+              Only needed if a card trades Sniper. Copy it below and add it to a <b className="font-normal text-ink">second chart</b>: <b className="font-normal text-ink">CME_MINI:MNQ1!</b>, <b className="font-normal text-ink">5 minute</b> (not 1 minute). It shows as <b className="font-normal text-ink">{SNIPER_PINE_NAME}</b>, and its panel says &quot;5m OK&quot; when the chart is right.
+            </li>
+            <li>Same Webhook Secret in its settings, <b className="font-normal text-ink">Send alerts</b> ticked. It needs about 25 trading days of chart history before it can call a sniper day.</li>
+            <li>
+              Its own alert: Condition = that script → <b className="font-normal text-ink">alert() function calls only</b>, open-ended, the same Webhook URL. Keep &quot;Send Sniper signals&quot; switched off in any SOR script, so Sniper never arrives twice.
+            </li>
+          </ol>
+          <div className="mt-5">
+            <CopyScript code={SNIPER_PINE} />
+          </div>
         </div>
       </Section>
 
@@ -172,7 +188,7 @@ export default async function PassPage() {
               {open.map((t) => (
                 <li key={t.id} className="border-b border-line py-2 font-mono text-[11px]">
                   <span className="text-ink">
-                    {t.account} · {t.strategy} {SESSION_NAME[t.session]} · {t.dir} {t.qty}
+                    {t.account} · {t.strategy === "SNIPER" ? "Sniper" : `${t.strategy} ${SESSION_NAME[t.session]}`} · {t.dir} {t.qty}
                   </span>
                   <span className="mt-0.5 block text-[10px] text-ink-3">
                     {t.status === "pending" ? "waiting for your Mac" : `in @ ${t.entry}`} · stop {t.stop} · target {t.target}
@@ -199,8 +215,17 @@ export default async function PassPage() {
                 );
               })}
             </ul>
+            <div className="mt-5 mb-3 font-mono text-[9px] tracking-[0.24em] text-ink-4 uppercase">Sniper today</div>
+            <p className="border-y border-line py-2 font-mono text-[11px]">
+              {p.sniperToday ? (
+                <span className="text-gold">Sniper day: {p.sniperToday} only. A trade follows only if the 09:30–10:00 range breaks that way between 10:00 and 15:00 New York.</span>
+              ) : (
+                <span className="text-ink-4">No sniper day called today (the script decides at 09:30 New York; most days are not).</span>
+              )}
+            </p>
             <p className="mt-3 font-mono text-[10px] leading-[1.7] text-ink-4">
-              {sorCards.length ? `${sorCards.length} ${sorCards.length === 1 ? "card takes" : "cards take"} SOR: ${sorCards.map((a) => a.label).join(", ")}.` : "No card that's switched on takes SOR."} One chance per session: the first valid signal decides, for every account. Never Thursday, never NY PM or Asia.
+              {sniperCards.length ? `${sniperCards.length} ${sniperCards.length === 1 ? "card takes" : "cards take"} Sniper: ${sniperCards.map((a) => a.label).join(", ")}. ` : "No card that's switched on takes Sniper. "}
+              {sorCards.length ? `${sorCards.length} ${sorCards.length === 1 ? "card takes" : "cards take"} SOR: ${sorCards.map((a) => a.label).join(", ")}.` : "No card that's switched on takes SOR."} One chance per session: the first valid signal decides, for every account. SOR: never Thursday, never NY PM or Asia.
             </p>
           </div>
         </div>
@@ -213,23 +238,26 @@ export default async function PassPage() {
             <div>All · {tally(tracked)}</div>
             <div className="text-ink-4">C (10 MNQ) · {tally(tracked.filter((t) => t.strategy === "C"))}</div>
             <div className="text-ink-4">SOR (5 MNQ) · {tally(tracked.filter((t) => t.strategy === "SOR"))}</div>
+            <div className="text-ink-4">Sniper ($700 risk) · {tally(tracked.filter((t) => t.strategy === "SNIPER"))}</div>
           </div>
           <div className="space-y-1">
             <div className="mb-2 text-[9px] tracking-[0.24em] text-ink-4 uppercase">Your accounts</div>
             <div>All · {tally(mine)}</div>
             <div className="text-ink-4">C · {tally(mine.filter((t) => t.strategy === "C"))}</div>
             <div className="text-ink-4">SOR · {tally(mine.filter((t) => t.strategy === "SOR"))}</div>
+            <div className="text-ink-4">Sniper · {tally(mine.filter((t) => t.strategy === "SNIPER"))}</div>
           </div>
         </div>
         <p className="mb-5 max-w-3xl font-mono text-[10.5px] leading-[1.8] text-ink-4">
-          The track record follows every C and safe SOR signal the script sends, on paper, at the tested size (C: 50-point stop, 82.5-point target; SOR: its own prices), with no account rules, no day cap and no news rule. It runs whether the switch is on or off and whatever your cards are doing, for as long as the TradingView alert is active and your Mac is on to follow each trade to its close. It never places an order.
+          The track record follows every C, safe SOR and Sniper signal the scripts send, on paper, at the tested size (C: 50-point stop, 82.5-point target; SOR and Sniper: their own prices), with no account rules, no day cap and no news rule. It runs whether the switch is on or off and whatever your cards are doing, for as long as the TradingView alert is active and your Mac is on to follow each trade to its close. It never places an order.
         </p>
         <ul>
           {p.trades.length === 0 && <li className="font-mono text-[11px] text-ink-4">Nothing yet. The first decision comes at the next signal.</li>}
           {p.trades.map((t) => (
             <li key={t.id} className={cn("grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 border-b border-line py-2 font-mono text-[11px]", t.status === "skipped" && "opacity-55")}>
               <span className="truncate text-ink-2">
-                {when(t.enteredAt)} · <span className={t.strategy === "SOR" ? "text-gold" : undefined}>{t.strategy}</span> {SESSION_NAME[t.session]} · <span className={t.stage === "track" ? "text-gold" : undefined}>{t.account}</span>
+                {when(t.enteredAt)} · <span className={t.strategy !== "C" ? "text-gold" : undefined}>{t.strategy === "SNIPER" ? "Sniper" : t.strategy}</span>
+                {t.strategy !== "SNIPER" && ` ${SESSION_NAME[t.session]}`} · <span className={t.stage === "track" ? "text-gold" : undefined}>{t.account}</span>
                 {t.stage !== "track" && ` · ${t.stage}`}
                 {t.mode !== "live" && t.stage !== "track" && <span className="text-ink-4"> ({t.mode === "dry" ? "dry run" : "yours"})</span>}
               </span>
@@ -259,6 +287,9 @@ export default async function PassPage() {
           </p>
           <p>
             <b className="font-normal text-ink">SOR Safe</b> (Topstep evals, unless you switch it on elsewhere). Only swing 3/3, only the first valid signal of London (first 150 minutes) and NY AM (first 90), never Thursday, and only if that signal is safe. 5 MNQ at SOR&apos;s own stop and target prices; the target is capped at what&apos;s left of today&apos;s goal; fewer contracts if room is short, never a moved stop; flat by 16:09. If it can&apos;t be taken, the session&apos;s chance is still used. A C trade always comes first.
+          </p>
+          <p>
+            <b className="font-normal text-ink">Sniper</b> (Topstep funded, unless you switch it on elsewhere). A rare trend-day breakout from its own 5-minute script, about 18 trades a year. At 09:30 New York the script calls a sniper day and its direction; a trade follows only if the 09:30–10:00 range then breaks that way between 10:00 and 15:00. Contracts = the card&apos;s Sniper risk ($700) ÷ (the stop in points × $2), at least 1, usually 2 MNQ. Stop and target are the script&apos;s own prices; the target is capped at what&apos;s left of the day&apos;s max win; fewer contracts if room is short, none means skip; never on top of an open trade; flat by 15:55. Its result counts toward the day, winning days and the loss limit like any C trade.
           </p>
           <p>
             <b className="font-normal text-ink">Payouts.</b> Funded reaches its payout balance with 5 winning days: the card pauses and tells you. After you press Payout taken: profit minus the payout, loss limit fixed at $0, winning days from 0, same account, same rules.

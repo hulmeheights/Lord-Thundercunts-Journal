@@ -56,7 +56,7 @@ const STAGES = {
 } as const;
 
 const TYPE_HINT = {
-  topstep: { eval: "10 MNQ · 50 pt stop · $1,640 a day · passes at $3,000 · SOR on", funded: "7 MNQ · 50 pt stop · $1,000 a day · payout at $4,000 · no SOR" },
+  topstep: { eval: "10 MNQ · 50 pt stop · $1,640 a day · passes at $3,000 · SOR on", funded: "7 MNQ · 50 pt stop · $1,000 a day · payout at $4,000 · C + Sniper" },
   lucid: { eval: "10 MNQ · 50 pt stop · $1,200 a day · passes at $3,000 (40% rule)", prelive: "10 MNQ · 62.5 pt stop · up to $2,000 a day · passes at $2,000" },
 } as Record<"topstep" | "lucid", Record<string, string>>;
 
@@ -64,7 +64,7 @@ type NumKey = { [K in keyof StageCfg]: StageCfg[K] extends number | null ? K : n
 type BoolKey = { [K in keyof StageCfg]: StageCfg[K] extends boolean ? K : never }[keyof StageCfg];
 /** The form's copy of a stage's settings: numbers as typed text (blank = off, where a setting can be off). */
 type Form = Record<string, string | boolean>;
-const NUMS: NumKey[] = ["contracts", "stopPts", "dayGoal", "targetValue", "maxTradesDay", "stopAfterLosses", "dayLossStop", "minTarget", "passTarget", "consistency", "passMargin", "mll", "dllAmount", "payoutBalance", "payoutAmount", "winDaysNeeded", "winDay", "sorContracts"];
+const NUMS: NumKey[] = ["contracts", "stopPts", "dayGoal", "targetValue", "maxTradesDay", "stopAfterLosses", "dayLossStop", "minTarget", "passTarget", "consistency", "passMargin", "mll", "dllAmount", "payoutBalance", "payoutAmount", "winDaysNeeded", "winDay", "sorContracts", "sniperRisk"];
 const show = (k: string, v: number | null) => (v === null ? "" : k === "consistency" ? String(Math.round(v * 1000) / 10) : String(v));
 const toForm = (c: StageCfg): Form => Object.fromEntries(Object.entries(c).map(([k, v]) => [k, typeof v === "boolean" || k === "targetMode" ? (v as string | boolean) : show(k, v as number | null)]));
 /** What's sent to save: text back to numbers (a blank becomes "off" where that's allowed, else the tested default). */
@@ -205,7 +205,11 @@ function Card({ a, options }: { a: PassAccountView; options: { id: number; name:
     f.cfg.targetMode === "goal" ? "target = rest of the day's win" : `target ${f.cfg.targetMode === "points" ? `${f.cfg.targetValue} pt` : `$${f.cfg.targetValue}`}`,
     [f.cfg.asia && "Asia", f.cfg.lon && "London", f.cfg.ny && "NY"].filter(Boolean).join(" ") || "no sessions",
     f.cfg.sorOn ? `SOR ${f.cfg.sorContracts}` : "no SOR",
+    f.cfg.sniperOn ? `Sniper $${f.cfg.sniperRisk}` : "no Sniper",
   ].join(" · ");
+  const cOn = Boolean(f.cfg.asia || f.cfg.lon || f.cfg.ny);
+  const strategy = f.cfg.sniperOn ? (cOn ? "both" : "sniper") : "c";
+  const risk = money(contracts * stopPts * 2);
 
   return (
     <div className={cn("border p-4", f.enabled ? (a.mode === "live" ? "border-neg/40" : "border-gold/40") : "border-line-2 opacity-90")}>
@@ -237,6 +241,34 @@ function Card({ a, options }: { a: PassAccountView; options: { id: number; name:
         </div>
         <span className="mt-1.5 block font-mono text-[9.5px] leading-[1.6] text-ink-4">Picking one sets its tested contracts, stop, day target and account target. Change the four boxes below; fine-tune anything else under Rules.</span>
       </div>
+
+      {funded && (
+        <div className="mt-4">
+          <span className={lab}>Strategy on this funded account</span>
+          <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-label={`${f.label} strategy`}>
+            {(
+              [
+                ["c", "C only", `the normal plan: ${contracts} MNQ, ${risk} risk, up to 3 trades a day`],
+                ["both", "C + Sniper", "C as normal, plus Sniper's rare trend-day trade (tested best)"],
+                ["sniper", "Sniper only", `about 18 trades a year, $${f.cfg.sniperRisk} risk each: safe but slow`],
+              ] as const
+            ).map(([v, name, hint]) => (
+              <button
+                key={v}
+                type="button"
+                role="radio"
+                aria-checked={strategy === v}
+                disabled={pending}
+                className={chip(strategy === v)}
+                onClick={() => strategy !== v && cfg(v === "sniper" ? { sniperOn: true, asia: false, lon: false, ny: false } : { sniperOn: v === "both", ...(cOn ? {} : { asia: true, lon: true, ny: true }) })}
+              >
+                <span className="block text-[11px]">{name}</span>
+                <span className="mt-0.5 block text-[9.5px] leading-[1.5] text-ink-4">{hint}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="mt-4 grid grid-cols-2 gap-3">
         {!lucid && (
@@ -353,6 +385,18 @@ function Card({ a, options }: { a: PassAccountView; options: { id: number; name:
                   </div>
                   {T({ k: "sorCapAtGoal", children: <>Cap SOR&apos;s target at what&apos;s left of the day&apos;s max win</> })}
                   {T({ k: "sorHalfStop", children: <>Skip when that capped reward is under half of SOR&apos;s stop</> })}
+                </>
+              )}
+            </Group>
+
+            <Group title="Sniper add-on" note={f.cfg.sniperOn ? `on · $${f.cfg.sniperRisk} risk a trade` : "off"}>
+              {T({ k: "sniperOn", children: <>Take Sniper&apos;s trade: a rare trend-day breakout, at most one a day, 10:00 to 15:00 New York (tested for Topstep funded only)</> })}
+              {f.cfg.sniperOn && (
+                <>
+                  <div className="w-44">{N({ k: "sniperRisk", label: "Sniper risk a trade", pre: "$" })}</div>
+                  <p className="leading-[1.7] text-ink-4">Contracts = that risk ÷ (Sniper&apos;s stop in points × $2), at least 1. The stop is usually about 155 points, so usually 2 MNQ.</p>
+                  {T({ k: "sniperCapAtGoal", children: <>Cap Sniper&apos;s target at what&apos;s left of the day&apos;s max win</> })}
+                  {T({ k: "sniperHalfStop", children: <>Skip when that capped reward is under half of Sniper&apos;s stop</> })}
                 </>
               )}
             </Group>
