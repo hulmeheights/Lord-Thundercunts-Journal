@@ -8,7 +8,7 @@ import { botNotify } from "@/lib/bot/notify";
 import { newsAround } from "@/lib/bot/newsFeed";
 import { SESSION_LABEL, type BotAccount, type Session } from "@/lib/bot/signal";
 import { barTimeOf } from "@/lib/bot/sor";
-import { passClosed, passContext, passResults, passWaitSeconds } from "@/lib/pass/server";
+import { passClosed, passContext, passListening, passResults, passWaitSeconds } from "@/lib/pass/server";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
@@ -71,21 +71,28 @@ export async function GET(req: Request) {
   // Headers are plain ASCII: anything else (e.g. a "·" from an older Mac program) becomes " - ".
   const info = (req.headers.get("x-runner") ?? "").replace(/[^\x20-\x7e]+/g, " - ").replace(/\s+/g, " ").trim().slice(0, 120) || null;
   await sql`update bot_runner set last_seen = now(), info = coalesce(${info}, info) where id = 1`;
-  // Awake for every pass-plan entry and time exit, and every 30 seconds while a pass trade is open.
+  // Awake for every pass-plan entry and time exit; every 8 seconds while a real pass trade is open (the goal guard
+  // watches its target), every 30 while only practice ones are.
   const passWait = (ctx: Awaited<ReturnType<typeof context>>, w: number) =>
-    Math.max(0, Math.min(w, ctx.pass.open.length ? 30 : Infinity, ctx.pass.on || ctx.pass.open.length ? passWaitSeconds() : Infinity));
-  if (nap > 0) {
+    Math.max(0, Math.min(w, ctx.pass.open.some((t) => t.mode === "live") ? 8 : ctx.pass.open.length ? 30 : Infinity, ctx.pass.on || ctx.pass.open.length ? passWaitSeconds() : Infinity));
+  // SOR signals come at any minute of London's and NY AM's windows: while a real card trades SOR, the line is held open for them.
+  const listening = await passListening();
+  if (nap > 0 && !listening) {
     const ctx = await context();
     // A trade still open outside a session: keep checking every 30 seconds so its close is caught and cleaned up.
     return NextResponse.json({ alerts: [], wait: passWait(ctx, ctx.openTrades.length ? Math.min(nap, 30) : nap), context: ctx });
   }
   const [{ mode }] = await sql<{ mode: string }[]>`select mode from bot_settings where id = 1`;
-  if (mode !== "live" && mode !== "paper") {
+  const autopilot = nap === 0 && (mode === "live" || mode === "paper");
+  if (!autopilot && !listening) {
     const ctx = await context();
     return NextResponse.json({ alerts: [], wait: passWait(ctx, 20), context: ctx });
   }
-  for (let waited = 0; waited < 20_000; waited += 400) {
-    const alerts = await claimAlerts();
+  // A real pass trade open: come back sooner, so the goal guard looks at it every few seconds.
+  const [lp] = await sql<{ n: number }[]>`select count(*)::int as n from pass_trades where status = 'open' and mode = 'live'`;
+  const hold = lp?.n ? 6_000 : 20_000;
+  for (let waited = 0; waited < hold; waited += 400) {
+    const alerts = autopilot ? await claimAlerts() : [];
     if (alerts.length) return NextResponse.json({ alerts, wait: 0, context: await context() });
     const [pp] = await sql<{ n: number }[]>`select count(*)::int as n from pass_trades where status = 'pending' and claimed_at is null`;
     if (pp?.n) return NextResponse.json({ alerts: [], wait: 0, context: await context() });
@@ -134,19 +141,35 @@ const TestSignal = z.object({
 const Ready = z.object({ type: z.literal("ready"), problems: z.array(z.string().max(300)).max(20), summary: z.string().max(400) });
 const PassResults = z.object({
   type: z.literal("pass_results"),
-  results: z.array(z.object({ tradeId: z.string().regex(/^pt_[A-Za-z0-9_-]{6,40}$/), status: z.enum(["open", "error"]), orderId: z.string().max(40).nullish(), fill: z.number().finite().positive().nullish(), reason: z.string().max(500).nullish() })).max(50),
+  results: z
+    .array(
+      z.object({
+        tradeId: z.string().regex(/^pt_[A-Za-z0-9_-]{6,40}$/),
+        status: z.enum(["open", "error"]),
+        orderId: z.string().max(40).nullish(),
+        fill: z.number().finite().positive().nullish(),
+        /** Where the stop and target really sit at Topstep after the fill (bot 5.0+). */
+        stop: z.number().finite().positive().nullish(),
+        target: z.number().finite().positive().nullish(),
+        reason: z.string().max(500).nullish(),
+      }),
+    )
+    .max(50),
 });
+/** The goal guard moved or re-made a bracket order, or found something it couldn't fix: logged, and pushed when it matters. */
+const PassNote = z.object({ type: z.literal("pass_note"), tradeId: z.string().regex(/^pt_[A-Za-z0-9_-]{6,40}$/), level: z.enum(["info", "warn", "error"]), message: z.string().max(400) });
 const PassClosed = z.object({
   type: z.literal("pass_closed"),
   tradeId: z.string().regex(/^pt_[A-Za-z0-9_-]{6,40}$/),
   exitPrice: z.number().finite().positive().nullable(),
   pnl: z.number().finite(),
   fees: z.number().finite().min(0).default(0),
-  reason: z.enum(["target", "stop", "time", "other"]),
+  reason: z.enum(["target", "stop", "time", "goal", "other"]),
   exitedAt: z.string().datetime({ offset: true }),
 });
 const Report = z.discriminatedUnion("type", [
   PassResults,
+  PassNote,
   PassClosed,
   Closed,
   Ready,
@@ -174,6 +197,16 @@ export async function POST(req: Request) {
   }
   if (r.type === "pass_results") {
     await passResults(r.results);
+    return NextResponse.json({ ok: true });
+  }
+  if (r.type === "pass_note") {
+    const [t] = await sql<{ account_label: string }[]>`select account_label from pass_trades where id = ${r.tradeId}`;
+    const message = `Pass plan · ${t?.account_label ?? "account"}: ${r.message}`;
+    const [recent] = await sql<{ n: number }[]>`select count(*)::int as n from bot_events where message = ${message} and created_at > now() - interval '10 minutes'`;
+    if (!recent?.n) {
+      await logEvent(r.level, message);
+      if (r.level === "error") await botNotify(`⚠ Pass plan · ${t?.account_label ?? "account"}\n${r.message}`, { push: true, telegram: false, critical: true, always: true, url: "/pass" });
+    }
     return NextResponse.json({ ok: true });
   }
   if (r.type === "pass_closed") {

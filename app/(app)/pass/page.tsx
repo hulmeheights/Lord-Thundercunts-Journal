@@ -3,16 +3,20 @@ import { runnerStatus } from "@/lib/bot/runner";
 import { getSettings } from "@/lib/data/settings";
 import { cn } from "@/lib/cn";
 import { Meta, PageHead, Section } from "@/components/m";
+import { SectionIndex } from "@/components/m/SectionIndex";
 import { PassAccounts, PassSwitch } from "@/components/pass/PassAccounts";
-import { SESSION_NAME } from "@/lib/pass/rules";
+import { SESSION_NAME, SOR_SESSIONS } from "@/lib/pass/rules";
 import { Copy } from "@/components/autopilot/Copy";
+import { Runner } from "@/components/autopilot/Runner";
 import { CopyScript } from "@/components/pass/CopyScript";
-import { PASS_PINE } from "@/lib/pass/pineScript";
+import { PASS_PINE, PASS_PINE_NAME } from "@/lib/pass/pineScript";
 import { headers } from "next/headers";
 
 export const metadata = { title: "Pass plan" };
 
 const money = (n: number) => `${n < 0 ? "−" : n > 0 ? "+" : ""}$${Math.abs(Math.round(n)).toLocaleString("en-GB")}`;
+/** The Mac bot this page needs: 5.0 brought SOR's own prices and the goal guard. */
+const NEEDS = 5;
 
 export default async function PassPage() {
   const [p, runner, settings, h] = await Promise.all([passState(), runnerStatus(), getSettings(), headers()]);
@@ -21,12 +25,21 @@ export default async function PassPage() {
   const tz = settings.profile.timezone;
   const when = (iso: string) => new Date(iso).toLocaleString("en-GB", { timeZone: tz, weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
   const on = p.accounts.filter((a) => a.enabled);
+  const live = on.filter((a) => a.mode === "live");
   const closed = p.trades.filter((t) => t.status === "closed" && t.pnl !== null);
-  const wins = closed.filter((t) => (t.pnl ?? 0) > 0);
-  const gw = wins.reduce((s, t) => s + (t.pnl ?? 0), 0);
-  const gl = -closed.filter((t) => (t.pnl ?? 0) < 0).reduce((s, t) => s + (t.pnl ?? 0), 0);
+  const tally = (rows: typeof closed) => {
+    const wins = rows.filter((t) => (t.pnl ?? 0) > 0);
+    const gw = wins.reduce((s, t) => s + (t.pnl ?? 0), 0);
+    const gl = -rows.filter((t) => (t.pnl ?? 0) < 0).reduce((s, t) => s + (t.pnl ?? 0), 0);
+    return `${rows.length} closed · ${rows.length ? Math.round((wins.length / rows.length) * 100) : 0}% won · PF ${gl > 0 ? (gw / gl).toFixed(2) : "—"} · net ${money(gw - gl)}`;
+  };
+  const open = p.trades.filter((t) => t.status === "open" || t.status === "pending");
+  const version = Number(/bot (\d+(?:\.\d+)?)/.exec(runner.info ?? "")?.[1] ?? NaN);
+  const oldBot = runner.paired && Number.isFinite(version) && version < NEEDS;
+  const sorCards = on.filter((a) => a.cfg.sorOn);
   return (
     <>
+      <SectionIndex ids={["switch", "mac", "tradingview", "accounts", "now", "book", "rules", "log"]} />
       <PageHead
         eyebrow="08 — Pass plan"
         title={
@@ -34,81 +47,165 @@ export default async function PassPage() {
             Pass the evals, <em>account by account</em>.
           </>
         }
-        sub="MNQ Pass Plan, scripts C and D. One TradingView alert sends every session's signal (Asia, London, New York) with its 4H bias and value area; each account decides by its own stage (eval, funded or pre-live) and script, and your Mac places the orders."
-        meta={<Meta value={p.on ? "On" : "Off"} tone={p.on ? "pos" : null} caption={`${on.length} ${on.length === 1 ? "account" : "accounts"} on · Mac ${runner.paired ? (runner.lastSeen ? `seen ${when(runner.lastSeen)}` : "paired") : "not set up"}`} />}
+        sub="One TradingView alert sends every C trade (Asia, London, New York) and every safe SOR trade. Each account decides by its own stage: its size, its stop, and a target that is exactly what that account still needs today. Your Mac places the orders and guards each account's target until the trade is closed."
+        meta={<Meta value={p.on ? "On" : "Off"} tone={p.on ? "pos" : null} caption={`${on.length} ${on.length === 1 ? "account" : "accounts"} on · ${live.length} on real orders · Mac ${runner.online ? "connected" : runner.paired ? "not connected" : "not set up"}`} />}
       />
 
       <Section id="switch" n={1} label="The switch" lead={<>On or <em>off</em>.</>}>
         <PassSwitch on={p.on} />
         <p className="mt-5 max-w-2xl font-mono text-[10.5px] leading-[1.8] text-ink-4">
-          Separate from Autopilot&apos;s switch. Off stops new trades; open ones keep their stop and target and still get their time exit. Your Mac must be running the bot (Autopilot → Your Mac), version 4.1 or later, and the TradingView alert must be active.
+          Separate from Autopilot&apos;s switch. Off stops new trades; open ones keep their stop and target, are still guarded, and still get their time exit. If Autopilot is also live, keep its cards off the accounts you trade here: one position per account.
         </p>
       </Section>
 
-      <Section id="tradingview" n={2} label="TradingView" lead={<>One alert for <em>every</em> account.</>}>
+      <Section id="mac" n={2} label="Your Mac" lead={<>Places the orders, then <em>guards</em> every target.</>}>
+        {oldBot && (
+          <p className="mb-5 max-w-3xl border border-gold/60 p-3 font-mono text-[11px] leading-[1.8] text-gold">
+            Your Mac is running bot {version}. This page needs {NEEDS}.0 or later (SOR trades at their own prices, and the goal guard). Run the two lines below in Terminal to update:
+            download, then install.
+          </p>
+        )}
+        <Runner status={runner} origin={origin} lastSeen={runner.lastSeen ? when(runner.lastSeen) : null} />
+        <div className="mt-6 max-w-3xl space-y-2 font-mono text-[10.5px] leading-[1.8] text-ink-3">
+          <p>
+            <b className="font-normal text-ink">To update a Mac that&apos;s already set up:</b> run line 1 (download) and line 3 (install) again. Your key and TopstepX details stay.
+          </p>
+          <p>
+            <b className="font-normal text-ink">The goal guard.</b> Every account gets its own target price, held as that account&apos;s own order at Topstep. While a real trade is open the Mac looks every few seconds: if the target order has been moved it is put back, if the stop or target order is missing your phone is told, and if price trades through the target with the position still open that account is closed at market. A guard close can fill a little past the target, because it is a market order sent after the fact. Switch the guard off per card under Profit target.
+          </p>
+        </div>
+      </Section>
+
+      <Section id="tradingview" n={3} label="TradingView" lead={<>One script, <em>one</em> alert.</>}>
         <ol className="max-w-3xl list-decimal space-y-2 pl-5 font-mono text-[11px] leading-[1.8] text-ink-3">
           <li>
-            Tap <b className="font-normal text-ink">Copy the script</b> below. In TradingView: Pine Editor → New → select everything and paste over it → Save as <b className="font-normal text-ink">MNQ Pass C - 4H bias + value area [1m]</b> → Add to chart, on <b className="font-normal text-ink">CME_MINI:MNQ1!</b>, <b className="font-normal text-ink">1 minute</b>.
+            Tap <b className="font-normal text-ink">Copy the script</b> below. In TradingView: Pine Editor → New → select everything and paste over it → Save → Add to chart, on <b className="font-normal text-ink">CME_MINI:MNQ1!</b>, <b className="font-normal text-ink">1 minute</b>. It shows as <b className="font-normal text-ink">{PASS_PINE_NAME}</b>.
           </li>
-          <li>In the script&apos;s settings, put your Webhook Secret: the same one as the SOR script (BOT_WEBHOOK_SECRET in Vercel).</li>
+          <li>In the script&apos;s settings, put your Webhook Secret (the same as BOT_WEBHOOK_SECRET in Vercel) and leave <b className="font-normal text-ink">Send alerts</b> ticked.</li>
           <li>
-            Create an alert: Condition = <b className="font-normal text-ink">MNQ Pass C - 4H bias + value area [1m]</b> → <b className="font-normal text-ink">alert() function calls only</b> (not &quot;Order fills&quot;), Expiration = open-ended, Notifications → Webhook URL below, and tick Notify in app (so you hear if it ever stops). Leave the Message box as it is.
+            Create one alert: Condition = that script → <b className="font-normal text-ink">alert() function calls only</b> (not &quot;Order fills&quot;), Expiration = open-ended, Notifications → Webhook URL below, and tick Notify in app (so you hear if it ever stops). Leave the Message box as it is.
           </li>
-          <li>It&apos;s a second alert next to the SOR one: both can run at once. It sends every C trade, always (whatever the chart's Strategy Tester shows); each account here decides from its own stage and numbers. Set your cards to script C.</li>
+          <li>
+            <b className="font-normal text-ink">Delete the alerts on the older scripts</b> (the separate &quot;MNQ Pass C&quot; and SOR scripts). This one alert sends both kinds of trade; two alerts for the same trade would be turned away as repeats here, but there is no reason to keep them.
+          </li>
+          <li>The script only sends the trade. Size, stop, target and whether an account takes it are all decided here, per card. The &quot;qty 10&quot; in its message is ignored.</li>
         </ol>
         <div className="mt-5">
           <CopyScript code={PASS_PINE} />
         </div>
         <div className="mt-4 max-w-3xl">
-          <Copy label="Webhook URL (the same as the SOR alert)" value={`${origin}/api/bot/webhook`} />
+          <Copy label="Webhook URL" value={`${origin}/api/bot/webhook`} />
         </div>
       </Section>
 
-      <Section id="accounts" n={3} label="Accounts" lead={<>Each account knows its <em>stage</em>.</>}>
+      <Section id="accounts" n={4} label="Accounts" lead={<>Each account knows its <em>stage</em>.</>}>
         <PassAccounts accounts={p.accounts} options={runner.accounts ?? []} />
         <p className="mt-6 max-w-3xl font-mono text-[10.5px] leading-[1.8] text-ink-4">
-          When an account passes, hits its payout or blows, the card switches itself off and your phone gets a push. When Topstep gives you the funded account (or Lucid moves you to pre-live), set the card&apos;s stage and new account and switch it back on: it starts that stage from zero. Topstep cards trade from your Mac; Lucid cards push you each trade to place yourself (stop, target and the time to close).
+          Every stage has its own tested settings (eval: 10 MNQ, $1,000 risk, $1,640 a day, SOR on; Topstep funded: 7 MNQ, $700 risk, $1,000 a day, no SOR). Change any of them per card: what you changed shows in gold, and &quot;Back to the tested plan&quot; undoes it. When an account passes, reaches its payout or blows, the card switches itself off and your phone gets a push. Passed: set the card to Funded with the new TopstepX account and switch it on. Payout: request it at Topstep, press <b className="font-normal text-ink-2">Payout taken</b>, and the same account trades on with its loss limit fixed at $0. Lucid cards push you each trade to place yourself.
         </p>
       </Section>
 
-      <Section id="book" n={4} label="The book" lead={<>Every session, every <em>account</em>.</>}>
-        <div className="mb-4 font-mono text-[11px] text-ink-3">
-          {closed.length} closed · {closed.length ? Math.round((wins.length / closed.length) * 100) : 0}% won · PF {gl > 0 ? (gw / gl).toFixed(2) : "—"} · net {money(gw - gl)}
+      <Section id="now" n={5} label="Right now" lead={<>Open trades and today&apos;s <em>SOR</em>.</>}>
+        <div className="grid max-w-4xl gap-8 lg:grid-cols-2">
+          <div>
+            <div className="mb-3 font-mono text-[9px] tracking-[0.24em] text-ink-4 uppercase">Open positions</div>
+            <ul>
+              {open.length === 0 && <li className="font-mono text-[11px] text-ink-4">Nothing open.</li>}
+              {open.map((t) => (
+                <li key={t.id} className="border-b border-line py-2 font-mono text-[11px]">
+                  <span className="text-ink">
+                    {t.account} · {t.strategy} {SESSION_NAME[t.session]} · {t.dir} {t.qty}
+                  </span>
+                  <span className="mt-0.5 block text-[10px] text-ink-3">
+                    {t.status === "pending" ? "waiting for your Mac" : `in @ ${t.entry}`} · stop {t.stop} · target {t.target}
+                    {t.mode !== "live" && ` (${t.mode === "dry" ? "practice" : "yours to place"})`}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div>
+            <div className="mb-3 font-mono text-[9px] tracking-[0.24em] text-ink-4 uppercase">
+              SOR today · health <span className={p.sorHealth === "LIVE" ? "text-pos" : "text-gold"}>{p.sorHealth}</span>
+            </div>
+            <ul>
+              {(Object.keys(SOR_SESSIONS) as (keyof typeof SOR_SESSIONS)[]).map((ses) => {
+                const used = p.sorToday.find((x) => x.session === ses);
+                return (
+                  <li key={ses} className="grid grid-cols-[6rem_minmax(0,1fr)] gap-x-3 border-b border-line py-2 font-mono text-[11px]">
+                    <span className="text-ink-2">{SESSION_NAME[ses]}</span>
+                    <span className={used ? (used.safe && !used.note ? "text-pos" : "text-ink-3") : "text-ink-4"}>
+                      {used ? (used.note ?? `first signal safe, handed to the accounts (${when(used.at)})`) : `waiting for the first signal (first ${SOR_SESSIONS[ses].window} minutes)`}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+            <p className="mt-3 font-mono text-[10px] leading-[1.7] text-ink-4">
+              {sorCards.length ? `${sorCards.length} ${sorCards.length === 1 ? "card takes" : "cards take"} SOR: ${sorCards.map((a) => a.label).join(", ")}.` : "No card that's switched on takes SOR."} One chance per session: the first valid signal decides, for every account. Never Thursday, never NY PM or Asia.
+            </p>
+          </div>
+        </div>
+      </Section>
+
+      <Section id="book" n={6} label="The book" lead={<>Every signal, every <em>account</em>.</>}>
+        <div className="mb-4 space-y-1 font-mono text-[11px] text-ink-3">
+          <div>All · {tally(closed)}</div>
+          <div className="text-ink-4">C · {tally(closed.filter((t) => t.strategy === "C"))}</div>
+          <div className="text-ink-4">SOR · {tally(closed.filter((t) => t.strategy === "SOR"))}</div>
         </div>
         <ul>
-          {p.trades.length === 0 && <li className="font-mono text-[11px] text-ink-4">Nothing yet. The first decision comes at the next session.</li>}
+          {p.trades.length === 0 && <li className="font-mono text-[11px] text-ink-4">Nothing yet. The first decision comes at the next signal.</li>}
           {p.trades.map((t) => (
             <li key={t.id} className={cn("grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 border-b border-line py-2 font-mono text-[11px]", t.status === "skipped" && "opacity-55")}>
               <span className="truncate text-ink-2">
-                {when(t.enteredAt)} · {SESSION_NAME[t.session]} · {t.account} · {t.stage}
+                {when(t.enteredAt)} · <span className={t.strategy === "SOR" ? "text-gold" : undefined}>{t.strategy}</span> {SESSION_NAME[t.session]} · {t.account} · {t.stage}
                 {t.mode !== "live" && <span className="text-ink-4"> ({t.mode === "dry" ? "practice" : "yours"})</span>}
               </span>
               <span className={cn("num text-right", (t.pnl ?? 0) > 0 ? "text-pos" : (t.pnl ?? 0) < 0 ? "text-neg" : "text-ink-4")}>
                 {t.status === "closed" ? money(t.pnl ?? 0) : t.status === "open" ? "open" : t.status === "pending" ? "placing" : t.status}
               </span>
-              <span className="col-span-2 truncate text-[10px] text-ink-4">
-                {t.status === "skipped" || t.status === "error" ? t.reason : `${t.dir} ${t.qty} @ ${t.entry} · SL ${t.stop} · TP ${t.target}${t.exitReason ? ` · ${t.exitReason === "time" ? "time exit" : t.exitReason}` : ""}`}
+              <span className="col-span-2 truncate text-[10px] text-ink-4" title={t.reason ?? undefined}>
+                {t.status === "skipped" || t.status === "error"
+                  ? t.reason
+                  : `${t.dir} ${t.qty} @ ${t.entry} · SL ${t.stop} · TP ${t.target}${t.exitReason ? ` · ${t.exitReason === "time" ? "time exit" : t.exitReason === "goal" ? "closed by the goal guard" : t.exitReason}` : ""}`}
               </span>
             </li>
           ))}
         </ul>
       </Section>
 
-      <Section id="rules" n={5} label="The rules" lead={<>What the bot <em>does</em>.</>}>
+      <Section id="rules" n={7} label="The rules" lead={<>What the bot <em>does</em>.</>}>
         <div className="max-w-3xl space-y-3 font-mono text-[11px] leading-[1.8] text-ink-3">
           <p>
-            <b className="font-normal text-ink">Asia</b> · 20:00 New York bar closes → LONG · out by 02:59. No Asia trade on Friday or Saturday evenings.
-            <br />
-            <b className="font-normal text-ink">London</b> · 03:30 bar closes above the 03:01 open → SHORT, otherwise LONG (against the first 30 minutes) · out by 09:39.
-            <br />
-            <b className="font-normal text-ink">New York</b> · 10:10 bar closes at or above the 09:41 open → LONG, otherwise SHORT (with the first 30 minutes) · out by 16:09.
+            <b className="font-normal text-ink">Script C</b> (every account). Asia: the 20:00 New York bar closes → LONG, out by 02:59 (not Friday or Saturday evening). London: the 03:30 bar closes above the 03:01 open → SHORT, otherwise LONG, out by 09:39. New York: the 10:10 bar closes at or above the 09:41 open → LONG, otherwise SHORT, out by 16:09. The script only sends a trade when the last finished 4H candle points the same way and price is outside the 70% value area, so nothing is re-checked here.
           </p>
-          <p>Stop = the stage&apos;s risk (less if the daily or trailing loss limit has less room). Target = what&apos;s left of today&apos;s goal. An account stops for the day at its goal, its daily loss limit or under $25 of room.</p>
           <p>
-            Filters (script C always, script D once funded): the last finished 4H candle&apos;s body must point the trade&apos;s way (Asia: 14:00–18:00, London: 22:00–02:00, New York: 02:00–06:00), and price must be outside the day&apos;s 70% value area (from 20:00 New York). The script works both out on your chart and sends them with each signal.
+            <b className="font-normal text-ink">For each account, on each C alert:</b> skip if a trade is open, today&apos;s goal is reached, or the account is passed, payout-ready or blown. Stop: always the card&apos;s stop (50 points). Size: the card&apos;s contracts, or fewer at the same stop when the room above the loss limit is short. Target: what&apos;s left of today&apos;s goal plus $1 a contract for costs, divided by contracts × $2, rounded up to the tick (or your fixed target, if you set one).
           </p>
-          <p className="text-ink-4">Backtested Nov 2019 – Nov 2026; expect live pass rates a few points lower. Start on Practice, then one or two evals.</p>
+          <p>
+            <b className="font-normal text-ink">Today&apos;s goal.</b> Topstep eval: the smaller of $1,640 and what the account still needs to pass inside the 55% rule (so $1,640, then about $1,370). Topstep funded: $1,000, and once 5 winning days are banked, only what&apos;s left to the payout balance. Lucid step 1: $1,200 inside the 40% rule. Lucid pre-live: up to $2,000.
+          </p>
+          <p>
+            <b className="font-normal text-ink">SOR Safe</b> (Topstep evals, unless you switch it on elsewhere). Only swing 3/3, only the first valid signal of London (first 150 minutes) and NY AM (first 90), never Thursday, and only if that signal is safe. 5 MNQ at SOR&apos;s own stop and target prices; the target is capped at what&apos;s left of today&apos;s goal; fewer contracts if room is short, never a moved stop; flat by 16:09. If it can&apos;t be taken, the session&apos;s chance is still used. A C trade always comes first.
+          </p>
+          <p>
+            <b className="font-normal text-ink">Payouts.</b> Funded reaches its payout balance with 5 winning days: the card pauses and tells you. After you press Payout taken: profit minus the payout, loss limit fixed at $0, winning days from 0, same account, same rules.
+          </p>
+          <p className="text-ink-4">Backtested Nov 2019 – Nov 2026 (eval pass rate 52.1% with SOR, 50.4% without); expect live results a few points lower. Run it on Practice first and compare each trade with the chart.</p>
         </div>
+      </Section>
+
+      <Section id="log" n={8} label="Log">
+        <ul>
+          {p.events.length === 0 && <li className="font-mono text-[11.5px] text-ink-3">Quiet so far.</li>}
+          {p.events.map((e, i) => (
+            <li key={i} className="grid grid-cols-[9rem_minmax(0,1fr)] gap-x-4 border-b border-line py-2 font-mono text-[10.5px] max-sm:grid-cols-1">
+              <span className="text-ink-4">{when(e.at)}</span>
+              <span className={cn("whitespace-pre-line", e.level === "error" ? "text-neg" : e.level === "warn" ? "text-gold" : "text-ink-3")}>{e.message}</span>
+            </li>
+          ))}
+        </ul>
       </Section>
     </>
   );

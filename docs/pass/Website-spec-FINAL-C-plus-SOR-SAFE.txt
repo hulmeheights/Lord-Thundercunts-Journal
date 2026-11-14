@@ -1,0 +1,442 @@
+=====================================================================
+MNQ BOT: EVERYTHING FOR THE WEBSITE - FINAL (C + SOR SAFE, 13 Nov 2026)
+This one text replaces every earlier rules pack and spec.
+Part A = how the bot handles both strategies. Part B = the C rules in full.
+Written for Topstep accounts WITHOUT a daily loss limit (each account
+has a toggle "has daily loss limit", default NO).
+=====================================================================
+
+PART A: HOW THE BOT HANDLES C AND SOR
+=====================================================================
+0. SUMMARY
+---------------------------------------------------------------------
+Two TradingView scripts send alerts to the same webhook, for EVERY
+signal. Nothing is capped in TradingView. The website decides per
+account whether to place each trade, with what size and target.
+  - Script C (main strategy): 50-point stop always. EVAL 10 MNQ
+    ($1,000 risk), Topstep FUNDED 7 MNQ ($700 risk). Up to 3
+    trades a day (Asia 20:00, London 03:30, NY 10:10 New York).
+  - SOR (Session Open Reversal v4): small add-on, Topstep EVAL accounts
+    ONLY. Only swing "3/3", only the FIRST valid signal of the London
+    session (first 150 min) and of the NY AM session (first 90 min),
+    and only if that signal is safe_ok. 5 MNQ, its own stop and target
+    prices. NO SOR in NY PM, NO SOR in Asia.
+One position per account at a time. Both strategies share the same
+account numbers: day goal ($1,640 then about $1,370), best day, 55%
+rule, $2,000 trailing max loss. FUNDED and Lucid accounts trade C only.
+Topstep FUNDED accounts trade C at 7 MNQ with a $1,000 day goal, and
+KEEP TRADING after each payout (section 3 and Part B).
+
+---------------------------------------------------------------------
+0b. SIZE AND RISK BY STAGE (the website sets these, not TradingView)
+---------------------------------------------------------------------
+  Stage            C contracts  C stop   C risk   Day goal          SOR
+  Topstep EVAL         10       50 pts   $1,000   $1,640, then the   yes, 5 MNQ
+                                                  rest (~$1,370),
+                                                  inside the 55% rule
+  Topstep FUNDED        7       50 pts     $700   $1,000             no
+  Lucid STEP 1         10       50 pts   $1,000   $1,200 (40% rule)  no
+  Lucid PRE-LIVE       10     62.5 pts   $1,250   to $2,000          no
+  When the account moves EVAL -> FUNDED, switch 10 -> 7 contracts and
+  $1,640 -> $1,000 day goal. Room short = fewer contracts, same stop.
+
+---------------------------------------------------------------------
+0c. WHEN THE WEBSITE CHANGES AN ACCOUNT'S LEVELS (the triggers)
+---------------------------------------------------------------------
+  1. AFTER EVERY CLOSED TRADE: add the P&L to profit and to today.
+     Recalculate left today and room. Check pass / payout-ready / blown.
+  2. AT 18:00 NEW YORK (new trading day): best day = max(best day,
+     today). If today >= $150, winning days + 1. Highest end-of-day
+     profit = max(it, profit). Loss floor = min(highest end-of-day
+     profit - $2,000, $0). Today = 0. Work out the new day goal.
+     Reset the SOR "session used" flags.
+  3. EVAL PASSED (profit >= $3,000 and best day <= 55% of profit):
+     stop trading that account. When Topstep issues the funded account,
+     set stage = FUNDED and reset: profit 0, today 0, best day 0,
+     winning days 0, highest end-of-day 0, loss floor -$2,000.
+     From then on: C only, 7 MNQ, $1,000 day goal, no SOR.
+  4. FUNDED PAYOUT-READY (5 winning days and profit >= $4,000): pause
+     the account and flag it. After you request the payout, press
+     "payout taken": profit = profit - payout amount, loss floor = $0
+     (fixed for good), winning days = 0. Resume. Stage stays FUNDED.
+  5. ROOM SHORT (room < full risk): fewer contracts, same 50-pt stop.
+  6. BLOWN (profit <= loss floor, or room below one contract's risk):
+     mark the account dead, stop sending it orders.
+  7. SOR HEALTH alert: PAUSED / LIVE switches SOR on evals only.
+  All of this is per account. Nothing in TradingView changes.
+
+---------------------------------------------------------------------
+0d. IF YOU USE THE ONE-SCRIPT VERSION ("MNQ LIVE - C + SOR SAFE")
+---------------------------------------------------------------------
+One alert on one script sends two kinds of message:
+  C trade:   {"event":"pass","script":"C","session":"ASIA|LON|NY",
+              "dir":"LONG|SHORT","price":...,"qty":10,
+              "stop_pts_eval":50,...,"exit_by":"02:59|09:39|16:09",
+              "id":"<time>-<session>"}
+  SOR SAFE:  {"event":"signal","swing":"3/3","session":"LON|NYAM",
+              "dow":"Mon..","mins_in":...,"quiet":false,
+              "dir":"LONG|SHORT","entry":...,"stop":<price>,
+              "target":<price>,"quiet_target":null,"safe_ok":true,
+              "first_valid":true,"id":"<time>-3/3-L|S"}
+The script has ALREADY applied sections 4.1 and 4.2 to SOR: it only
+sends the first valid signal of the London / NY AM session, and only
+when it is safe. So for a SOR message the website just checks
+  "swing" = "3/3", "safe_ok" = true, "session" is LON or NYAM,
+then applies the account rules (4.3 to 4.5). "target" is already the
+right target (quiet or normal), so always use "target".
+The script sends NO stage, NO day goal and NO funded size: "qty":10 in
+the C message is the eval size only. The website sets size, target
+and whether to trade, per account. It also sends no SOR health
+alerts; SOR stays LIVE unless you switch the add-on off yourself.
+Do not also run alerts on the separate C and SOR scripts.
+
+---------------------------------------------------------------------
+1. TELLING THE ALERTS APART (do this first, on every webhook)
+---------------------------------------------------------------------
+Check the secret first. Then route on the fields:
+  "event":"pass"  AND "script":"C"          -> C TRADE  (section 3)
+  "event":"signal" AND no "strategy" field  -> SOR SIGNAL (section 4)
+  "event":"signal" AND "strategy":"SNIPER"  -> IGNORE (keep "Send
+                                               Sniper signals" OFF)
+  "event":"sniper_day"                      -> IGNORE
+  "event":"exit" AND "strategy":"SNIPER"    -> IGNORE
+  "event":"health"                          -> SOR HEALTH (section 4.6)
+  anything else                             -> log it, do nothing
+Deduplicate on "id": the same id never places two orders.
+
+---------------------------------------------------------------------
+2. WHICH ACCOUNTS TRADE WHAT
+---------------------------------------------------------------------
+                         C trades     SOR SAFE trades
+  Topstep EVAL           YES          YES (London + NY AM only)
+  Topstep FUNDED         YES          NO  (tested: no gain)
+  Lucid STEP 1 (eval)    YES          NO  (tested: worse)
+  Lucid PRE-LIVE         YES          NO  (tested: no gain)
+  Practice account       YES          YES (to check everything first)
+Per-account toggles on the website: stage EVAL / FUNDED / PRELIVE,
+"SOR add-on" (default ON for Topstep EVAL, OFF elsewhere),
+"has daily loss limit" (default NO).
+
+---------------------------------------------------------------------
+3. C TRADES (full detail in Part B)
+---------------------------------------------------------------------
+The C script only sends trades that pass its filters (4H candle bias
+and outside the value area), so the bot never re-checks them.
+Per account, on a C alert:
+  a) Skip if the account already has an open position (C or SOR).
+  b) Skip if today's goal is reached (left today <= 0), or the account
+     is payout-ready / passed / blown.
+  c) Size: EVAL 10 MNQ, Topstep FUNDED 7 MNQ. Stop always 50 points
+     ($1,000 / $700). If room is short, FEWER contracts at the same
+     50-point stop. 0 contracts = account finished.
+  d) Target: (left today + $1 x contracts) / (contracts x $2) points,
+     rounded up to the tick. At least $25 if it finishes the account.
+  e) Bracket order. Close at "exit_by" if still open (02:59, 09:39 or
+     16:09 New York).
+C's times and rules NEVER change because of SOR. The SOR time
+windows below apply to SOR signals only.
+
+---------------------------------------------------------------------
+4. SOR SAFE TRADES (TOPSTEP EVAL ACCOUNTS ONLY)
+---------------------------------------------------------------------
+4.1 A SOR signal is "valid" when ALL of these are true:
+  - "swing":"3/3"          ("3/2" is SOR's funded set: always ignore)
+  - "session" is "LON" or "NYAM"   (ignore "NYPM" and "ASIA" entirely)
+  - "dow" is not "Thu"
+  - "mins_in" < 150 for LON, < 90 for NYAM
+  - it has a usable target: if "quiet":true use "quiet_target";
+    if "quiet":false use "target", and it is not valid if "target"
+    is null
+  (safe_ok is NOT part of "valid"; see 4.2)
+
+4.2 One SOR chance per session:
+  - For each trading day (18:00-17:00 New York) and session (LON,
+    NYAM), only the FIRST valid signal counts.
+  - If that first valid signal has "safe_ok":true, it is the
+    session's SOR trade (take it if the account rules in 4.3 allow).
+  - If it has "safe_ok":false: NO SOR trade in that session. Ignore
+    every later SOR signal in that session.
+  - If it can't be taken (position open, no room, goal reached), the
+    session is still used up. No second chance.
+  - This is tracked once per session, the same for every account.
+
+4.3 Shared account rules (same numbers as C):
+  - ONE position at a time. Skip SOR if any position is open; C does
+    the same in return. If a C alert and a SOR signal arrive on the
+    same bar, take C.
+  - Skip if the account's left today is $0 or less, or the account is
+    passed / blown / waiting.
+  - SOR wins and losses count toward today's profit, the best day, the
+    55% rule and the $2,000 trailing max loss, exactly like C.
+
+4.4 Size, stop and target:
+  - 5 MNQ. Stop = the "stop" PRICE in the alert. Target = the
+    "quiet_target" or "target" PRICE (see 4.1). Use prices, not
+    distances.
+  - Cap the target at the account's left today:
+      cap price = fill +/- (left today + $1.24 x contracts) / (contracts x $2)
+    (+ for longs, - for shorts). If the alert's target is further
+    than the cap, use the cap. If the capped reward is less than half
+    the stop distance, skip, unless the trade would pass the account.
+  - Room check: loss at stop = (stop distance + 0.25) x $2 x contracts
+    + $1.24 x contracts. If that is more than the room (profit - loss
+    floor), use fewer contracts; 0 contracts = skip (never end the
+    account over a SOR trade). Never move the stop.
+
+4.5 Exit: bracket order (stop + capped target). Close any SOR position
+    still open at 16:09 New York.
+
+4.6 Health switch (SOR only): {"event":"health","state":"PAUSED"} ->
+    stop taking SOR on all accounts; "LIVE" -> allowed again. Store
+    the latest state; default LIVE. C is never paused.
+
+---------------------------------------------------------------------
+5. SOR KEEPS ITS OWN (SMALLER) RISK
+---------------------------------------------------------------------
+SOR never uses C's size or 50-point stop. Each SOR trade risks its own
+stop distance at 5 MNQ: usually 20-65 points, median about 35, so about
+$200-$650 a trade, typically about $355. Average SOR win about $720,
+average SOR loss about $400. C stays at 50 pts: 10 MNQ ($1,000) in EVAL, 7 MNQ ($700) in FUNDED.
+
+---------------------------------------------------------------------
+6. EXAMPLE DAY (Topstep EVAL, no daily limit, fresh, goal $1,640)
+---------------------------------------------------------------------
+20:00  C Asia LONG -> 10 MNQ, stop 50 pts, target 82.5 pts.
+       Stopped at 01:10: -$1,015. Today -$1,015.
+       Goal stays $1,640 (still needed $4,015), so left today = $2,655,
+       room = $2,000 - $1,015 = $985.
+03:30  C London alert -> room $985 is less than $1,000: 9 MNQ at the
+       same 50-pt stop ($900 + costs). Target = (2,655 + 9) / 18
+       = 148 pts (the day goal is net, so after a loss the target
+       is bigger to finish the day at +$1,640).
+04:05  SOR LON signal (first valid one of London, safe_ok true) ->
+       skip: the C trade is open. London's SOR chance is now used up.
+09:52  SOR NYAM signal (first valid of NY AM, safe_ok false) -> no SOR
+       in NY AM today. Later NYAM signals are ignored.
+10:10  C NY alert -> taken if no position is open and room allows.
+13:45  SOR NYPM signal -> ignored (SOR does not trade NY PM).
+
+---------------------------------------------------------------------
+7. WHAT TO SHOW ON THE WEBSITE PER ACCOUNT
+---------------------------------------------------------------------
+  Stage, SOR add-on on/off, SOR health, profit, today, today's goal and
+  left today, best day, 55% check, trailing floor and room, open
+  position (strategy, side, size, stop, target, exit time), SOR
+  sessions used today (LON / NYAM), last 20 trades tagged C / SOR.
+
+---------------------------------------------------------------------
+8. BACKTEST (Nov 2019 - Nov 2026, Topstep EVAL, no daily limit)
+---------------------------------------------------------------------
+                          C alone     C + SOR SAFE (this spec)
+  Eval pass rate           50.4%       52.1%
+  2019-22 / 2023-26     51.4 / 49.6  52.1 / 52.1
+  Median days to pass        7           7
+  Trading days per pass     17.4        16.1   (one account, fails incl.)
+  Fees per pass ($120)      $238        $230
+  Most fails in a row        6           5
+Every trade taken, no caps (one position at a time):
+  Trades per week           3.6         4.4
+  Win rate                 49.3%       49.3%
+  Profit factor             1.34        1.38
+  Most losses in a row       7           7
+  Worst day               -$2,295     -$2,579
+  Worst drawdown          -$12,530    -$12,491
+  SOR part: 0.9 trades a week, 48% win, PF 1.70.
+Year by year eval pass, C -> C + SOR:
+  2020 54->54, 2021 58->64, 2022 42->39, 2023 55->55, 2024 54->56,
+  2025 43->47, 2026 45->50.
+FUNDED, no daily limit, C only (same 7 years):
+                              10 MNQ / $1,640 goal   7 MNQ / $1,000 goal
+  First payout reached           39.4%                 46.2%
+  2020-22 / 2023-26           41.0 / 38.1           45.0 / 47.1
+  Median days to it               15                    21
+  Each later payout (after the first, floor at $0): about 70%
+  (68% / 71%), median 16 trading days.
+One account cycling eval -> funded -> payouts, per year (backtest):
+  old plan (10 MNQ, close after 1 payout):   about $2,500 net
+  new plan (7 MNQ, up to 4 payouts/account): about $8,800 net
+  (about 11 evals = $1,300 fees, about 5.6 payouts of $1,800)
+Final audit also tested and rejected for evals: per-trade target caps,
+1 or 2 loss day-stops, 7/8/9/11/12 contracts, sizing by a fraction of
+room (higher pass rate, up to 56%, but so much slower that money per
+year fell).
+Tested and rejected (13 Nov audit, about 30 versions): SOR in NY PM,
+longer NY windows (120/150), SOR in Asia (any version), every
+safe_ok signal instead of the first, SOR's own -$500 / red-day rules,
+4/6/7 SOR contracts, other ATR/EMA settings, allowing Thursday,
+dropping quiet trades, SOR only on green days, day caps 1540/1740.
+Expect live results 2-4 points lower.
+
+---------------------------------------------------------------------
+9. CHECKLIST BEFORE GOING LIVE
+---------------------------------------------------------------------
+  [ ] C alerts and SOR alerts both reach the webhook (two charts, two
+      alerts, both "alert() function calls only").
+  [ ] SOR "Send Sniper signals" is OFF.
+  [ ] Only swing "3/3", only LON and NYAM; 3/2, NYPM, ASIA never.
+  [ ] Only the FIRST valid signal of each session counts, and only if
+      safe_ok is true. LON window 150 min, NYAM 90 min.
+  [ ] Never two positions in one account.
+  [ ] SOR size from the SOR alert (5 MNQ, its own stop price); C size
+      from the C rules (50 pts; 10 MNQ in EVAL, 7 MNQ in FUNDED).
+  [ ] The C alert says "qty":10. The website IGNORES that for FUNDED
+      accounts and places 7 MNQ (fewer if room is short).
+  [ ] On payout: profit -= payout, loss floor fixed at $0, winning
+      days = 0, stage stays FUNDED, keep trading.
+  [ ] SOR target capped at left today; no trades once left today <= 0.
+  [ ] SOR flat by 16:09, C flat by its exit_by.
+  [ ] Funded and Lucid accounts never take SOR.
+  [ ] Health PAUSED stops SOR only.
+  [ ] Run 2 weeks on the practice account and compare every trade with
+      the test script ("MNQ TEST - C + SOR SAFE").
+
+=====================================================================
+PART B: SCRIPT C RULES IN FULL
+=====================================================================
+---------------------------------------------------------------------
+B2. THE TRADES (New York time, MNQ 1-minute chart)
+---------------------------------------------------------------------
+Three possible trades per trading day, one per session:
+
+  ASIA    Signal on the close of the 20:00 bar. Direction: LONG.
+          No Asia trade on Friday or Saturday evenings.
+          Time exit 02:59.
+  LONDON  Note the open of the 03:01 bar. On the close of the 03:30 bar:
+          price ABOVE that open -> SHORT, otherwise -> LONG
+          (against the first 30 minutes). Time exit 09:39.
+  NY      Note the open of the 09:41 bar. On the close of the 10:10 bar:
+          price at or above that open -> LONG, otherwise -> SHORT
+          (with the first 30 minutes). Time exit 16:09.
+
+The trading day runs 18:00 to 17:00 New York, so the Asia evening
+belongs to the next calendar day.
+
+---------------------------------------------------------------------
+B3. THE TWO FILTERS (both must pass, or there is no trade and no alert)
+---------------------------------------------------------------------
+FILTER 1: 4H candle bias
+  4H candles start 18:00, 22:00, 02:00, 06:00, 10:00, 14:00 New York.
+  Bias = body of the last FINISHED 4H candle: close above open = UP,
+  close below open = DOWN. Wicks are ignored.
+    ASIA uses the 14:00-18:00 candle (Sunday evening: Friday's
+    14:00-18:00 candle, as the market is shut until 18:00 Sunday)
+    LONDON uses the 22:00-02:00 candle
+    NY uses the 02:00-06:00 candle (not the 06:00-10:00 one)
+  The trade direction must match the bias.
+
+FILTER 2: outside the value area
+  Volume profile of the day so far, from 20:00 New York up to the
+  signal. 1-point bins; each bar's volume spread evenly from its low
+  to its high. POC = busiest bin. Value area = grow out from the POC,
+  adding the busier neighbouring bin each time, until 70% of volume
+  is inside. VAH = top, VAL = bottom.
+  ASIA uses the previous 24 hours (20:00 yesterday to 20:00 today).
+  Price at the signal must be ABOVE VAH or BELOW VAL.
+
+Liquidity sweeps before entry (previous session/day high or low, or
+the prior 1-4 hour range, swept in the 10-120 minutes before entry)
+were tested 13 Nov: 96 versions, none beat C. Not used.
+
+Do NOT wait for price to come back to the value area or POC, and do
+NOT add extra entries later in the session. Both tested worse.
+
+---------------------------------------------------------------------
+B4. THE ALERT
+---------------------------------------------------------------------
+Sent on the close of the signal bar, for every C trade:
+{"secret":"...","event":"pass","script":"C","session":"NY",
+ "trading_day":"2026-11-12","dir":"LONG","price":21000.25,
+ "bias":"UP","vah":20990,"val":20950,"c_ok":true,"qty":10,
+ "stop_pts_eval":50,"stop_pts_funded":50,"stop_pts_prelive":62.5,
+ "day_cap_topstep":1640,"day_cap_lucid_eval":1200,
+ "exit_by":"16:09","id":"...-NY"}
+Orders fill at the open of the next bar.
+
+---------------------------------------------------------------------
+B5. WHAT THE WEBSITE DOES FOR EACH ACCOUNT ON EACH ALERT
+---------------------------------------------------------------------
+The website keeps, per account: stage (EVAL / FUNDED / PRELIVE),
+profit so far in this stage, highest end-of-day profit, best day,
+today's profit, winning days ($150+), and whether it has a daily loss
+limit.
+
+STEP 1. Work out today's goal for the account.
+  TOPSTEP EVAL:    goal = smaller of $1,640 and "still needed", where
+                   still needed = larger of ($3,000 - profit) and
+                   (best day / 0.55 - profit).
+                   Worked example: fresh account, goal $1,640. If day 1
+                   ends +$1,640, day 2's goal is $3,000 - $1,640 =
+                   $1,360 (+$10 margin = about $1,370), and $1,640 is
+                   then 54.7% of $3,010, inside the 55% rule. If a day
+                   loses, the goal is again up to $1,640 the next day.
+  TOPSTEP FUNDED:  goal = $1,000, until 5 winning days ($150+) are
+                   banked; after that, the smaller of $1,000 and
+                   (PAYOUT BALANCE - profit).
+                   PAYOUT BALANCE = $4,000 on accounts WITHOUT the
+                   daily loss limit (yours), $8,000 on accounts WITH it.
+  LUCID STEP 1:    goal = smaller of $1,200 and the larger of
+                   ($3,000 - profit) and (best day / 0.40 - profit).
+  LUCID PRE-LIVE:  goal = $2,000 - profit (no day cap).
+  Left today = goal - today's profit.
+
+STEP 2. Skip the account for this alert if:
+  - left today is $0 or less (day goal reached), or
+  - it already has an open position, or
+  - (only if the account HAS a daily loss limit) it is used up, or
+  - it is payout-ready (FUNDED: 5 winning days AND profit >= the
+    payout balance: $4,000 without daily limit, $8,000 with)
+    -> pause it, request the payout, then carry on (see B6), or
+  - the account is passed/blown and waiting for you to change it.
+
+STEP 3. Stop and size.
+  Risk per trade: Topstep EVAL $1,000 (50 points on 10 MNQ), Topstep
+  FUNDED $700 (50 points on 7 MNQ), Lucid step 1 $1,000, Lucid
+  Pre-Live $1,250 (62.5 pts on 10 MNQ).
+  Room = profit - loss floor, where the loss floor trails the highest
+  end-of-day profit by $2,000 and stops at 0 (= starting balance).
+  Only if the account HAS a daily loss limit: room = the smaller of
+  that and ($1,000 + today's profit). Your current accounts have none,
+  so room is simply profit - loss floor.
+  Contracts = full size (10, or 7 in Topstep FUNDED) if room >= risk,
+  otherwise
+              floor(room / (stop points x $2)) - never tighten the stop.
+  If that is 0, the account cannot trade: in EVAL treat it as finished.
+
+STEP 4. Target.
+  Target points = (left today + $1 x contracts) / (contracts x $2),
+  rounded up to the tick. If this trade would finish the account
+  (pass or payout), aim for at least $25.
+
+STEP 5. Exit.
+  Bracket order: stop and target. If neither is hit, close at exit_by.
+
+STEP 6. After the trade and at 18:00 each day, update the numbers.
+  EVAL passes when profit >= $3,000 AND best day <= 55% of profit
+  (Lucid: 40%). You then switch the account to FUNDED on the website.
+
+---------------------------------------------------------------------
+B6. ACCOUNT SETTINGS AND PAYOUTS
+---------------------------------------------------------------------
+Topstep 50K Combine, $120 per eval.
+WITHOUT the daily loss limit (your current accounts): payouts are
+capped at $2,000. Funded plan: run to a $4,000 balance with 5 winning
+days, then request $2,000 (you receive $1,800).
+WITH the daily loss limit (optional at checkout): cap $4,000. Run to
+$8,000 with 5 winning days, request $4,000 (you receive $3,600).
+AFTER A PAYOUT, KEEP TRADING THE SAME FUNDED ACCOUNT:
+  - Topstep sets the loss floor to $0 for good, so room = balance.
+    (After taking $2,000 from $4,000: balance $2,000, room $2,000.)
+  - Winning days restart from 0. Same rules: 7 MNQ, $1,000 day goal.
+  - Next payout again at PAYOUT BALANCE + 5 new winning days.
+  - Website: on "payout taken", set profit = profit - payout, loss
+    floor = $0 (fixed), winning days = 0. Stage stays FUNDED.
+  - The account only ends when the balance hits $0 or Topstep moves
+    you to Live.
+
+Being moved to Live: Topstep calls traders up at its discretion
+(most between their 3rd and 5th payout). You cannot decline. All
+Express Funded Accounts close when it happens, but a payout can be
+requested from each one during the move. Check whether your bot's
+API connection works on a Live account before relying on it there.
+
+---------------------------------------------------------------------

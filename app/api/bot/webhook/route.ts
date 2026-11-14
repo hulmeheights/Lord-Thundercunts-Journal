@@ -71,6 +71,19 @@ export async function POST(req: Request) {
     });
     return NextResponse.json({ ok: true, received: received.toISOString() });
   }
+  const ev = typeof body === "object" && body ? (body as { event?: unknown; strategy?: unknown; state?: unknown; safe_ok?: unknown }) : {};
+  // SOR's health switch: PAUSED stops the pass plan's SOR add-on on every account, LIVE allows it again. C is never paused.
+  if (ev.event === "health") {
+    const state = String(ev.state ?? "").toUpperCase();
+    if (state === "PAUSED" || state === "LIVE") {
+      after(() => import("@/lib/pass/server").then((m) => m.setSorHealth(state)).catch(() => {}));
+      return NextResponse.json({ ok: true, received: received.toISOString() });
+    }
+    await logEvent("warn", "A health alert came with no PAUSED / LIVE state: nothing changed");
+    return NextResponse.json({ ok: true, ignored: true });
+  }
+  // Sniper is not traded: its signals, day summaries and exits are dropped without a word.
+  if (ev.strategy === "SNIPER" || ev.event === "sniper_day") return NextResponse.json({ ok: true, ignored: true });
   // MNQ SOR v2: the script sends {"event":"signal", …} itself (alert() with its own message).
   if (typeof body === "object" && body && (body as { event?: unknown }).event === "signal") {
     const sig = SorSignal.safeParse(body);
@@ -78,12 +91,18 @@ export async function POST(req: Request) {
       await logEvent("error", `Signal didn't look right: ${sig.error.issues[0]?.path.join(".")} ${sig.error.issues[0]?.message}`);
       return NextResponse.json({ ok: false, error: "bad signal" }, { status: 400 });
     }
+    // A signal that says whether it's safe (the one-script "MNQ LIVE - C + SOR SAFE", or SOR v4) also goes to the pass plan's SOR add-on.
+    const safe = typeof ev.safe_ok === "boolean" ? ev.safe_ok : null;
     after(async () => {
-      try {
-        await handleSignal(sig.data, received);
-      } catch (e) {
-        await logEvent("error", `Webhook error: ${e instanceof Error ? e.message : String(e)}`).catch(() => {});
-      }
+      const d = sig.data;
+      await Promise.allSettled([
+        handleSignal(d, received).catch((e) => logEvent("error", `Webhook error: ${e instanceof Error ? e.message : String(e)}`).catch(() => {})),
+        safe === null
+          ? Promise.resolve()
+          : import("@/lib/pass/server")
+              .then((m) => m.passSor({ swing: d.swing, session: d.session, dow: d.dow, mins_in: d.mins_in, quiet: d.quiet, target: d.target, quiet_target: d.quiet_target, dir: d.dir, entry: d.entry, stop: d.stop, safe_ok: safe, id: d.id }, received))
+              .catch((e) => logEvent("error", `Pass plan SOR error: ${e instanceof Error ? e.message : String(e)}`).catch(() => {})),
+      ]);
     });
     return NextResponse.json({ ok: true, received: received.toISOString() });
   }

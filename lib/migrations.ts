@@ -852,4 +852,37 @@ export const MIGRATIONS: { version: number; sql: string }[] = [
       alter table pass_accounts alter column script set default 'C';
     `,
   },
+  {
+    version: 44,
+    sql: /* sql */ `
+      -- Pass plan, website spec of 13 Nov 2026: per-stage settings on each card, the payout cycle
+      -- (floor fixed at $0 after a payout), and the SOR SAFE add-on next to script C.
+      alter table pass_accounts add column if not exists settings jsonb not null default '{}'::jsonb;
+      alter table pass_accounts add column if not exists floor_locked boolean not null default false;
+      alter table pass_accounts add column if not exists stats_from timestamptz;
+      alter table pass_accounts add column if not exists payouts int not null default 0;
+      -- New cards: no daily loss limit (the accounts this plan is written for). Existing cards keep what they had.
+      alter table pass_accounts alter column dll set default false;
+      -- A size you had changed by hand stays; cards still on the old 10 take each stage's tested size (funded: 7).
+      update pass_accounts set settings = jsonb_build_object(stage, jsonb_build_object('contracts', contracts)) where contracts <> 10 and settings = '{}'::jsonb;
+      alter table pass_trades add column if not exists strategy text not null default 'C' check (strategy in ('C', 'SOR'));
+      alter table pass_trades add column if not exists tv_id text;
+      alter table pass_trades add column if not exists guard boolean not null default true;
+      alter table pass_trades drop constraint if exists pass_trades_session_check;
+      alter table pass_trades add constraint pass_trades_session_check check (session in ('ASIA', 'LON', 'NY', 'NYAM'));
+      drop index if exists pass_trades_once_idx;
+      create unique index if not exists pass_trades_once2_idx on pass_trades (account_id, trading_day, session, strategy);
+      alter table pass_settings add column if not exists sor_health text not null default 'LIVE' check (sor_health in ('LIVE', 'PAUSED'));
+      -- One SOR chance per session and trading day, the same for every account: the first valid signal decides.
+      create table if not exists pass_sor_sessions (
+        trading_day text not null,
+        session text not null check (session in ('LON', 'NYAM')),
+        tv_id text,
+        safe_ok boolean not null,
+        note text,
+        at timestamptz not null default now(),
+        primary key (trading_day, session)
+      );
+    `,
+  },
 ];

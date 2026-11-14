@@ -42,7 +42,7 @@ try:
 except Exception:  # very old Python: fixed offsets are close enough for the logs, never used to place
     NY = None
 
-VERSION = "4.1"
+VERSION = "5.0"
 TOPSTEP = os.environ.get("THUNDER_TOPSTEP_URL", "https://api.topstepx.com")  # override only for testing
 TICKET_TTL_MS = 20_000  # never place a ticket older than this: a late entry is a different trade
 HOME = os.path.expanduser("~")
@@ -168,11 +168,11 @@ class Topstep:
     def trades(self, account_id, since):
         return [t for t in (self.call("/api/Trade/search", {"accountId": account_id, "startTimestamp": since}).get("trades") or []) if not t.get("voided")]
 
-    def bars(self, contract_id, start, end, limit=1000):
-        """1-minute bars (read-only market data): following a dry-run trade, and the pass plan's signals and filters."""
+    def bars(self, contract_id, start, end, limit=1000, partial=False):
+        """1-minute bars (read-only market data): following a dry-run trade, and the pass plan's goal guard (which also wants the bar still forming)."""
         d = self.call(
             "/api/History/retrieveBars",
-            {"contractId": contract_id, "live": False, "startTime": start, "endTime": end, "unit": 2, "unitNumber": 1, "limit": limit, "includePartialBar": False},
+            {"contractId": contract_id, "live": False, "startTime": start, "endTime": end, "unit": 2, "unitNumber": 1, "limit": limit, "includePartialBar": partial},
         )
         return sorted(d.get("bars") or [], key=lambda b: b["t"])
 
@@ -599,8 +599,33 @@ def cleanup(ts, m, label):
             log(f"CLEAN-UP {label}: couldn't cancel order {o['id']} ({e})")
 
 
-# ── MNQ Pass Plan (scripts C and D): the TradingView "MNQ Pass Plan - Signals" alert → the journal decides per account → this Mac places ─────────
+# ── MNQ Pass Plan (script C + SOR SAFE): the TradingView "MNQ LIVE - C + SOR SAFE" alert → the journal decides per account → this Mac places,
+#    then guards every account's own target until the trade is closed ─────────
 PASS_COMMISSION = 1.0  # $ per contract round trip, as tested
+GOAL_CLOSED = {}  # trade id → when the goal guard closed it at market (so its close is booked as "goal")
+GUARD_TOLD = {}  # (trade id, what) → already reported, so one problem is one message
+
+
+def px_tick(x):
+    return round(round(float(x) * TICKS_PER_POINT) / TICKS_PER_POINT, 2)
+
+
+def pass_bracket(ts, account_id, contract):
+    """The stop and target orders Topstep is holding for this account's position: (stop order, target order), either may be None."""
+    orders = [o for o in ts.open_orders(account_id) if o.get("contractId") in (None, contract)]
+    return next((o for o in orders if o.get("type") == 4), None), next((o for o in orders if o.get("type") == 1), None)
+
+
+def pass_note(base, auth, t, level, what, message):
+    """Tell the journal something about a trade once (it logs it; errors also reach your phone)."""
+    if GUARD_TOLD.get((t["id"], what)):
+        return
+    GUARD_TOLD[(t["id"], what)] = True
+    log(f"PASS GUARD {t.get('label', '')}: {message}")
+    try:
+        post(base, auth, {"type": "pass_note", "tradeId": t["id"], "level": level, "message": message[:400]})
+    except Exception:
+        pass
 
 
 def ny_at(d, h, m):
@@ -637,15 +662,83 @@ def pass_place(ts, p, hedge_accounts):
             time.sleep(0.3)
         out = {"tradeId": p["tradeId"], "status": "open", "orderId": oid}
         if fill:
-            out["fill"] = fill
+            sign = 1 if long else -1
+            stop = px_tick(fill - sign * p["stopTicks"] / TICKS_PER_POINT)
+            target = px_tick(fill + sign * p["targetTicks"] / TICKS_PER_POINT)
+            # SOR trades to its own PRICES: move the stop (and an uncapped target) onto them. A level the fill is
+            # already past stays where Topstep put it. C's levels, and a capped target, stay a distance from the fill.
+            want_stop, want_target = p.get("stopPrice"), p.get("targetPrice")
+            if want_stop or want_target:
+                try:
+                    st_o, tp_o = None, None
+                    for _ in range(10):
+                        st_o, tp_o = pass_bracket(ts, m["id"], contract)
+                        if st_o and tp_o:
+                            break
+                        time.sleep(0.3)
+                    if want_stop and st_o and (want_stop < fill if long else want_stop > fill):
+                        ts.call("/api/Order/modify", {"accountId": m["id"], "orderId": st_o["id"], "size": st_o.get("size"), "stopPrice": px_tick(want_stop)})
+                        stop = px_tick(want_stop)
+                    if want_target and tp_o and (want_target > fill if long else want_target < fill):
+                        ts.call("/api/Order/modify", {"accountId": m["id"], "orderId": tp_o["id"], "size": tp_o.get("size"), "limitPrice": px_tick(want_target)})
+                        target = px_tick(want_target)
+                    log(f"PASS {p['label']}: filled {fill}, stop {stop}, target {target}")
+                except Exception as e:
+                    log(f"PASS {p['label']}: couldn't move the bracket onto SOR's prices ({e}); left a distance from the fill")
+            out.update({"fill": fill, "stop": stop, "target": target})
         return out
     except Exception as e:
         log(f"PASS FAILED {sig['dir']} on {p['label']}: {e}")
         return {"tradeId": p["tradeId"], "status": "error", "reason": str(e)[:400]}
 
 
+def pass_guard(base, auth, ts, m, t, now):
+    """
+    The goal guard, for one account's open trade. Every account has its own
+    target price (what that account still needs today), held as its own order
+    at Topstep. This checks that order is really there and at that price, and
+    if the market has traded through the price with the position still open
+    (order missing, moved, or not filled), closes this account at market.
+    Returns True if it closed the position.
+    """
+    contract = ts.mnq()
+    long = t["dir"] == "LONG"
+    target, stop = float(t["target"]), float(t["stop"])
+    st_o, tp_o = pass_bracket(ts, m["id"], contract)
+    if not st_o:
+        pass_note(base, auth, t, "error", "nostop", f"no stop order at Topstep for the open {t['dir']} (stop should be {stop}). Check TopstepX now")
+    if tp_o and tp_o.get("limitPrice") is not None and abs(float(tp_o["limitPrice"]) - target) >= 1 / TICKS_PER_POINT - 1e-9:
+        try:
+            ts.call("/api/Order/modify", {"accountId": m["id"], "orderId": tp_o["id"], "size": tp_o.get("size"), "limitPrice": px_tick(target)})
+            pass_note(base, auth, t, "warn", f"moved{target}", f"target order was at {tp_o['limitPrice']}, moved back to {target} (this account's target)")
+        except Exception as e:
+            log(f"PASS GUARD {t.get('label', '')}: couldn't move the target order ({e})")
+    elif not tp_o:
+        pass_note(base, auth, t, "error", "notarget", f"no target order at Topstep: the guard will close at market when price reaches {target}")
+    # Has the market reached this account's target since it got in? (The bar still forming counts.)
+    since = max(iso(t["enteredAt"]), now - timedelta(minutes=4)).replace(second=0, microsecond=0)
+    bars = ts.bars(contract, since.isoformat(), (now + timedelta(minutes=1)).isoformat(), 10, True)
+    live = [b for b in bars if iso(b["t"]) > iso(t["enteredAt"]).replace(second=0, microsecond=0)]
+    if not live:
+        return False
+    best = max(float(b["h"]) for b in live) if long else min(float(b["l"]) for b in live)
+    # With the order in place a touch is its job (it fills at the price); a clear tick through, or no order at all, is the guard's.
+    need = target + (1 / TICKS_PER_POINT if tp_o else 0) * (1 if long else -1)
+    if not (best >= need if long else best <= need):
+        return False
+    time.sleep(1.0)  # the target order may be filling this very second
+    pos = ts.positions(m["id"])
+    if not pos:
+        return False
+    for p_ in pos:
+        ts.call("/api/Position/closeContract", {"accountId": m["id"], "contractId": p_.get("contractId") or contract})
+    GOAL_CLOSED[t["id"]] = time.time()
+    pass_note(base, auth, t, "warn", "closed", f"price traded {best} through this account's target {target} with the position still open: closed at market")
+    return True
+
+
 def pass_watch(base, auth, ts, pc, now):
-    """Follow each open pass trade to its stop, target or time exit (practice / Lucid on the 1-minute bars), and report it."""
+    """Follow each open pass trade to its stop, target or time exit (practice / Lucid on the 1-minute bars), guard each real account's target, and report every close."""
     for t in pc.get("open", []):
         try:
             exit_at = iso(t["exitAt"])
@@ -689,6 +782,8 @@ def pass_watch(base, auth, ts, pc, now):
                     for p in pos:
                         ts.call("/api/Position/closeContract", {"accountId": m["id"], "contractId": p.get("contractId") or ts.mnq()})
                     log(f"PASS TIME EXIT {t['label']}: closed at market")
+                elif t.get("guard", True) and now - iso(t["enteredAt"]) > timedelta(seconds=8):
+                    pass_guard(base, auth, ts, m, t, now)
                 continue
             if now - iso(t["enteredAt"]) < timedelta(seconds=25):
                 continue
@@ -701,6 +796,8 @@ def pass_watch(base, auth, ts, pc, now):
             reason = "time" if now >= exit_at - timedelta(seconds=60) else "other"
             if px is not None and abs(px - t["stop"]) <= 1:
                 reason = "stop"
+            elif GOAL_CLOSED.pop(t["id"], None):
+                reason = "goal"
             elif px is not None and abs(px - t["target"]) <= 1:
                 reason = "target"
             cleanup(ts, m, t.get("label", ""))
