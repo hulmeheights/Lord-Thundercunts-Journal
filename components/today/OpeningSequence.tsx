@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { prefersReducedMotion } from "@/lib/motion";
 
 export const INTRO_COOKIE = "ltj_intro";
@@ -10,11 +10,8 @@ export function OpeningSequence({ day }: { day: string; greeting?: string; dayNu
   const [p, setP] = useState(0);
   const [gone, setGone] = useState(false);
   const [done, setDone] = useState(false);
-  const started = useRef(false);
 
   useEffect(() => {
-    if (started.current) return;
-    started.current = true;
     const finish = () => {
       document.cookie = `${INTRO_COOKIE}=${day}; Path=/; Max-Age=172800; SameSite=Lax${location.protocol === "https:" ? "; Secure" : ""}`;
       setP(100);

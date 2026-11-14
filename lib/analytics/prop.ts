@@ -26,7 +26,11 @@ export type PropStatus = {
   avgDay: number;
   daysToTarget: number | null;
   breached: boolean;
+  /** The first day the balance closed at or below the line, if it ever did. */
+  breachDay: string | null;
   dailyPnls: number[];
+  /** Close by close: the balance, and the max loss in force after that close. Starts with the opening balance. */
+  path: { day: string; balance: number; floor: number }[];
 };
 
 /**
@@ -45,15 +49,21 @@ export function propStatus(trades: Trade[], prop: PropSettings, tz: string): Pro
   let highWater = prop.startBalance;
   let floor = prop.startBalance - prop.maxLossLimit;
   let breached = false;
+  let breachDay: string | null = null;
   let bestDay = 0;
+  const path = [{ day: prop.startDate, balance, floor }];
   for (const d of days) {
     balance += d.net;
-    if (balance <= floor) breached = true;
+    if (balance <= floor) {
+      breached = true;
+      breachDay ??= d.day;
+    }
     if (d.day !== today) {
       highWater = Math.max(highWater, balance);
       floor = Math.min(highWater - prop.maxLossLimit, prop.startBalance);
     }
     bestDay = Math.max(bestDay, d.net);
+    path.push({ day: d.day, balance, floor });
   }
   const profit = balance - prop.startBalance;
   const todayPnl = days.find((d) => d.day === today)?.net ?? 0;
@@ -82,7 +92,9 @@ export function propStatus(trades: Trade[], prop: PropSettings, tz: string): Pro
     avgDay,
     daysToTarget: remaining != null && remaining > 0 && avgDay > 0 ? Math.ceil(remaining / avgDay) : remaining != null && remaining <= 0 ? 0 : null,
     breached,
+    breachDay,
     dailyPnls: days.map((d) => d.net),
+    path,
   };
 }
 

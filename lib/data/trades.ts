@@ -61,6 +61,21 @@ export async function listTrades(opts: { since?: Date; until?: Date; limit?: num
   return rows.map(rowToTrade).reverse();
 }
 
+export type DayNet = { day: string; net: number; trades: number };
+
+/** Net by day across the whole record, with the same trades `listTrades` counts. Powers the journey line. */
+export async function dailyNets(tz: string): Promise<DayNet[]> {
+  const sql = await db();
+  return await sql<DayNet[]>`
+    select to_char(t.exit_time at time zone ${tz}, 'YYYY-MM-DD') as day, sum(t.net_pnl)::float8 as net, count(*)::int as trades
+    from trades t
+    left join broker_accounts a on a.id = t.account_id
+    where (a.id is null or a.included) and not t.by_bot
+    group by 1
+    order by 1
+  `;
+}
+
 export async function getTrade(id: string): Promise<Trade | null> {
   const sql = await db();
   const rows = await sql<TradeRow[]>`select * from trades where id = ${id}`;

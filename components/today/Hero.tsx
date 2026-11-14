@@ -1,10 +1,10 @@
 import Link from "next/link";
-import { LivingLine } from "@/components/charts/LivingLine";
 import { Odometer } from "@/components/motion/Odometer";
 import { RevealText } from "@/components/motion/RevealText";
 import { cn } from "@/lib/cn";
 import { fmtMoney } from "@/lib/format";
 import { HeroCues } from "./HeroCues";
+import { Journey, type JourneyDay } from "./Journey";
 import type { Stub } from "./StoryRings";
 
 /**
@@ -21,7 +21,7 @@ function Money({ v }: { v: number }) {
 
 /**
  * Meridian's hero, made yours: date · day · year, the serif greeting, your real
- * equity curve as the living line, a mono read on the day beside the rolling
+ * whole record as a line that draws itself, a mono read on the day beside the rolling
  * P&L, and the replay as the one ink button.
  */
 export function TodayHero({
@@ -29,7 +29,8 @@ export function TodayHero({
   dayNumber,
   greeting,
   name,
-  curve,
+  days,
+  today,
   todayNet,
   todayTrades,
   todayWinRate,
@@ -44,7 +45,9 @@ export function TodayHero({
   dayNumber: number;
   greeting: string;
   name: string;
-  curve: number[];
+  /** Net by day across the whole record. */
+  days: JourneyDay[];
+  today: string;
   todayNet: number;
   todayTrades: number;
   todayWinRate: number;
@@ -85,8 +88,8 @@ export function TodayHero({
         </span>
       </RevealText>
 
-      <div className={cn(RISE, "my-[clamp(1.8rem,5.5vh,3.4rem)]")} style={at(200)}>
-        <LivingLine values={curve} height={150} className="max-sm:!h-[104px]" />
+      <div className={cn(RISE, "my-[clamp(1.6rem,4.5vh,3rem)]")} style={at(200)}>
+        <Journey days={days} today={today} delay={base + 500} />
       </div>
 
       <div className="flex flex-wrap items-end justify-between gap-x-10 gap-y-6 max-sm:flex-col max-sm:items-start">

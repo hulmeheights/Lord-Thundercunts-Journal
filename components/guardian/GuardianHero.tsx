@@ -5,6 +5,7 @@ import type { PropStatus } from "@/lib/analytics/prop";
 import type { PropSettings } from "@/lib/types";
 import { fmtMoney } from "@/lib/format";
 import { cn } from "@/lib/cn";
+import { GuardLine } from "./GuardLine";
 import { Head } from "./Head";
 import { Money } from "./Figure";
 import { accountName, pct, shortDay } from "./words";
@@ -64,7 +65,6 @@ export function GuardianHero({ prop, st }: { prop: PropSettings; st: PropStatus 
   }
 
   const m = mood(st);
-  const closeness = st.breached ? 1 : 1 - Math.max(0, Math.min(1, st.cushionPct));
   const used = st.dailyLossUsed;
 
   return (
@@ -97,14 +97,14 @@ export function GuardianHero({ prop, st }: { prop: PropSettings; st: PropStatus 
       />
 
       <div className="reveal" style={d(260)}>
-        <LimitLine closeness={closeness} label={`MAX LOSS · ${fmtMoney(st.floor)}`} height={124} className="max-sm:!h-[100px]" />
+        <GuardLine prop={prop} st={st} />
       </div>
 
       <div className="mt-[clamp(2rem,5vh,3rem)] flex flex-wrap items-end justify-between gap-x-10 gap-y-9">
         <p className={sub} style={d(320)}>
           {st.breached ? (
             <>
-              <span className="text-ink">The account closed below its max loss.</span> Guardian keeps the record honest — log the reset in the
+              <span className="text-ink">The account closed below its max loss{st.breachDay ? ` on ${shortDay(st.breachDay)}` : ""}.</span> Guardian keeps the record honest — log the reset in the
               ledger and start the next one in the rules below.
             </>
           ) : (

@@ -58,6 +58,9 @@ stops moving. Every screen of this journal must feel like it belongs to that sit
 buttons), `Manifesto` (word-by-word scroll reveal), `LimitLine` (dashed LIMIT with a probing line),
 `Quote`, `LineChart`, `Bars`, `Empty`, `Dot` (live dot), `SectionIndex` (Meridian's right-side index).
 Plus `LivingLine` (`components/charts/LivingLine.tsx`) and `Odometer` (`components/motion/Odometer.tsx`).
+`LiveChart` (`components/charts/LiveChart.tsx`) is the line for real numbers: it draws itself from the
+first point to now, morphs when the numbers change, and can be scrubbed. `Journey` (Today) and
+`GuardLine` (Guardian) are built on it; `LivingLine` and `LimitLine` stay for the decorative places.
 
 ## Voice
 

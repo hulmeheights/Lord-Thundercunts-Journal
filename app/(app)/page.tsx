@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { cookies } from "next/headers";
 import { getSettings } from "@/lib/data/settings";
-import { activeDayCount, listTrades, tradeCounts } from "@/lib/data/trades";
+import { activeDayCount, dailyNets, listTrades, tradeCounts } from "@/lib/data/trades";
 import { dueCapsules, getJournalDay, listJournalDays } from "@/lib/data/journal";
 import { listConnections } from "@/lib/data/connections";
 import { briefingStubs } from "@/lib/data/briefing";
@@ -17,7 +17,7 @@ import { fmtMoney, fmtPct } from "@/lib/format";
 import { parseUiPrefs, UI_COOKIE } from "@/lib/ui-prefs";
 import { Row, Rows } from "@/components/m";
 import { Manifesto } from "@/components/m/Manifesto";
-import { LimitLine } from "@/components/m/LimitLine";
+import { GuardLine } from "@/components/guardian/GuardLine";
 import { SectionIndex } from "@/components/m/SectionIndex";
 import { TodayHero } from "@/components/today/Hero";
 import { Thirty } from "@/components/today/Thirty";
@@ -89,7 +89,7 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
   const tz = settings.profile.timezone;
   const today = todayKey(tz);
   const from = addDays(today, -89);
-  const [journal, trades, stubs, conns, capsules, counts, journals, dayNumber] = await Promise.all([
+  const [journal, trades, stubs, conns, capsules, counts, journals, dayNumber, record] = await Promise.all([
     getJournalDay(today),
     listTrades({ since: new Date(`${addDays(from, -1)}T00:00:00Z`) }),
     briefingStubs(),
@@ -98,6 +98,7 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
     tradeCounts(),
     listJournalDays(from, today),
     activeDayCount(tz),
+    dailyNets(tz),
   ]);
 
   const firstName = settings.profile.name.trim().split(/\s+/)[0] || settings.profile.name;
@@ -178,7 +179,9 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
         today,
       )
     : [];
-  const prop = settings.prop.enabled ? propStatus(trades, settings.prop, tz) : null;
+  // Guardian replays the account from its start date, which can reach back past the 90 days loaded above.
+  const propTrades = settings.prop.enabled && settings.prop.startDate < from ? await listTrades({ since: new Date(`${addDays(settings.prop.startDate, -1)}T00:00:00Z`) }) : trades;
+  const prop = settings.prop.enabled ? propStatus(propTrades, settings.prop, tz) : null;
 
   // The Observer's one-line read on the last 30 days.
   const observer = last30.length
@@ -248,7 +251,8 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
         dayNumber={dayNumber}
         greeting={hello}
         name={firstName}
-        curve={curve}
+        days={record}
+        today={today}
         todayNet={s.net}
         todayTrades={s.trades}
         todayWinRate={s.winRate}
@@ -398,7 +402,7 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
               right={<span className="font-mono text-[10px] tracking-[0.3em] text-ink-4 uppercase">Open →</span>}
             >
               <div className="mt-[clamp(1.4rem,3.5vh,2.2rem)] md:ml-[calc(2.5rem+clamp(1.2rem,4vw,3.5rem))]">
-                <LimitLine closeness={1 - Math.max(0, Math.min(1, prop.cushionPct))} label="MAX LOSS" height={72} />
+                <GuardLine prop={settings.prop} st={prop} compact />
               </div>
             </Row>
           )}
