@@ -79,11 +79,34 @@ async function hedgeStop(accountId: string, dir: "LONG" | "SHORT"): Promise<stri
   const sql = await db();
   const other = dir === "LONG" ? "SHORT" : "LONG";
   const [p] = await sql<{ account_label: string }[]>`
-    select account_label from pass_trades where status in ('open', 'pending') and dir = ${other} and account_id is distinct from ${accountId} limit 1
+    select account_label from pass_trades where status in ('open', 'pending') and dir = ${other} and account_id is not null and account_id <> ${accountId} limit 1
   `;
   if (p) return `${p.account_label} is ${other.toLowerCase()}: no ${dir.toLowerCase()} on another account, so nothing is hedged`;
   const [b] = await sql<{ account_label: string }[]>`select account_label from bot_trades where status = 'open' and mode = 'live' and dir = ${other} limit 1`;
   return b ? `${b.account_label} (Autopilot) is ${other.toLowerCase()}: no ${dir.toLowerCase()} here, so nothing is hedged` : null;
+}
+
+export const TRACK = "Track record";
+/**
+ * The track record: every signal the script sends, followed on paper at the
+ * tested full size, for as long as the alert runs. It needs no card and no
+ * switch, places nothing, and ignores every account rule, so it shows what
+ * the strategy itself is doing. Your Mac follows each one to its stop, target
+ * or time exit, like any practice trade.
+ */
+async function track(t: { strategy: Strategy; session: AnySession; tradingDay: string; dir: "LONG" | "SHORT"; qty: number; price: number; stop: number; target: number; tvId: string; filters: object }) {
+  const sql = await db();
+  const [seen] = await sql`select 1 from pass_trades where account_id is null and stage = 'track' and trading_day = ${t.tradingDay} and session = ${t.session} and strategy = ${t.strategy} limit 1`;
+  if (seen) return;
+  const sign = t.dir === "LONG" ? 1 : -1;
+  // In a tick worse, as tested. C's levels move with the fill; SOR's are its own prices.
+  const slip = sign * 0.25;
+  const shift = t.strategy === "C" ? slip : 0;
+  await sql`
+    insert into pass_trades (id, account_id, account_label, mode, stage, session, strategy, guard, tv_id, trading_day, dir, qty, entry_price, stop_price, target_price, status, reason, filters, entered_at)
+    values (${`pt_${randomToken(10)}`}, null, ${TRACK}, 'dry', 'track', ${t.session}, ${t.strategy}, false, ${t.tvId.slice(0, 80)}, ${t.tradingDay}, ${t.dir}, ${t.qty}, ${t.price + slip}, ${t.stop + shift}, ${t.target + shift},
+      'open', 'every signal, full size, no account rules', ${sql.json(t.filters as never)}, now())
+  `;
 }
 
 /** One position per account at a time, C or SOR. */
@@ -136,8 +159,8 @@ export async function passContext() {
   const sql = await db();
   const [s] = await sql<{ mode: string }[]>`select mode from pass_settings where id = 1`;
   const cards = await sql<PassAccountRow[]>`select * from pass_accounts order by created_at`;
-  const open = await sql<{ id: string; account_id: string | null; mode: PassMode; session: AnySession; strategy: Strategy; guard: boolean; trading_day: string; dir: string; qty: number; entry_price: number; stop_price: number; target_price: number; entered_at: Date; order_id: string | null }[]>`
-    select id, account_id, mode, session, strategy, guard, trading_day, dir, qty, entry_price, stop_price, target_price, entered_at, order_id from pass_trades where status = 'open'
+  const open = await sql<{ id: string; account_id: string | null; account_label: string; mode: PassMode; session: AnySession; strategy: Strategy; guard: boolean; trading_day: string; dir: string; qty: number; entry_price: number; stop_price: number; target_price: number; entered_at: Date; order_id: string | null }[]>`
+    select id, account_id, account_label, mode, session, strategy, guard, trading_day, dir, qty, entry_price, stop_price, target_price, entered_at, order_id from pass_trades where status = 'open'
   `;
   const byId = new Map(cards.map((c) => [c.id, c]));
   // Live orders from a TradingView signal, each handed to the Mac once. Not picked up within 45 seconds: missed.
@@ -175,7 +198,7 @@ export async function passContext() {
     open: open.map((t) => ({
       id: t.id,
       cardId: t.account_id,
-      label: (t.account_id && byId.get(t.account_id)?.label) || "",
+      label: (t.account_id && byId.get(t.account_id)?.label) || t.account_label,
       account: (t.account_id && byId.get(t.account_id)?.topstep_account) || null,
       mode: t.mode,
       session: t.session,
@@ -204,6 +227,9 @@ const clock = (session: AnySession, strategy: Strategy = "C") => `${strategy ===
  */
 export async function passSignal(sig: Signal & { barTime: string }) {
   const sql = await db();
+  // The track record first: it follows every C trade whether or not anything is switched on (50-point stop, 82.5-point target on 10 MNQ).
+  const way = sig.dir === "LONG" ? 1 : -1;
+  await track({ strategy: "C", session: sig.session, tradingDay: sig.tradingDay, dir: sig.dir, qty: 10, price: sig.price, stop: sig.price - way * 50, target: sig.price + way * 82.5, tvId: sig.barTime, filters: { bias: sig.bias, vah: sig.vah, val: sig.val } }).catch(() => {});
   const [s] = await sql<{ mode: string }[]>`select mode from pass_settings where id = 1`;
   if (s?.mode !== "on") return { plans: [] };
   const cards = await sql<PassAccountRow[]>`select * from pass_accounts where enabled order by created_at`;
@@ -216,7 +242,7 @@ export async function passSignal(sig: Signal & { barTime: string }) {
     const st = await statsFor(a);
     const card = toCard(a);
     // Before the account's own rules: the news blackout, one position per account (C or SOR), and no hedging across accounts.
-    const block = news ?? ((await busy(a.id)) ? "a trade is already open on this account" : await hedgeStop(a.id, sig.dir));
+    const block = (card.cfg.news ? news : null) ?? ((await busy(a.id)) ? "a trade is already open on this account" : await hedgeStop(a.id, sig.dir));
     const p = block ? ({ take: false, reason: block } as const) : plan(card, st, sig);
     const mode = modeOf(a);
     const id = `pt_${randomToken(10)}`;
@@ -259,27 +285,30 @@ export type SorAlert = RawSor & { dir: "LONG" | "SHORT"; entry: number; stop: nu
 export async function passSor(sig: SorAlert, now = new Date()): Promise<{ status: string }> {
   const sql = await db();
   const [s] = await sql<{ mode: string; sor_health: string }[]>`select mode, sor_health from pass_settings where id = 1`;
-  if (s?.mode !== "on") return { status: "off" };
+  const on = s?.mode === "on";
   const v = sorValid(sig);
   if (!v.ok) {
-    await logEvent("info", `Pass plan · SOR signal ignored: ${v.reason}`);
+    if (on) await logEvent("info", `Pass plan · SOR signal ignored: ${v.reason}`);
     return { status: "invalid" };
   }
   const day = passTradingDay(now);
   const head = `SOR ${SESSION_NAME[v.session]} ${sig.dir} @ ${sig.entry} · SL ${sig.stop} · TP ${v.target}`;
-  const note = !sig.safe_ok ? "first valid signal was not safe: no SOR this session" : s.sor_health === "PAUSED" ? "SOR is paused (health)" : await newsStop(now);
+  const note = !sig.safe_ok ? "first valid signal was not safe: no SOR this session" : !on ? "the pass plan was switched off: tracked only" : s?.sor_health === "PAUSED" ? "SOR is paused (health): tracked only" : null;
   const first = await sql`
     insert into pass_sor_sessions (trading_day, session, tv_id, safe_ok, note) values (${day}, ${v.session}, ${sig.id.slice(0, 80)}, ${sig.safe_ok}, ${note})
     on conflict (trading_day, session) do nothing returning session
   `;
   if (!first.length) {
-    await logEvent("info", `Pass plan · ${head}: ${SESSION_NAME[v.session]}'s SOR chance is already used today, ignored`);
+    if (on) await logEvent("info", `Pass plan · ${head}: ${SESSION_NAME[v.session]}'s SOR chance is already used today, ignored`);
     return { status: "used" };
   }
+  // The track record follows the session's SOR trade (5 MNQ at SOR's own prices) whatever the switches say.
+  if (sig.safe_ok) await track({ strategy: "SOR", session: v.session, tradingDay: day, dir: sig.dir, qty: 5, price: sig.entry, stop: sig.stop, target: v.target, tvId: sig.id, filters: { sor: true, minsIn: sig.mins_in, dow: sig.dow } }).catch(() => {});
   if (note) {
-    await logEvent("info", `Pass plan · ${head}: ${note}`);
-    return { status: "not-safe" };
+    if (on) await logEvent("info", `Pass plan · ${head}: ${note}`);
+    return { status: "not-taken" };
   }
+  const news = await newsStop(now);
   // A C alert on the same bar (03:30, 10:10) comes first: give it a moment to be written down.
   const bar = Number(sig.id.split("-")[0]);
   if (Number.isFinite(bar)) {
@@ -294,7 +323,7 @@ export async function passSor(sig: SorAlert, now = new Date()): Promise<{ status
     const card = toCard(a);
     if (!card.cfg.sorOn) continue; // C-only accounts (funded, Lucid) never see SOR
     const st = await statsFor(a);
-    const block = (await busy(a.id)) ? "a trade is already open on this account" : await hedgeStop(a.id, sig.dir);
+    const block = (card.cfg.news ? news : null) ?? ((await busy(a.id)) ? "a trade is already open on this account" : await hedgeStop(a.id, sig.dir));
     const p = block ? ({ take: false, reason: block } as const) : planSor(card, st, { session: v.session, dir: sig.dir, entry: sig.entry, stop: sig.stop, target: v.target });
     const mode = modeOf(a);
     const id = `pt_${randomToken(10)}`;

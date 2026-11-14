@@ -88,7 +88,7 @@ export async function passState() {
     });
   }
   const trades = await sql<{ id: string; account_label: string; mode: PassMode; stage: string; session: AnySession; strategy: Strategy; trading_day: string; dir: string; qty: number; entry_price: number; stop_price: number; target_price: number; status: string; reason: string | null; pnl: number | null; exit_reason: string | null; entered_at: Date }[]>`
-    select * from pass_trades order by entered_at desc limit 150
+    select * from pass_trades order by entered_at desc limit 400
   `;
   return {
     on: s?.mode === "on",

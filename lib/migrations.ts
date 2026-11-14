@@ -894,4 +894,12 @@ export const MIGRATIONS: { version: number; sql: string }[] = [
       update pass_settings set news_minutes = coalesce((select news_minutes from bot_settings where id = 1), 0) where id = 1;
     `,
   },
+  {
+    version: 46,
+    sql: /* sql */ `
+      -- Pass plan: no daily loss limit on any card unless you add one (the plan is written for accounts without it;
+      -- cards made before 14 Nov had it switched on by the old default).
+      update pass_accounts set dll = false;
+    `,
+  },
 ];

@@ -42,6 +42,9 @@ export default async function PassPage() {
     return `${rows.length} closed · ${rows.length ? Math.round((wins.length / rows.length) * 100) : 0}% won · PF ${gl > 0 ? (gw / gl).toFixed(2) : "—"} · net ${money(gw - gl)}`;
   };
   const open = p.trades.filter((t) => t.status === "open" || t.status === "pending");
+  // The track record (every signal, no account) and your own accounts are counted apart.
+  const tracked = closed.filter((t) => t.stage === "track");
+  const mine = closed.filter((t) => t.stage !== "track");
   const version = Number(/bot (\d+(?:\.\d+)?)/.exec(runner.info ?? "")?.[1] ?? NaN);
   const oldBot = runner.paired && Number.isFinite(version) && version < NEEDS;
   const sorCards = on.filter((a) => a.cfg.sorOn);
@@ -62,7 +65,7 @@ export default async function PassPage() {
       <Section id="switch" n={1} label="The switch" lead={<>On or <em>off</em>.</>}>
         <PassSwitch on={p.on} />
         <p className="mt-5 max-w-2xl font-mono text-[10.5px] leading-[1.8] text-ink-4">
-          Separate from Autopilot&apos;s switch. Off stops new trades; open ones keep their stop and target, are still guarded, and still get their time exit. If Autopilot is also live, keep its cards off the accounts you trade here: one position per account.
+          Separate from Autopilot&apos;s switch. Off stops new trades on your accounts; open ones keep their stop and target, are still guarded, and still get their time exit. The track record in the book carries on either way. If Autopilot is also live, keep its cards off the accounts you trade here: one position per account.
         </p>
       </Section>
 
@@ -108,8 +111,27 @@ export default async function PassPage() {
 
       <Section id="accounts" n={4} label="Accounts" lead={<>Each account knows its <em>stage</em>.</>}>
         <PassAccounts accounts={p.accounts} options={runner.accounts ?? []} />
+        <div className="mt-6 max-w-3xl">
+          <div className="mb-2 font-mono text-[9.5px] tracking-[0.24em] text-ink-4 uppercase">Your TopstepX accounts · from your Mac{runner.accountsAt ? ` · ${when(runner.accountsAt)}` : ""}</div>
+          {(runner.accounts ?? []).length === 0 ? (
+            <p className="font-mono text-[11px] text-ink-3">Your Mac sends this list when it starts and around each session. Pick from it when you fill a card in.</p>
+          ) : (
+            <ul className="border-t border-line">
+              {runner.accounts.map((o) => (
+                <li key={o.id} className="flex flex-wrap justify-between gap-x-4 border-b border-line py-2.5 font-mono text-[11px]">
+                  <span className="text-ink">{o.name}</span>
+                  <span className="text-ink-4">
+                    ID {o.id}
+                    {o.balance !== null && ` · $${o.balance.toLocaleString("en-GB", { maximumFractionDigits: 0 })}`}
+                    {!o.canTrade && " · can't trade"}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
         <p className="mt-6 max-w-3xl font-mono text-[10.5px] leading-[1.8] text-ink-4">
-          Every stage has its own tested settings (eval: 10 MNQ, $1,000 risk, $1,640 a day, SOR on; Topstep funded: 7 MNQ, $700 risk, $1,000 a day, no SOR). Change any of them per card: what you changed shows in gold, and &quot;Back to the tested plan&quot; undoes it. When an account passes, reaches its payout or blows, the card switches itself off and your phone gets a push. Passed: set the card to Funded with the new TopstepX account and switch it on. Payout: request it at Topstep, press <b className="font-normal text-ink-2">Payout taken</b>, and the same account trades on with its loss limit fixed at $0. Lucid cards push you each trade to place yourself.
+          Pick the account type and the card takes its tested rules (eval: 10 MNQ, $1,640 a day, passes at $3,000, SOR on; funded: 7 MNQ, $1,000 a day, payout at $4,000, no SOR). The four boxes are yours to change: contracts, max daily loss (blank = none), max daily win and the account profit target. Every trade&apos;s target is what that account still needs to reach its max daily win, or its account target if that is nearer, so each account closes at its own price. When the account target is reached the card switches itself off and your phone gets a push. Dry run tracks every trade and places nothing; Real orders places them at Topstep from your Mac.
         </p>
       </Section>
 
@@ -154,7 +176,7 @@ export default async function PassPage() {
                   </span>
                   <span className="mt-0.5 block text-[10px] text-ink-3">
                     {t.status === "pending" ? "waiting for your Mac" : `in @ ${t.entry}`} · stop {t.stop} · target {t.target}
-                    {t.mode !== "live" && ` (${t.mode === "dry" ? "practice" : "yours to place"})`}
+                    {t.mode !== "live" && ` (${t.stage === "track" ? "track record" : t.mode === "dry" ? "dry run" : "yours to place"})`}
                   </span>
                 </li>
               ))}
@@ -185,18 +207,31 @@ export default async function PassPage() {
       </Section>
 
       <Section id="book" n={7} label="The book" lead={<>Every signal, every <em>account</em>.</>}>
-        <div className="mb-4 space-y-1 font-mono text-[11px] text-ink-3">
-          <div>All · {tally(closed)}</div>
-          <div className="text-ink-4">C · {tally(closed.filter((t) => t.strategy === "C"))}</div>
-          <div className="text-ink-4">SOR · {tally(closed.filter((t) => t.strategy === "SOR"))}</div>
+        <div className="mb-6 grid max-w-4xl gap-6 font-mono text-[11px] text-ink-3 sm:grid-cols-2">
+          <div className="space-y-1">
+            <div className="mb-2 text-[9px] tracking-[0.24em] text-gold uppercase">Track record · every signal, always</div>
+            <div>All · {tally(tracked)}</div>
+            <div className="text-ink-4">C (10 MNQ) · {tally(tracked.filter((t) => t.strategy === "C"))}</div>
+            <div className="text-ink-4">SOR (5 MNQ) · {tally(tracked.filter((t) => t.strategy === "SOR"))}</div>
+          </div>
+          <div className="space-y-1">
+            <div className="mb-2 text-[9px] tracking-[0.24em] text-ink-4 uppercase">Your accounts</div>
+            <div>All · {tally(mine)}</div>
+            <div className="text-ink-4">C · {tally(mine.filter((t) => t.strategy === "C"))}</div>
+            <div className="text-ink-4">SOR · {tally(mine.filter((t) => t.strategy === "SOR"))}</div>
+          </div>
         </div>
+        <p className="mb-5 max-w-3xl font-mono text-[10.5px] leading-[1.8] text-ink-4">
+          The track record follows every C and safe SOR signal the script sends, on paper, at the tested size (C: 50-point stop, 82.5-point target; SOR: its own prices), with no account rules, no day cap and no news rule. It runs whether the switch is on or off and whatever your cards are doing, for as long as the TradingView alert is active and your Mac is on to follow each trade to its close. It never places an order.
+        </p>
         <ul>
           {p.trades.length === 0 && <li className="font-mono text-[11px] text-ink-4">Nothing yet. The first decision comes at the next signal.</li>}
           {p.trades.map((t) => (
             <li key={t.id} className={cn("grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 border-b border-line py-2 font-mono text-[11px]", t.status === "skipped" && "opacity-55")}>
               <span className="truncate text-ink-2">
-                {when(t.enteredAt)} · <span className={t.strategy === "SOR" ? "text-gold" : undefined}>{t.strategy}</span> {SESSION_NAME[t.session]} · {t.account} · {t.stage}
-                {t.mode !== "live" && <span className="text-ink-4"> ({t.mode === "dry" ? "practice" : "yours"})</span>}
+                {when(t.enteredAt)} · <span className={t.strategy === "SOR" ? "text-gold" : undefined}>{t.strategy}</span> {SESSION_NAME[t.session]} · <span className={t.stage === "track" ? "text-gold" : undefined}>{t.account}</span>
+                {t.stage !== "track" && ` · ${t.stage}`}
+                {t.mode !== "live" && t.stage !== "track" && <span className="text-ink-4"> ({t.mode === "dry" ? "dry run" : "yours"})</span>}
               </span>
               <span className={cn("num text-right", (t.pnl ?? 0) > 0 ? "text-pos" : (t.pnl ?? 0) < 0 ? "text-neg" : "text-ink-4")}>
                 {t.status === "closed" ? money(t.pnl ?? 0) : t.status === "open" ? "open" : t.status === "pending" ? "placing" : t.status}

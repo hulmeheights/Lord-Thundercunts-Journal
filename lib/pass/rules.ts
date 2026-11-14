@@ -53,6 +53,7 @@ export type StageCfg = {
   sizeDown: boolean; // short of room: trade fewer contracts (off = skip instead)
   minTarget: number; // never aim for less than this, after costs
   guard: boolean; // the Mac closes at market the moment the target price trades, if the target order hasn't
+  news: boolean; // sits out the news blackout (the minutes are set once, for every card)
   // The account's rules
   passTarget: number | null; // profit that passes the stage (eval, pre-live)
   consistency: number | null; // best day at most this share of the profit (0.55 = 55%)
@@ -77,7 +78,7 @@ export type StageCfg = {
 export function defaults(firm: Firm, stage: Stage, withDll = false): StageCfg {
   const base: StageCfg = {
     contracts: 10, stopPts: 50, dayGoal: 1640, targetMode: "goal", targetValue: 82.5, capAtGoal: true,
-    asia: true, lon: true, ny: true, maxTradesDay: 5, stopAfterLosses: 0, dayLossStop: null, sizeDown: true, minTarget: 25, guard: true,
+    asia: true, lon: true, ny: true, maxTradesDay: 5, stopAfterLosses: 0, dayLossStop: null, sizeDown: true, minTarget: 25, guard: true, news: true,
     passTarget: 3000, consistency: 0.55, passMargin: 10, mll: 2000, dllAmount: null,
     payoutBalance: null, payoutAmount: 2000, winDaysNeeded: 5, winDay: 150, fee: 120,
     sorOn: false, sorContracts: 5, sorLon: true, sorNyam: true, sorCapAtGoal: true, sorHalfStop: true,
@@ -99,7 +100,7 @@ const NUM: Record<string, [number, number]> = {
 };
 const INT = new Set(["contracts", "maxTradesDay", "stopAfterLosses", "winDaysNeeded", "sorContracts"]);
 const NULLABLE = new Set(["passTarget", "consistency", "dllAmount", "payoutBalance", "dayLossStop"]);
-const BOOL = new Set(["capAtGoal", "asia", "lon", "ny", "sizeDown", "guard", "sorOn", "sorLon", "sorNyam", "sorCapAtGoal", "sorHalfStop"]);
+const BOOL = new Set(["capAtGoal", "asia", "lon", "ny", "sizeDown", "guard", "news", "sorOn", "sorLon", "sorNyam", "sorCapAtGoal", "sorHalfStop"]);
 
 /** Only what's a real, in-range setting survives; anything else falls back to the default. */
 export function cleanOverrides(raw: unknown): Partial<StageCfg> {
@@ -180,8 +181,8 @@ export function accountStats(rows: DayPnl[], today: string, base: Baseline = { p
 export const money = (n: number) => `${n < 0 ? "−" : ""}$${Math.abs(Math.round(n)).toLocaleString("en-GB")}`;
 const ceilTick = (pts: number) => Math.ceil(pts / TICK - 1e-9) * TICK;
 
-/** What the account can still lose: down to the loss floor, or to the daily loss limit if it has one. */
-export const roomOf = (c: StageCfg, s: Stats) => Math.min(s.profit - s.floor, c.dllAmount !== null ? c.dllAmount + s.today : Infinity);
+/** What the account can still lose today: down to the loss floor, the firm's daily loss limit if it has one, and your own max daily loss if you set one. */
+export const roomOf = (c: StageCfg, s: Stats) => Math.min(s.profit - s.floor, c.dllAmount !== null ? c.dllAmount + s.today : Infinity, c.dayLossStop !== null ? c.dayLossStop + s.today : Infinity);
 
 export type Done = { kind: "passed" | "payout" | "blown"; text: string } | null;
 
@@ -237,7 +238,7 @@ function gate(card: Card, s: Stats): { stop: string } | { left: number; last: bo
   if (left <= 0 || (left < c.minTarget && !last)) return { stop: `today's goal reached (${money(s.today)} of ${money(goal)})` };
   if (s.todayTrades >= c.maxTradesDay) return { stop: `${c.maxTradesDay} ${c.maxTradesDay === 1 ? "trade" : "trades"} today already (your limit)` };
   if (c.stopAfterLosses > 0 && s.todayLosses >= c.stopAfterLosses) return { stop: `${s.todayLosses} losing ${s.todayLosses === 1 ? "trade" : "trades"} today (your stop for the day)` };
-  if (c.dayLossStop !== null && s.today <= -c.dayLossStop) return { stop: `down ${money(-s.today)} today (your stop for the day is ${money(c.dayLossStop)})` };
+  if (c.dayLossStop !== null && s.today <= -c.dayLossStop) return { stop: `down ${money(-s.today)} today (your max daily loss is ${money(c.dayLossStop)})` };
   if (c.dllAmount !== null && s.today <= -c.dllAmount) return { stop: `daily loss limit hit (${money(s.today)})` };
   const room = roomOf(c, s);
   if (room < 25) return { stop: `less than $25 of room left (${money(room)})` };

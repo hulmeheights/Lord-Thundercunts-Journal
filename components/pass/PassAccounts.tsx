@@ -55,6 +55,11 @@ const STAGES = {
   ],
 } as const;
 
+const TYPE_HINT = {
+  topstep: { eval: "10 MNQ · 50 pt stop · $1,640 a day · passes at $3,000 · SOR on", funded: "7 MNQ · 50 pt stop · $1,000 a day · payout at $4,000 · no SOR" },
+  lucid: { eval: "10 MNQ · 50 pt stop · $1,200 a day · passes at $3,000 (40% rule)", prelive: "10 MNQ · 62.5 pt stop · up to $2,000 a day · passes at $2,000" },
+} as Record<"topstep" | "lucid", Record<string, string>>;
+
 type NumKey = { [K in keyof StageCfg]: StageCfg[K] extends number | null ? K : never }[keyof StageCfg];
 type BoolKey = { [K in keyof StageCfg]: StageCfg[K] extends boolean ? K : never }[keyof StageCfg];
 /** The form's copy of a stage's settings: numbers as typed text (blank = off, where a setting can be off). */
@@ -180,7 +185,7 @@ function Card({ a, options }: { a: PassAccountView; options: { id: number; name:
     : lucid
       ? "On · tells you each trade (Lucid: you place it)"
       : f.dryRun
-        ? "On · practice (no orders)"
+        ? "On · dry run (tracks every trade, no orders)"
         : "On · real orders at Topstep";
   const takePayout = () => {
     const ask = prompt(`Payout taken from ${f.label}: how much did you request? It comes off the profit, the loss limit is fixed at $0, winning days restart, and the card switches back on.`, String(a.cfg.payoutAmount));
@@ -194,6 +199,14 @@ function Card({ a, options }: { a: PassAccountView; options: { id: number; name:
     });
   };
 
+  const target = funded ? "payoutBalance" : "passTarget";
+  const summary = [
+    `${stopPts} pt stop`,
+    f.cfg.targetMode === "goal" ? "target = rest of the day's win" : `target ${f.cfg.targetMode === "points" ? `${f.cfg.targetValue} pt` : `$${f.cfg.targetValue}`}`,
+    [f.cfg.asia && "Asia", f.cfg.lon && "London", f.cfg.ny && "NY"].filter(Boolean).join(" ") || "no sessions",
+    f.cfg.sorOn ? `SOR ${f.cfg.sorContracts}` : "no SOR",
+  ].join(" · ");
+
   return (
     <div className={cn("border p-4", f.enabled ? (a.mode === "live" ? "border-neg/40" : "border-gold/40") : "border-line-2 opacity-90")}>
       <div className="flex items-center gap-3">
@@ -201,59 +214,13 @@ function Card({ a, options }: { a: PassAccountView; options: { id: number; name:
         <Toggle checked={f.enabled} label={`Trade ${f.label}`} onChange={(v) => set({ enabled: v })} />
       </div>
       <div className="mt-1.5 font-mono text-[10px] text-ink-4">
-        {status}
+        {status} · profit <span className={s.profit > 0 ? "text-pos" : s.profit < 0 ? "text-neg" : "text-ink-2"}>{money(s.profit)}</span> · today{" "}
+        <span className={s.today > 0 ? "text-pos" : s.today < 0 ? "text-neg" : "text-ink-2"}>{money(s.today)}</span>
         {a.payouts > 0 && ` · ${a.payouts} ${a.payouts === 1 ? "payout" : "payouts"} taken`}
       </div>
-      {a.doneNote && <div className="mt-1 font-mono text-[10px] leading-[1.6] text-gold">{a.doneNote}</div>}
-      {a.done === "payout" && (
-        <button type="button" disabled={pending} onClick={takePayout} className="mt-2.5 w-full border border-gold/70 bg-gold/10 px-3 py-2.5 font-mono text-[10.5px] tracking-[0.2em] text-ink uppercase">
-          Payout taken · carry on
-        </button>
-      )}
 
-      <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 border-y border-line py-2.5 font-mono text-[10.5px] text-ink-3 sm:grid-cols-4">
-        <span>
-          Profit <b className={cn("font-normal", s.profit > 0 ? "text-pos" : s.profit < 0 ? "text-neg" : "text-ink")}>{money(s.profit)}</b>
-        </span>
-        <span>
-          Today <b className={cn("font-normal", s.today > 0 ? "text-pos" : s.today < 0 ? "text-neg" : "text-ink")}>{money(s.today)}</b>
-        </span>
-        <span>
-          Today&apos;s goal <b className="font-normal text-ink">{money(Math.max(0, s.goal))}</b>
-        </span>
-        <span>
-          Left today <b className="font-normal text-ink">{money(Math.max(0, s.left))}</b>
-        </span>
-        <span>
-          Best day <b className="font-normal text-ink">{money(s.best)}</b>
-        </span>
-        <span>
-          Winning days <b className="font-normal text-ink">{s.winDays}</b>
-        </span>
-        <span>
-          Loss limit at <b className="font-normal text-ink">{money(s.floor)}</b>
-        </span>
-        <span>
-          Room <b className="font-normal text-ink">{money(s.room)}</b>
-        </span>
-      </div>
-      <div className="mt-2 font-mono text-[10px] leading-[1.7] text-ink-4">
-        Next C trade: <span className="text-ink-2">{s.next}</span>
-      </div>
-
-      <div className="mt-3">
-        <span className={lab}>Firm</span>
-        <div className="grid grid-cols-2 gap-2">
-          {(["topstep", "lucid"] as const).map((fm) => (
-            <button key={fm} type="button" disabled={pending} className={chip(f.firm === fm)} onClick={() => f.firm !== fm && confirm(`Change ${f.label} to ${fm === "lucid" ? "Lucid" : "Topstep"}? It starts at the first stage with that firm's tested settings.`) && set({ firm: fm, stage: "eval" })}>
-              <span className="block text-[11px]">{fm === "topstep" ? "Topstep" : "Lucid (LucidMaxx)"}</span>
-              <span className="mt-0.5 block text-[9.5px] text-ink-4">{fm === "topstep" ? "the bot places the orders" : "you place them: the bot tells you each trade"}</span>
-            </button>
-          ))}
-        </div>
-      </div>
-      <div className="mt-3">
-        <span className={lab}>Stage</span>
+      <div className="mt-4">
+        <span className={lab}>Account type</span>
         <div className="grid grid-cols-2 gap-2">
           {STAGES[f.firm].map(([st, name]) => (
             <button
@@ -261,215 +228,261 @@ function Card({ a, options }: { a: PassAccountView; options: { id: number; name:
               type="button"
               disabled={pending}
               className={chip(f.stage === st)}
-              onClick={() => f.stage !== st && confirm(`Set ${f.label} to ${name}? It starts that stage from zero (profit, best day, winning days, loss limit), with that stage's own settings.`) && set({ stage: st })}
+              onClick={() => f.stage !== st && confirm(`Set ${f.label} to ${name}? It takes that type's tested rules and starts from zero (profit, best day, winning days, loss limit).`) && set({ stage: st })}
             >
               <span className="block text-[11px]">{name}</span>
-              <span className="mt-0.5 block text-[9.5px] leading-[1.5] text-ink-4">
-                {f.stage === st ? `${contracts} MNQ · ${stopPts} pt stop (${money(contracts * stopPts * 2)}) · ${money(Number(f.cfg.dayGoal) || 0)} day goal` : "its own size, stop, goal and switches"}
-              </span>
+              <span className="mt-0.5 block text-[9.5px] leading-[1.5] text-ink-4">{TYPE_HINT[f.firm][st as "eval"]}</span>
             </button>
           ))}
         </div>
+        <span className="mt-1.5 block font-mono text-[9.5px] leading-[1.6] text-ink-4">Picking one sets its tested contracts, stop, day target and account target. Change the four boxes below; fine-tune anything else under Rules.</span>
       </div>
 
-      <div className="mt-4">
-        <Group title="Size and stop" note={`${contracts} MNQ · ${stopPts} pt · ${money(contracts * stopPts * 2)} risk`} open>
-          <div className="grid grid-cols-2 gap-3">
-            {N({ k: "contracts", label: "Contracts (MNQ)", dec: false })}
-            {N({ k: "stopPts", label: "Stop loss", suf: "points" })}
-          </div>
-          {T({ k: "sizeDown", children: <>Short of room: trade fewer contracts at the same stop (off = skip the trade)</> })}
-        </Group>
-
-        <Group title="Profit target" note={f.cfg.targetMode === "goal" ? "what's left of today's goal" : `fixed ${f.cfg.targetMode === "points" ? `${f.cfg.targetValue} pt` : `$${f.cfg.targetValue}`}`} open>
-          <div className="flex flex-wrap gap-2">
-            {(
-              [
-                ["goal", "Rest of today's goal"],
-                ["points", "Fixed points"],
-                ["dollars", "Fixed dollars"],
-              ] as const
-            ).map(([m, name]) => (
-              <button key={m} type="button" className={pill(f.cfg.targetMode === m)} onClick={() => f.cfg.targetMode !== m && cfg({ targetMode: m })}>
-                {name}
-              </button>
-            ))}
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            {N({ k: "dayGoal", label: "Day goal", pre: "$" })}
-            {f.cfg.targetMode !== "goal" && N({ k: "targetValue", label: f.cfg.targetMode === "points" ? "Target" : "Target (after costs)", pre: f.cfg.targetMode === "dollars" ? "$" : undefined, suf: f.cfg.targetMode === "points" ? "points" : undefined })}
-            {N({ k: "minTarget", label: "Smallest target worth a trade", pre: "$" })}
-          </div>
-          {f.cfg.targetMode !== "goal" && T({ k: "capAtGoal", children: <>Never aim past what&apos;s left of today&apos;s goal</> })}
-          {T({ k: "guard", children: <>Goal guard: your Mac checks this account&apos;s target order every few seconds and closes at market if price trades through it</> })}
-        </Group>
-
-        <Group title="Sessions and day limits" note={[f.cfg.asia && "Asia", f.cfg.lon && "London", f.cfg.ny && "New York"].filter(Boolean).join(" · ") || "no sessions"}>
-          <div className="flex flex-wrap items-center gap-2">
-            C trades
-            {(
-              [
-                ["asia", "Asia 20:00"],
-                ["lon", "London 03:30"],
-                ["ny", "New York 10:10"],
-              ] as const
-            ).map(([k, name]) => (
-              <button key={k} type="button" className={pill(f.cfg[k] as boolean)} onClick={() => cfg({ [k]: !f.cfg[k] })}>
-                {name}
-              </button>
-            ))}
-          </div>
-          <div className="grid grid-cols-3 gap-3">
-            {N({ k: "maxTradesDay", label: "Most trades a day", dec: false })}
-            {N({ k: "stopAfterLosses", label: "Stop after losses", dec: false, suf: "0 = off" })}
-            {N({ k: "dayLossStop", label: "Stop the day at −", pre: "$", blank: "off" })}
-          </div>
-        </Group>
-
-        <Group title="SOR Safe add-on" note={f.cfg.sorOn ? `on · ${f.cfg.sorContracts} MNQ · ${[f.cfg.sorLon && "London", f.cfg.sorNyam && "NY AM"].filter(Boolean).join(" + ") || "no sessions"}` : "off"}>
-          {T({ k: "sorOn", children: <>Take the session&apos;s first safe SOR signal (tested for Topstep evals only)</> })}
-          {f.cfg.sorOn && (
-            <>
-              <div className="flex flex-wrap items-center gap-3">
-                <span className="w-28">
-                  {N({ k: "sorContracts", label: "SOR contracts", dec: false })}
-                </span>
-                <button type="button" className={pill(f.cfg.sorLon as boolean)} onClick={() => cfg({ sorLon: !f.cfg.sorLon })}>
-                  London (first 150 min)
-                </button>
-                <button type="button" className={pill(f.cfg.sorNyam as boolean)} onClick={() => cfg({ sorNyam: !f.cfg.sorNyam })}>
-                  NY AM (first 90 min)
-                </button>
-              </div>
-              {T({ k: "sorCapAtGoal", children: <>Cap SOR&apos;s target at what&apos;s left of today&apos;s goal</> })}
-              {T({ k: "sorHalfStop", children: <>Skip when that capped reward is under half of SOR&apos;s stop</> })}
-            </>
-          )}
-        </Group>
-
-        <Group title="Account rules" note={funded ? `payout at ${money(Number(f.cfg.payoutBalance) || 0)}` : `pass at ${money(Number(f.cfg.passTarget) || 0)}`}>
-          {!lucid && (
-            <label className="flex items-center gap-2.5">
-              <Toggle checked={f.dll} label="Bought with the daily loss limit" onChange={(v) => set({ dll: v })} />
-              This account has a daily loss limit
-            </label>
-          )}
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-            {N({ k: "mll", label: "Trailing max loss", pre: "$" })}
-            {f.dll && !lucid && N({ k: "dllAmount", label: "Daily loss limit", pre: "$", blank: "none" })}
-            {!funded && (
-              <>
-                {N({ k: "passTarget", label: "Profit to pass", pre: "$" })}
-                {N({ k: "consistency", label: "Best day at most", suf: "%", blank: "no rule" })}
-                {N({ k: "passMargin", label: "Aim past the line by", pre: "$" })}
-              </>
-            )}
-            {funded && (
-              <>
-                {N({ k: "payoutBalance", label: "Payout at profit", pre: "$", blank: "never" })}
-                {N({ k: "payoutAmount", label: "Payout you request", pre: "$" })}
-                {N({ k: "winDaysNeeded", label: "Winning days needed", dec: false })}
-                {N({ k: "winDay", label: "A winning day is", pre: "$", suf: "+" })}
-              </>
-            )}
-          </div>
-          {funded && (
-            <div className="flex flex-wrap items-center gap-3">
-              <button type="button" disabled={pending} onClick={takePayout} className={pill(false)}>
-                Payout taken…
-              </button>
-              <label className="flex items-center gap-2.5">
-                <Toggle checked={f.floorLocked} label="Loss limit fixed at $0" onChange={(v) => set({ floorLocked: v })} />
-                Loss limit fixed at $0 (after a payout)
-              </label>
-            </div>
-          )}
-        </Group>
-
-        <Group title="Already traded this account before the bot?" note={Number(f.baseProfit) ? `starts at ${money(Number(f.baseProfit))}` : undefined}>
-          <div className="grid grid-cols-3 gap-2">
-            <label>
-              <span className={lab}>Profit $</span>
-              <input className={num} inputMode="decimal" value={f.baseProfit} onChange={(e) => setF({ ...f, baseProfit: e.target.value.replace(/[^0-9.-]/g, "") })} onBlur={() => f.baseProfit !== init.baseProfit && save()} />
-            </label>
-            <label>
-              <span className={lab}>Best day $</span>
-              <input className={num} inputMode="decimal" value={f.baseBest} onChange={(e) => setF({ ...f, baseBest: e.target.value.replace(/[^0-9.]/g, "") })} onBlur={() => f.baseBest !== init.baseBest && save()} />
-            </label>
-            <label>
-              <span className={lab}>Winning days</span>
-              <input className={num} inputMode="numeric" value={f.baseWinDays} onChange={(e) => setF({ ...f, baseWinDays: e.target.value.replace(/\D/g, "") })} onBlur={() => f.baseWinDays !== init.baseWinDays && save()} />
-            </label>
-          </div>
-        </Group>
-      </div>
-
-      {!lucid && (
-        <div className="border-t border-line pt-3">
-          <label className="block">
+      <div className="mt-4 grid grid-cols-2 gap-3">
+        {!lucid && (
+          <label className="col-span-2">
             <span className={lab}>TopstepX account (name or ID)</span>
             <input className="field h-9 w-full font-mono text-[11.5px]" list="ltj-tsx" value={f.topstepAccount} maxLength={80} placeholder="e.g. 50KTC-V2-…" onChange={(e) => setF({ ...f, topstepAccount: e.target.value })} onBlur={() => f.topstepAccount !== init.topstepAccount && save()} />
+            {!f.topstepAccount.trim() && !f.dryRun && <span className="mt-1 block font-mono text-[10px] text-gold">Real orders need an account here.</span>}
             {f.topstepAccount.trim() && options.length > 0 && !options.some((o) => String(o.id) === f.topstepAccount.trim() || o.name.toLowerCase().includes(f.topstepAccount.trim().toLowerCase())) && (
               <span className="mt-1 block font-mono text-[10px] text-neg">No TopstepX account matches this.</span>
             )}
           </label>
-          <span className={cn(lab, "mt-3")}>Orders</span>
-          <div className="grid grid-cols-2 gap-2">
-            {([true, false] as const).map((dry) => (
-              <button
-                key={String(dry)}
-                type="button"
-                disabled={pending}
-                className={cn(chip(f.dryRun === dry), !dry && f.dryRun === dry && "border-neg/60 bg-neg/10")}
-                onClick={() => {
-                  if (f.dryRun === dry) return;
-                  if (!dry && !confirm(`Switch ${f.label} to REAL orders? Your Mac will place real trades on this Topstep account when the pass plan is on.`)) return;
-                  set({ dryRun: dry });
-                }}
-              >
-                <span className="block text-[11px]">{dry ? "Practice" : "Real orders"}</span>
-                <span className="mt-0.5 block text-[9.5px] text-ink-4">{dry ? "follows every trade, places nothing" : "places real trades at Topstep"}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
+        )}
+        {N({ k: "contracts", label: "Contracts", dec: false })}
+        {N({ k: "dayLossStop", label: "Max daily loss $", blank: "none" })}
+        <span className="col-span-2">{N({ k: "dayGoal", label: "Max daily win $ (each trade closes the account here)" })}</span>
+        <span className="col-span-2">{N({ k: target, label: funded ? "Account profit target $ (payout at)" : "Account profit target $ (passes at)", blank: "no target" })}</span>
 
-      <div className="mt-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 font-mono text-[10px] text-ink-4">
-        <span>{pending ? "Saving…" : (msg ?? (a.changed.length ? <span className="text-gold">{a.changed.length} changed from the tested plan (in gold)</span> : "On the tested plan"))}</span>
-        <span className="flex gap-4">
+        <div className="col-span-2 border-t border-line pt-2.5">
+          <span className={lab}>Orders</span>
+          {lucid ? (
+            <p className="font-mono text-[10.5px] leading-[1.7] text-ink-3">Lucid: you place the orders. The card tells your phone each trade (side, size, stop, target, time to close) and tracks it in the book.</p>
+          ) : (
+            <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label={`${f.label} orders`}>
+              {([true, false] as const).map((dry) => (
+                <button
+                  key={String(dry)}
+                  type="button"
+                  role="radio"
+                  aria-checked={f.dryRun === dry}
+                  disabled={pending}
+                  className={cn("border px-3 py-2 text-left font-mono transition-colors", f.dryRun === dry ? (dry ? "border-gold/70 bg-gold/10 text-ink" : "border-neg/70 bg-neg/10 text-ink") : "border-line text-ink-4 hover:text-ink-2")}
+                  onClick={() => {
+                    if (f.dryRun === dry) return;
+                    if (!dry && !confirm(`Switch ${f.label} to REAL orders? Your Mac will place real trades on this Topstep account when the pass plan is on.`)) return;
+                    set({ dryRun: dry });
+                  }}
+                >
+                  <span className="block text-[11px]">{dry ? "Dry run" : "Real orders"}</span>
+                  <span className="mt-0.5 block text-[9.5px] leading-[1.5] text-ink-4">{dry ? "Tracks every trade, places nothing" : "Places real trades at Topstep"}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <details className="col-span-2 border-t border-line pt-2.5">
+          <summary className="cursor-pointer font-mono text-[10.5px] text-ink-2">
+            Rules <span className="text-ink-4">· {summary}</span>
+            {a.changed.length > 0 && <span className="text-gold"> · {a.changed.length} changed</span>}
+          </summary>
+          <div className="mt-2">
+            <Group title="Stop and target" note={`${contracts} MNQ · ${stopPts} pt · ${money(contracts * stopPts * 2)} risk`}>
+              <div className="grid grid-cols-2 gap-3">
+                {N({ k: "stopPts", label: "Stop loss", suf: "points" })}
+                {N({ k: "minTarget", label: "Smallest target worth a trade", pre: "$" })}
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                Target
+                {(
+                  [
+                    ["goal", "Rest of the day's max win"],
+                    ["points", "Fixed points"],
+                    ["dollars", "Fixed dollars"],
+                  ] as const
+                ).map(([m, name]) => (
+                  <button key={m} type="button" className={pill(f.cfg.targetMode === m)} onClick={() => f.cfg.targetMode !== m && cfg({ targetMode: m })}>
+                    {name}
+                  </button>
+                ))}
+              </div>
+              {f.cfg.targetMode !== "goal" && (
+                <>
+                  <div className="w-40">{N({ k: "targetValue", label: f.cfg.targetMode === "points" ? "Target" : "Target (after costs)", pre: f.cfg.targetMode === "dollars" ? "$" : undefined, suf: f.cfg.targetMode === "points" ? "points" : undefined })}</div>
+                  {T({ k: "capAtGoal", children: <>Never aim past what&apos;s left of the day&apos;s max win</> })}
+                </>
+              )}
+              {T({ k: "sizeDown", children: <>Short of room: trade fewer contracts at the same stop (off = skip the trade)</> })}
+              {T({ k: "guard", children: <>Goal guard: your Mac checks this account&apos;s target order every few seconds and closes at market if price trades through it</> })}
+            </Group>
+
+            <Group title="Sessions and day limits" note={[f.cfg.asia && "Asia", f.cfg.lon && "London", f.cfg.ny && "New York"].filter(Boolean).join(" · ") || "no sessions"}>
+              <div className="flex flex-wrap items-center gap-2">
+                C trades
+                {(
+                  [
+                    ["asia", "Asia 20:00"],
+                    ["lon", "London 03:30"],
+                    ["ny", "New York 10:10"],
+                  ] as const
+                ).map(([k, name]) => (
+                  <button key={k} type="button" className={pill(f.cfg[k] as boolean)} onClick={() => cfg({ [k]: !f.cfg[k] })}>
+                    {name}
+                  </button>
+                ))}
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                {N({ k: "maxTradesDay", label: "Most trades a day", dec: false })}
+                {N({ k: "stopAfterLosses", label: "Stop after losses", dec: false, suf: "0 = off" })}
+              </div>
+            </Group>
+
+            <Group title="SOR Safe add-on" note={f.cfg.sorOn ? `on · ${f.cfg.sorContracts} MNQ · ${[f.cfg.sorLon && "London", f.cfg.sorNyam && "NY AM"].filter(Boolean).join(" + ") || "no sessions"}` : "off"}>
+              {T({ k: "sorOn", children: <>Take the session&apos;s first safe SOR signal (tested for Topstep evals only)</> })}
+              {f.cfg.sorOn && (
+                <>
+                  <div className="flex flex-wrap items-center gap-3">
+                    <span className="w-28">{N({ k: "sorContracts", label: "SOR contracts", dec: false })}</span>
+                    <button type="button" className={pill(f.cfg.sorLon as boolean)} onClick={() => cfg({ sorLon: !f.cfg.sorLon })}>
+                      London (first 150 min)
+                    </button>
+                    <button type="button" className={pill(f.cfg.sorNyam as boolean)} onClick={() => cfg({ sorNyam: !f.cfg.sorNyam })}>
+                      NY AM (first 90 min)
+                    </button>
+                  </div>
+                  {T({ k: "sorCapAtGoal", children: <>Cap SOR&apos;s target at what&apos;s left of the day&apos;s max win</> })}
+                  {T({ k: "sorHalfStop", children: <>Skip when that capped reward is under half of SOR&apos;s stop</> })}
+                </>
+              )}
+            </Group>
+
+            <Group title="The firm's rules" note={`trailing max loss ${money(Number(f.cfg.mll) || 0)}${f.dll && !lucid ? " · daily loss limit" : ""}`}>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                {N({ k: "mll", label: "Trailing max loss", pre: "$" })}
+                {!funded && (
+                  <>
+                    {N({ k: "consistency", label: "Best day at most", suf: "%", blank: "no rule" })}
+                    {N({ k: "passMargin", label: "Aim past the line by", pre: "$" })}
+                  </>
+                )}
+                {funded && (
+                  <>
+                    {N({ k: "payoutAmount", label: "Payout you request", pre: "$" })}
+                    {N({ k: "winDaysNeeded", label: "Winning days needed", dec: false })}
+                    {N({ k: "winDay", label: "A winning day is", pre: "$", suf: "+" })}
+                  </>
+                )}
+              </div>
+              {!lucid && (
+                <label className="flex items-center gap-2.5">
+                  <Toggle checked={f.dll} label="Bought with the daily loss limit" onChange={(v) => set({ dll: v })} />
+                  This account was bought with Topstep&apos;s daily loss limit
+                </label>
+              )}
+              {f.dll && !lucid && <div className="w-40">{N({ k: "dllAmount", label: "Topstep daily loss limit", pre: "$", blank: "none" })}</div>}
+              {funded && (
+                <div className="flex flex-wrap items-center gap-3">
+                  <button type="button" disabled={pending} onClick={takePayout} className={pill(false)}>
+                    Payout taken…
+                  </button>
+                  <label className="flex items-center gap-2.5">
+                    <Toggle checked={f.floorLocked} label="Loss limit fixed at $0" onChange={(v) => set({ floorLocked: v })} />
+                    Loss limit fixed at $0 (after a payout)
+                  </label>
+                </div>
+              )}
+            </Group>
+
+            <Group title="Already traded this account before the bot?" note={Number(f.baseProfit) ? `starts at ${money(Number(f.baseProfit))}` : undefined}>
+              <div className="grid grid-cols-3 gap-2">
+                <label>
+                  <span className={lab}>Profit $</span>
+                  <input className={num} inputMode="decimal" value={f.baseProfit} onChange={(e) => setF({ ...f, baseProfit: e.target.value.replace(/[^0-9.-]/g, "") })} onBlur={() => f.baseProfit !== init.baseProfit && save()} />
+                </label>
+                <label>
+                  <span className={lab}>Best day $</span>
+                  <input className={num} inputMode="decimal" value={f.baseBest} onChange={(e) => setF({ ...f, baseBest: e.target.value.replace(/[^0-9.]/g, "") })} onBlur={() => f.baseBest !== init.baseBest && save()} />
+                </label>
+                <label>
+                  <span className={lab}>Winning days</span>
+                  <input className={num} inputMode="numeric" value={f.baseWinDays} onChange={(e) => setF({ ...f, baseWinDays: e.target.value.replace(/\D/g, "") })} onBlur={() => f.baseWinDays !== init.baseWinDays && save()} />
+                </label>
+              </div>
+            </Group>
+
+            <Group title="Firm" note={lucid ? "Lucid (you place the orders)" : "Topstep (the bot places them)"}>
+              <div className="flex flex-wrap gap-2">
+                {(["topstep", "lucid"] as const).map((fm) => (
+                  <button key={fm} type="button" disabled={pending} className={pill(f.firm === fm)} onClick={() => f.firm !== fm && confirm(`Change ${f.label} to ${fm === "lucid" ? "Lucid" : "Topstep"}? It starts at the first stage with that firm's tested rules.`) && set({ firm: fm, stage: "eval" })}>
+                    {fm === "topstep" ? "Topstep" : "Lucid (LucidMaxx)"}
+                  </button>
+                ))}
+              </div>
+            </Group>
+          </div>
           {a.changed.length > 0 && (
             <button
               type="button"
-              className="hover:text-ink"
+              className="mt-3 font-mono text-[9.5px] tracking-[0.2em] text-ink-4 uppercase hover:text-ink"
               onClick={() =>
-                confirm(`Put ${f.label}'s ${f.stage} settings back to the tested plan?`) &&
+                confirm(`Put ${f.label}'s ${f.stage} rules back to the tested plan? That includes the four boxes above.`) &&
                 start(async () => {
                   await resetPassSettings(a.id);
                   router.refresh();
                 })
               }
             >
-              Back to the tested plan
+              Back to the tested {f.stage} defaults
             </button>
           )}
-          {!f.enabled && (
-            <button
-              type="button"
-              className="hover:text-neg"
-              onClick={() =>
-                confirm(`Delete ${f.label}? Its trades stay in the book.`) &&
-                start(async () => {
-                  const r = await deletePassAccount(a.id);
-                  if ("error" in r && r.error) setMsg(r.error);
-                  router.refresh();
-                })
-              }
-            >
-              Delete card
-            </button>
+        </details>
+
+        <div className="col-span-2 flex items-center justify-between gap-4 border-y border-line py-2.5">
+          <span className="font-mono text-[10.5px] leading-[1.6] text-ink-2">
+            Follows the news blackout
+            <span className="block text-[9.5px] text-ink-4">{f.cfg.news ? "On: sits out your minutes around big news (set under News, below)" : "Off: this account trades through news"}</span>
+          </span>
+          <Toggle checked={f.cfg.news as boolean} label={`News blackout for ${f.label}`} onChange={(v) => cfg({ news: v })} />
+        </div>
+
+        <p className="col-span-2 font-mono text-[10px] leading-[1.7] text-ink-4">
+          {a.done && !f.enabled ? (
+            <span className={a.done === "blown" ? "text-neg" : "text-pos"}>
+              {a.done === "blown" ? "✕ " : "✓ "}
+              {a.done === "passed" ? "Profit target reached: switched itself off." : a.done === "payout" ? "Payout ready: switched itself off." : "Account finished: switched itself off."} {a.doneNote}
+            </span>
+          ) : (
+            <>
+              Next C trade: <span className="text-ink-2">{s.next}</span>. Left today {money(Math.max(0, s.left))} · room {money(s.room)} · loss limit at {money(s.floor)} · best day {money(s.best)} · {s.winDays} winning {s.winDays === 1 ? "day" : "days"}.
+            </>
           )}
-        </span>
+        </p>
+        {a.done === "payout" && (
+          <button type="button" disabled={pending} onClick={takePayout} className="col-span-2 border border-gold/70 bg-gold/10 px-3 py-2.5 font-mono text-[10.5px] tracking-[0.2em] text-ink uppercase">
+            Payout taken · carry on
+          </button>
+        )}
+      </div>
+
+      <div className="mt-4 flex flex-wrap items-center gap-4 font-mono text-[10.5px]">
+        <span className={pending ? "text-ink-4" : msg === "Saved" || msg?.startsWith("Payout") ? "text-pos" : msg ? "text-neg" : "text-ink-4"}>{pending ? "Saving…" : (msg ?? "Saves as you go")}</span>
+        {!f.enabled && (
+          <button
+            type="button"
+            className="text-[9.5px] tracking-[0.26em] text-ink-4 uppercase hover:text-neg"
+            onClick={() =>
+              confirm(`Delete ${f.label}? Its trades stay in the book.`) &&
+              start(async () => {
+                const r = await deletePassAccount(a.id);
+                if ("error" in r && r.error) setMsg(r.error);
+                router.refresh();
+              })
+            }
+          >
+            Delete
+          </button>
+        )}
       </div>
     </div>
   );

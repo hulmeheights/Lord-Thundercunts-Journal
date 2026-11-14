@@ -94,7 +94,13 @@ test("the day stops at the goal, at the limits you set, and when room runs out",
   const two = [{ day: "2026-11-12", pnl: -300 }, { day: "2026-11-12", pnl: -200 }];
   assert.match(why(plan(card("eval", { stopAfterLosses: 2 }), stats(c, two), sig())), /losing trades today/);
   assert.match(why(plan(card("eval", { maxTradesDay: 2 }), stats(c, two), sig())), /2 trades today already/);
-  assert.match(why(plan(card("eval", { dayLossStop: 400 }), stats(c, two), sig())), /your stop for the day/);
+  assert.match(why(plan(card("eval", { dayLossStop: 400 }), stats(c, two), sig())), /your max daily loss/);
+  // Your own max daily loss is a real cap: $500 a day with $300 gone leaves $200 → 2 MNQ at the same 50-point stop.
+  const capped = plan(card("eval", { dayLossStop: 500 }), stats(c, [{ day: "2026-11-12", pnl: -300 }]), sig());
+  assert.ok(capped.take && capped.qty === 2 && capped.stopPts === 50);
+  // Blank (the default) means no daily cap at all: only the trailing max loss counts.
+  assert.equal(defaults("topstep", "eval").dayLossStop, null);
+  assert.equal(defaults("topstep", "eval").dllAmount, null);
   // With a daily loss limit: $600 lost, $400 left → the same 50-point stop on 4 MNQ.
   const d = card("eval", {}, true);
   const p = plan(d, stats(d, [{ day: "2026-11-12", pnl: -600 }]), sig());
