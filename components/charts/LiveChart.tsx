@@ -7,6 +7,10 @@ export type ChartTone = "pos" | "ink" | "gold" | "mute";
 export type ChartLevel = { value: number; label?: string; tone?: ChartTone; dashed?: boolean };
 export type ChartMark = { index: number; label: string; tone?: ChartTone };
 export type ChartEnd = { value: number; label: string; tone?: ChartTone };
+/** The next milestone: a gold level ahead of the line, and a path from the tip towards it. */
+export type ChartAhead = { value: number; label: string; sub?: string };
+/** Round numbers the line can pass; each one flashes as the tip crosses it. */
+export type ChartRung = { value: number; label: string };
 
 const FALLBACK: Record<string, string> = { "--ink": "236,231,221", "--pos": "116,184,156", "--gold": "189,158,99", "--ink-4": "92,92,99" };
 
@@ -32,6 +36,10 @@ const clamp01 = (t: number) => Math.max(0, Math.min(1, t));
  * `floor` is a stepped limit under the line (the trailing max loss); the band
  * between the two is shaded. `ends` are labels in a right-hand gutter, and
  * `gap` brackets the distance from the head to the floor.
+ *
+ * `ahead` leaves room past the tip for the next milestone, `rungs` flash as
+ * the tip passes them, and `breathe` keeps the drawn line gently moving with
+ * motes rising off the head while it is climbing.
  */
 export function LiveChart({
   values,
@@ -40,6 +48,9 @@ export function LiveChart({
   marks = [],
   ends = [],
   gap,
+  ahead,
+  rungs = [],
+  breathe = false,
   headLabels,
   readout,
   tone = "auto",
@@ -58,6 +69,9 @@ export function LiveChart({
   ends?: ChartEnd[];
   /** Text for the bracket between the head and the floor. */
   gap?: string;
+  ahead?: ChartAhead;
+  rungs?: ChartRung[];
+  breathe?: boolean;
   /** The figure that rides the tip, one per point. */
   headLabels?: string[];
   /** What scrubbing shows, one per point. */
@@ -77,7 +91,7 @@ export function LiveChart({
   const last = useRef<number[] | null>(null);
   const done = useRef(onDone);
   done.current = onDone;
-  const key = JSON.stringify([values.map(Math.round), floor?.map(Math.round), levels, marks, ends, gap, headLabels, tone, seenIndex, gutter]);
+  const key = JSON.stringify([values.map(Math.round), floor?.map(Math.round), levels, marks, ends, gap, ahead, rungs, breathe, headLabels, tone, seenIndex, gutter]);
 
   useEffect(() => {
     const canvas = ref.current;
@@ -91,14 +105,14 @@ export function LiveChart({
     const vals = values.length >= 2 ? values : [values[0] ?? 0, values[0] ?? 0];
     const n = vals.length;
     const fl = floor && floor.length === n ? floor : null;
-    const all = [...vals, ...(fl ?? []), ...levels.map((l) => l.value), ...ends.map((e) => e.value)];
+    const all = [...vals, ...(fl ?? []), ...levels.map((l) => l.value), ...ends.map((e) => e.value), ...(ahead ? [ahead.value] : [])];
     const lo = Math.min(...all), hi = Math.max(...all);
     const span = hi - lo || 1;
     const auto: ChartTone = vals[n - 1]! >= vals[0]! ? "pos" : "ink";
     const main = rgb[tone === "auto" ? auto : tone];
 
     const PT = 26, PB = 12;
-    let W = 0, H = 0, PW = 0, G = 0, R = 0;
+    let W = 0, H = 0, PW = 0, G = 0, F = 0, R = 0;
     let goal: number[] = [];
     let from: number[] | null = null;
     let cur: number[] = [];
@@ -119,7 +133,8 @@ export function LiveChart({
       canvas.width = Math.floor(W * dpr); canvas.height = Math.floor(H * dpr);
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       G = gutter ? Math.min(gutter, W * 0.38) : 0;
-      PW = W - G - 6;
+      F = ahead ? Math.round(Math.min(190, Math.max(64, W * 0.15))) : 0;
+      PW = W - G - F - 6;
       R = Math.max(n, Math.min(700, Math.round(PW / 3)));
       goal = resample(vals.map(Y), R);
       from = last.current ? resample(last.current, R).map((f) => f * H) : null;
@@ -131,6 +146,16 @@ export function LiveChart({
     const seen = !morphing && seenIndex !== undefined && seenIndex > 0 && seenIndex < n - 1 ? seenIndex / (n - 1) : null;
     let t0 = 0, p = reduced || morphing ? 1 : 0, m = reduced || !morphing ? 1 : 0, finished = false;
     let visible = false, raf = 0, hover: number | null = null;
+    let doneAt = reduced || morphing ? -Infinity : Infinity;
+
+    // The first up-crossing of each rung. Ones already behind the tip don't flash again.
+    const crossings = rungs
+      .map((r) => ({ ...r, i: vals.findIndex((v, i) => i > 0 && vals[i - 1]! < r.value && v >= r.value), at: null as number | null }))
+      .filter((c) => c.i > 0);
+    for (const c of crossings) if (reduced || morphing || (seen !== null && c.i / (n - 1) <= seen)) c.at = -Infinity;
+    const climbing = vals[n - 1]! >= vals[0]!;
+    const motes: { x: number; y: number; born: number; seed: number }[] = [];
+    let lastMote = 0;
 
     /** How far along the route the tip is, 0..1. */
     const progress = (ms: number) => {
@@ -221,8 +246,68 @@ export function LiveChart({
         text(k.label, x, y + (up ? -20 : 20), `rgba(${c},0.9)`, edge);
       }
 
-      // The head: a dot, a ring that keeps pinging, and the figure riding it.
       const hy = at(tip);
+      const fade = reduced ? 1 : clamp01((now - doneAt) / 800);
+
+      // Ahead: the next milestone as a gold level, and a path from the tip towards it.
+      if (ahead) {
+        const ay = Math.round(Y(ahead.value)) + 0.5, right = PW + F;
+        const drift = reduced ? 0 : now / 1000;
+        ctx.setLineDash([2, 6]); ctx.lineDashOffset = -drift * 10;
+        ctx.strokeStyle = `rgba(${rgb.gold},${0.16 + 0.26 * fade})`; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(0, ay); ctx.lineTo(right, ay); ctx.stroke();
+        const above = ay - 10 > 6;
+        // On a narrow chart the label would sit on the running figure; the page names it instead.
+        if (F >= 120) text(ahead.label, right, above ? ay - 10 : ay + 11, `rgba(${rgb.gold},${0.45 + 0.5 * fade})`, "right");
+        if (ahead.sub && fade > 0) text(ahead.sub, right, above ? ay + 11 : ay + 24, `rgba(${rgb.ink},${0.55 * fade})`, "right");
+        if (fade > 0 && hover === null) {
+          const ex = right - 5;
+          ctx.setLineDash([3, 5]); ctx.lineDashOffset = -drift * 16;
+          ctx.strokeStyle = `rgba(${rgb.gold},${0.7 * fade})`; ctx.lineWidth = 1.2;
+          ctx.beginPath(); ctx.moveTo(tip + 6, hy);
+          ctx.bezierCurveTo(tip + (ex - tip) * 0.55, hy, ex - (ex - tip) * 0.45, ay, ex, ay);
+          ctx.stroke();
+          const d = 3.2 + (reduced ? 0 : Math.sin(now / 420) * 0.8);
+          ctx.save(); ctx.translate(ex, ay); ctx.rotate(Math.PI / 4);
+          ctx.fillStyle = `rgba(${rgb.gold},${fade})`; ctx.fillRect(-d / 2, -d / 2, d, d);
+          ctx.restore();
+        }
+        ctx.setLineDash([]); ctx.lineDashOffset = 0;
+      }
+
+      // Rungs: a gold ring and the figure as the tip passes each round number.
+      for (const c of crossings) {
+        const x = X(c.i);
+        if (x > tip + 0.5) continue;
+        if (c.at === null) c.at = now;
+        const y = at(x);
+        ctx.beginPath(); ctx.arc(x, y, 1.8, 0, Math.PI * 2); ctx.fillStyle = `rgba(${rgb.gold},0.75)`; ctx.fill();
+        const a = (now - c.at) / 1100, b = (now - c.at) / 2200;
+        if (a < 1) {
+          ctx.beginPath(); ctx.arc(x, y, 3 + out(a) * 17, 0, Math.PI * 2);
+          ctx.strokeStyle = `rgba(${rgb.gold},${0.8 * (1 - a)})`; ctx.lineWidth = 1; ctx.stroke();
+        }
+        // Under the line, so it never sits on the running figure riding the tip.
+        const rise = out(Math.min(1, b * 2)) * 5;
+        if (b < 1) text(c.label, x, y + 22 - rise < H - 6 ? y + 22 - rise : y - 16, `rgba(${rgb.gold},${1 - b * b})`, "center");
+      }
+
+      // Motes: while the line is climbing, small lights rise off the head.
+      if (breathe && climbing && !reduced && finished) {
+        if (now - lastMote > 420 && hover === null) {
+          lastMote = now;
+          motes.push({ x: tip, y: hy, born: now, seed: Math.random() * 6 });
+        }
+        for (let k = motes.length - 1; k >= 0; k--) {
+          const o = motes[k]!, age = (now - o.born) / 1900;
+          if (age >= 1) { motes.splice(k, 1); continue; }
+          const mx = o.x - age * 10 + Math.sin(age * 5 + o.seed) * 3, my = o.y - out(age) * 36;
+          ctx.beginPath(); ctx.arc(mx, my, 1.1 * (1 - age * 0.5), 0, Math.PI * 2);
+          ctx.fillStyle = `rgba(${main},${0.75 * (1 - age) * fade})`; ctx.fill();
+        }
+      }
+
+      // The head: a dot, a ring that keeps pinging, and the figure riding it.
       if (!reduced && finished) {
         const ping = ((now - t0) % 2600) / 2600;
         ctx.beginPath(); ctx.arc(tip, hy, 3 + ping * 13, 0, Math.PI * 2);
@@ -281,8 +366,17 @@ export function LiveChart({
       } else p = progress(ms);
       if (!finished && (morphing ? m >= 1 : p >= 1)) {
         finished = true;
+        if (doneAt === Infinity) doneAt = now;
         cur = [...goal];
         done.current?.();
+      }
+      // Breathing: the drawn line keeps a slow swell, pinned at both ends so the figures stay put.
+      if (breathe && finished) {
+        const t = now / 1000, ramp = clamp01((now - (doneAt === -Infinity ? t0 : doneAt)) / 1600);
+        for (let k = 1; k < R - 1; k++) {
+          const env = Math.sin((Math.PI * k) / (R - 1));
+          cur[k] = goal[k]! + (Math.sin(t * 0.9 + k * 0.07) * 1.4 + Math.sin(t * 0.43 - k * 0.031) * 1.1) * env * ramp;
+        }
       }
       draw(now);
     };
@@ -307,7 +401,8 @@ export function LiveChart({
     if (reduced) { finished = true; draw(0); done.current?.(); }
     else raf = requestAnimationFrame(frame);
     return () => {
-      if (H) last.current = cur.map((y) => y / H);
+      // Only a finished line counts as seen; a draw cut short (or React's dev double-mount) starts over.
+      if (H && finished) last.current = goal.map((y) => y / H);
       cancelAnimationFrame(raf); ro.disconnect(); io.disconnect();
       canvas.removeEventListener("pointermove", move);
       canvas.removeEventListener("pointerdown", move);

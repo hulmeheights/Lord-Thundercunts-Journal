@@ -89,7 +89,7 @@ export function TodayHero({
       </RevealText>
 
       <div className={cn(RISE, "my-[clamp(1.6rem,4.5vh,3rem)]")} style={at(200)}>
-        <Journey days={days} today={today} delay={base + 500} />
+        <Journey days={days} today={today} delay={base + (intro ? 900 : 500)} />
       </div>
 
       <div className="flex flex-wrap items-end justify-between gap-x-10 gap-y-6 max-sm:flex-col max-sm:items-start">

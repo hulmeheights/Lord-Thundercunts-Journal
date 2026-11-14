@@ -13,6 +13,18 @@ type Seen = { total: number; trades: number; last: string };
 
 const RANGE_KEY = "ltj_journey_range";
 const SEEN_KEY = "ltj_journey_seen";
+const STEPS = [250, 500, 1000, 2500, 5000, 10_000, 25_000, 50_000, 100_000, 250_000];
+
+/**
+ * The milestone ladder for a record: a round step that leaves a few rungs
+ * behind you, and the next one up. Under water, the next one is break-even.
+ */
+export function milestones(net: number, peak: number): { step: number; next: number } {
+  const top = Math.max(Math.abs(net), peak, 1);
+  const step = STEPS.find((s) => s * 4 >= top) ?? STEPS[STEPS.length - 1]!;
+  return { step, next: net < 0 ? 0 : (Math.floor(net / step) + 1) * step };
+}
+
 const RANGES: { value: Range; label: string }[] = [
   { value: "30", label: "30D" },
   { value: "90", label: "90D" },
@@ -76,6 +88,18 @@ export function Journey({ days, today, delay = 0, height = 180, className }: { d
   }, [days, range, today]);
 
   const net = view.values.at(-1) ?? 0;
+  // Milestones mean the whole record, so they ride the All view.
+  const ladder = range === "all" && view.shown.length > 0 ? milestones(net, view.peak) : null;
+  const toGo = ladder ? ladder.next - net : 0;
+  const recent = days.slice(-20);
+  const pace = recent.length >= 5 ? recent.reduce((s, d) => s + d.net, 0) / recent.length : 0;
+  const sessions = ladder && pace > 0 ? Math.ceil(toGo / pace) : null;
+  const rungs = ladder
+    ? Array.from({ length: Math.floor(view.peak / ladder.step) }, (_, k) => {
+        const v = (k + 1) * ladder.step;
+        return { value: v, label: fmtMoney(v, { sign: true }) };
+      })
+    : [];
   const grew = seen && (Math.abs(seen.total - total) > 0.004 || seen.trades !== trades) ? { money: total - seen.total, trades: trades - seen.trades } : null;
   // Where the last look ended, on the line that's showing.
   let seenIndex: number | undefined;
@@ -98,6 +122,9 @@ export function Journey({ days, today, delay = 0, height = 180, className }: { d
               ...(seenIndex !== undefined && seenIndex > 0 ? [{ index: seenIndex, label: "Last look", tone: "gold" as const }] : []),
             ]}
             levels={[{ value: 0 }]}
+            ahead={ladder ? { value: ladder.next, label: ladder.next === 0 ? "Next · break-even" : `Next ${fmtMoney(ladder.next, { sign: true })}`, sub: `${fmtMoney(toGo)} to go` } : undefined}
+            rungs={rungs}
+            breathe
             seenIndex={seenIndex}
             delay={delay}
             height={height}
@@ -128,6 +155,17 @@ export function Journey({ days, today, delay = 0, height = 180, className }: { d
                   · {grew.trades} new {grew.trades === 1 ? "trade" : "trades"}
                 </>
               )}
+            </span>
+          )}
+          {ladder && (
+            <span>
+              <span className="text-gold">◆</span> Next <span className="num tracking-[0.12em] text-ink-2">{ladder.next === 0 ? "break-even" : fmtMoney(ladder.next, { sign: true })}</span>
+              {sessions !== null && sessions <= 60 ? (
+                <>
+                  {" "}
+                  · ~{sessions} {sessions === 1 ? "session" : "sessions"} at your recent pace
+                </>
+              ) : null}
             </span>
           )}
           {view.shown.length > 0 ? (
