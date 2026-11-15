@@ -8,6 +8,9 @@ import { Figure, Money } from "./Figure";
 import { LedgerComposer } from "./LedgerComposer";
 import { LedgerDelete } from "./LedgerDelete";
 import { LedgerFold } from "./LedgerFold";
+import { LedgerList } from "./LedgerList";
+import { LEDGER_MIN_COOKIE } from "@/lib/ui-prefs";
+import { cookies } from "next/headers";
 import { monthLabel, shortDay } from "./words";
 
 const tone = (n: number) => (n > 0.004 ? "pos" : n < -0.004 ? "neg" : null);
@@ -162,7 +165,7 @@ function FirmScores({ firms }: { firms: LedgerSummary["byFirm"] }) {
 }
 
 /** 03 — The ledger: what the evals have cost, what they've paid, and every entry. */
-export function LedgerSection({
+export async function LedgerSection({
   entries,
   summary,
   n,
@@ -183,6 +186,8 @@ export function LedgerSection({
 }) {
   const s = summary;
   const groups = groupByMonth(entries);
+  // The list opens the way you left it: minimised or not.
+  const minimised = (await cookies()).get(LEDGER_MIN_COOKIE)?.value === "1";
   const accounts = [...new Set(entries.map((e) => e.account).filter((a): a is string => !!a))].slice(0, 30);
   const curve = [0, ...s.byMonth.map((m) => m.cumNet)];
   const curveLabels = ["Start", ...s.byMonth.map((m) => monthLabel(m.month))];
@@ -366,15 +371,19 @@ export function LedgerSection({
       <div id={`${id}-entries`} className={cn("scroll-mt-24", s.count > 0 && "mt-[clamp(4.5rem,11vh,8rem)]")}>
         <LedgerComposer count={s.count} today={today} firms={firms} accounts={accounts} book={book} />
 
-        {recent.map((g, i) => (
-          <Month key={g.month} month={g.month} net={g.net} entries={g.entries} first={i === 0} />
-        ))}
-        {earlier.length > 0 && (
-          <LedgerFold count={earlierCount} months={earlier.length}>
-            {earlier.map((g) => (
-              <Month key={g.month} month={g.month} net={g.net} entries={g.entries} first={false} />
+        {s.count > 0 && (
+          <LedgerList count={entries.length} months={groups.length} initialMin={minimised}>
+            {recent.map((g, i) => (
+              <Month key={g.month} month={g.month} net={g.net} entries={g.entries} first={i === 0} />
             ))}
-          </LedgerFold>
+            {earlier.length > 0 && (
+              <LedgerFold count={earlierCount} months={earlier.length}>
+                {earlier.map((g) => (
+                  <Month key={g.month} month={g.month} net={g.net} entries={g.entries} first={false} />
+                ))}
+              </LedgerFold>
+            )}
+          </LedgerList>
         )}
       </div>
     </Section>

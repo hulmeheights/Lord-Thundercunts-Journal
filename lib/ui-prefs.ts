@@ -24,3 +24,6 @@ export function parseUiPrefs(raw: string | undefined | null): UiPrefs {
 export function serializeUiPrefs(p: UiPrefs): string {
   return `t:${p.theme}.l:${p.loss}.s:${p.sound ? 1 : 0}.i:${p.intro ? 1 : 0}.p:${p.privacy ? 1 : 0}`;
 }
+
+/** Guardian's ledger: "1" when its list of entries is minimised. Its own cookie, so the page opens the way you left it. */
+export const LEDGER_MIN_COOKIE = "ltj_ledger_min";
