@@ -141,7 +141,7 @@ export default async function PassPage() {
             <b className="font-normal text-ink">Delete the alerts on the older scripts</b> (the separate &quot;MNQ Pass C&quot; and SOR scripts). This one alert sends both kinds of trade; two alerts for the same trade would be turned away as repeats here, but there is no reason to keep them.
           </li>
           <li>
-            <b className="font-normal text-ink">Heartbeat.</b> Ten minutes before each session the script also sends a small &quot;I&apos;m running&quot; message (the Sniper script: at 09:30 New York). If one doesn&apos;t arrive, your phone is told the alert may have stopped. A script pasted before 15 November has no heartbeat: copy it again to get it.
+            <b className="font-normal text-ink">Heartbeat.</b> Twenty minutes before each session (19:40, 03:10 and 09:50 New York) the script also sends a small &quot;I&apos;m running&quot; message (the Sniper script: at 09:30 New York). If one doesn&apos;t arrive, your phone is told the alert may have stopped. A script pasted before 15 November has no heartbeat: copy it again to get it.
           </li>
           <li>The script only sends the trade. Size, stop, target and whether an account takes it are all decided here, per card. The &quot;qty 10&quot; in its message is ignored.</li>
         </ol>

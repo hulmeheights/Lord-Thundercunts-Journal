@@ -7,8 +7,9 @@ export const PASS_PINE = String.raw`//@version=5
 //  and every SOR SAFE trade ("event":"signal","swing":"3/3","safe_ok":true).
 //  If you use this, DELETE the alerts on the separate C script and SOR script.
 //  It does not send SOR health alerts.
-//  HEARTBEAT (15 Nov 2026): ten minutes before each C signal it also sends a
-//  small {"event":"heartbeat"} message, so the website knows the alert is alive.
+//  HEARTBEAT (15 Nov 2026): twenty minutes before each C signal (19:40, 03:10,
+//  09:50 New York) it also sends a small {"event":"heartbeat"} message, so the
+//  website knows the alert is alive and can warn you in time if it is not.
 //  Alerts are ON by default ("Send alerts" in the settings). C logic is identical to C v3.
 //  SOR SAFE: London (first 150 min) + NY AM (first 90 min) only. No NY PM, no Asia.
 //  Simulated account: funded trades 7 MNQ with a $1,000 day goal and keeps trading after a payout.
@@ -227,11 +228,11 @@ if cOk and inAlerts
     alert(msg, alert.freq_once_per_bar_close)
 
 // ---------------- heartbeat ----------------
-// Ten minutes before each C signal (19:50, 03:20, 10:00 New York) this tells the
+// Twenty minutes before each C signal (19:40, 03:10, 09:50 New York) this tells the
 // website the alert is alive. It places nothing. If one doesn't arrive, the
 // website warns you that no trades will fire.
-if inAlerts and (at(19, 50) or at(3, 20) or at(10, 0))
-    hbSess = at(19, 50) ? "ASIA" : at(3, 20) ? "LON" : "NY"
+if inAlerts and (at(19, 40) or at(3, 10) or at(9, 50))
+    hbSess = at(19, 40) ? "ASIA" : at(3, 10) ? "LON" : "NY"
     alert("{\"secret\":\"" + secret + "\",\"event\":\"heartbeat\",\"script\":\"C\",\"session\":\"" + hbSess + "\",\"id\":\"HB-" + str.tostring(time) + "\"}", alert.freq_once_per_bar_close)
 
 // ---------------- the simulated account ----------------

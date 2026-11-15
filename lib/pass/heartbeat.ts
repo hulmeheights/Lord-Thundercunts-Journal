@@ -1,6 +1,6 @@
 /**
  * The TradingView heartbeat. The scripts only speak when there is a trade, so
- * a dead alert looks exactly like a quiet day. A few minutes before each
+ * a dead alert looks exactly like a quiet day. Twenty minutes before each
  * session each script now sends a small "I'm running" message; this file knows
  * when one is due, so its absence can be noticed. Pure, so it's unit-tested.
  */
@@ -17,9 +17,9 @@ export type HbSession = "ASIA" | "LON" | "NY";
  */
 export const HB_SLOTS: Record<HbScript, { session: HbSession; minute: number; days: number[] }[]> = {
   C: [
-    { session: "ASIA", minute: 19 * 60 + 51, days: [0, 1, 2, 3, 4] },
-    { session: "LON", minute: 3 * 60 + 21, days: [1, 2, 3, 4, 5] },
-    { session: "NY", minute: 10 * 60 + 1, days: [1, 2, 3, 4, 5] },
+    { session: "ASIA", minute: 19 * 60 + 41, days: [0, 1, 2, 3, 4] },
+    { session: "LON", minute: 3 * 60 + 11, days: [1, 2, 3, 4, 5] },
+    { session: "NY", minute: 9 * 60 + 51, days: [1, 2, 3, 4, 5] },
   ],
   SNIPER: [{ session: "NY", minute: 9 * 60 + 30, days: [1, 2, 3, 4, 5] }],
 };

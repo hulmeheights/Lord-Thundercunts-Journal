@@ -135,7 +135,9 @@ export function passWaitSeconds(now = new Date()): number {
   const entries = Object.values(SESSION_TIMES).map((t) => sec(t.signal) - 60); // the bar closes a minute before the order time
   const exits = [...Object.values(SESSION_TIMES).map((t) => t.exit), SNIPER_EXIT].map((x) => sec(x) + 3);
   if (entries.some((e) => { const d = (s - e + 86_400) % 86_400; return d >= 0 && d <= 240; })) return 5;
-  return Math.max(5, Math.min(...[...entries.map((e) => e - 60), ...exits].map((e) => (e - s + 86_400) % 86_400)));
+  // Also awake 13 minutes before each entry: six minutes after the TradingView heartbeat was due, so a missing one is
+  // noticed (and your phone told) well before the signal.
+  return Math.max(5, Math.min(...[...entries.map((e) => e - 60), ...entries.map((e) => e - 13 * 60), ...exits].map((e) => (e - s + 86_400) % 86_400)));
 }
 
 /** Inside one of SOR's entry windows (London's first 150 minutes, NY AM's first 90), with a little slack either side. */
@@ -465,7 +467,7 @@ export async function passHeartbeat(script: HbScript, session: HbSession, now = 
   }
   const bad = live.length > 0 && !macOk;
   await botNotify(
-    `${bad ? `⚠ ${HB_NAME[session]} in 10 min: your Mac isn't connected` : `✓ Ready for ${HB_NAME[session]}`}\nTradingView alive · Mac ${macOk ? "connected" : "NOT connected"} (seen ${ago(r?.last_seen ?? null, now)}) · Topstep accounts read ${ago(r?.accounts_at ?? null, now)}\n${lines.join("\n")}`.slice(0, 900),
+    `${bad ? `⚠ ${HB_NAME[session]} in 20 min: your Mac isn't connected` : `✓ Ready for ${HB_NAME[session]}`}\nTradingView alive · Mac ${macOk ? "connected" : "NOT connected"} (seen ${ago(r?.last_seen ?? null, now)}) · Topstep accounts read ${ago(r?.accounts_at ?? null, now)}\n${lines.join("\n")}`.slice(0, 900),
     { push: true, telegram: false, critical: bad, always: true, url: "/pass" },
   );
 }

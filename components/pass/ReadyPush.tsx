@@ -26,7 +26,7 @@ export function ReadyPush({ initial }: { initial: boolean }) {
         />
       </span>
       <span>
-        Push me a &quot;ready&quot; note ten minutes before each session
+        Push me a &quot;ready&quot; note twenty minutes before each session
         <span className="block text-[9.5px] text-ink-4">The alert, your Mac, and what each account would do. A missed heartbeat always reaches your phone, whatever this is set to.</span>
       </span>
     </label>
