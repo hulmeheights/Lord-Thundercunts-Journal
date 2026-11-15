@@ -23,6 +23,7 @@ export async function GET(request: Request) {
   const results = await syncAll({ staleMinutes: 45 });
   const reminders = await sendDueReminders().catch(() => null);
   await refreshNews().catch(() => null);
+  await import("@/lib/pass/server").then((m) => m.passHeartbeatCheck()).catch(() => null);
   await macWatchdog().catch(() => null);
   // Strategy health: catch any close the instant check missed, and the Sunday 18:00 UK summary.
   await import("@/lib/bot/healthCheck").then(async (m) => { await m.checkHealth(); await m.weeklyHealth(); }).catch(() => null);

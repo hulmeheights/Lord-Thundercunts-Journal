@@ -1,6 +1,7 @@
 import { db } from "../db";
 import { dayGoal, defaults, fullRisk, passTradingDay, plan, roomOf, type AnySession, type Firm, type Script, type Stage, type StageCfg, type Strategy } from "../pass/rules";
 import { cfgOf, modeOf, statsFor, type PassAccountRow, type PassMode } from "../pass/server";
+import { hbState, type HbScript, type HbSession } from "../pass/heartbeat";
 
 export type PassAccountView = {
   id: string;
@@ -51,7 +52,14 @@ const PREVIEW = { session: "NY", tradingDay: "2026-01-05", dir: "LONG", price: 2
 
 export async function passState() {
   const sql = await db();
-  const [s] = await sql<{ mode: string; sor_health: string; news_minutes: number; sniper_day: string | null; sniper_dir: string | null }[]>`select mode, sor_health, news_minutes, sniper_day, sniper_dir from pass_settings where id = 1`;
+  const [s] = await sql<{ mode: string; sor_health: string; news_minutes: number; sniper_day: string | null; sniper_dir: string | null; ready_push: boolean }[]>`select mode, sor_health, news_minutes, sniper_day, sniper_dir, ready_push from pass_settings where id = 1`;
+  const beats = new Map((await sql<{ script: HbScript; session: HbSession; at: Date }[]>`select script, session, at from pass_heartbeats`).map((b) => [b.script, b]));
+  const now = new Date();
+  const heart = (script: HbScript) => {
+    const b = beats.get(script) ?? null;
+    const st = hbState(script, b?.at ?? null, now);
+    return { state: st.state, at: b?.at.toISOString() ?? null, session: b?.session ?? null, dueAt: st.due?.at.toISOString() ?? null, dueSession: st.due?.session ?? null };
+  };
   const today = passTradingDay(new Date());
   const sorToday = await sql<{ session: "LON" | "NYAM"; safe_ok: boolean; note: string | null; at: Date }[]>`select session, safe_ok, note, at from pass_sor_sessions where trading_day = ${today}`;
   const events = await sql<{ level: string; message: string; created_at: Date }[]>`select level, message, created_at from bot_events where message like 'Pass plan%' order by created_at desc limit 60`;
@@ -94,6 +102,9 @@ export async function passState() {
     on: s?.mode === "on",
     sorHealth: (s?.sor_health ?? "LIVE") as "LIVE" | "PAUSED",
     newsMinutes: s?.news_minutes ?? 0,
+    readyPush: s?.ready_push ?? true,
+    /** Is each TradingView alert alive, by its last heartbeat. */
+    heartbeat: { C: heart("C"), SNIPER: heart("SNIPER") },
     /** Today's sniper-day call, if the script made one at 09:30 New York. */
     sniperToday: s?.sniper_day === today ? (s.sniper_dir as "LONG" | "SHORT") : null,
     today,

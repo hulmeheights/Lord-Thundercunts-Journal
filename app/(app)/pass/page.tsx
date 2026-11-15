@@ -2,7 +2,9 @@ import { passState } from "@/lib/data/pass";
 import { runnerStatus } from "@/lib/bot/runner";
 import { getSettings } from "@/lib/data/settings";
 import { cn } from "@/lib/cn";
-import { Meta, PageHead, Section } from "@/components/m";
+import { Dot, Meta, PageHead, Section } from "@/components/m";
+import { ReadyPush } from "@/components/pass/ReadyPush";
+import { HB_NAME } from "@/lib/pass/heartbeat";
 import { SectionIndex } from "@/components/m/SectionIndex";
 import { PassAccounts, PassSwitch } from "@/components/pass/PassAccounts";
 import { SESSION_NAME, SOR_SESSIONS } from "@/lib/pass/rules";
@@ -48,6 +50,29 @@ export default async function PassPage() {
   const version = Number(/bot (\d+(?:\.\d+)?)/.exec(runner.info ?? "")?.[1] ?? NaN);
   const oldBot = runner.paired && Number.isFinite(version) && version < NEEDS;
   const sorCards = on.filter((a) => a.cfg.sorOn);
+  // The three things every trade depends on, as lights.
+  const hb = p.heartbeat.C;
+  const sn = p.heartbeat.SNIPER;
+  const beat = (h: typeof hb, name: string) =>
+    h.state === "never"
+      ? { tone: "mute" as const, text: `No heartbeat yet from ${name}: paste the updated script into TradingView` }
+      : h.state === "missed"
+        ? { tone: "gold" as const, text: `${name}: missed its ${h.dueSession ? HB_NAME[h.dueSession] : ""} heartbeat (due ${h.dueAt ? when(h.dueAt) : ""}). Check the alert in TradingView` }
+        : { tone: "pos" as const, text: `${name} alive · last heartbeat ${h.at ? when(h.at) : ""}${h.state === "waiting" ? " · next one due now" : ""}` };
+  const lights = [
+    { label: "TradingView", ...beat(hb, "Main script") },
+    ...(on.some((a) => a.cfg.sniperOn) || sn.state !== "never" ? [{ label: "Sniper", ...beat(sn, "Sniper script") }] : []),
+    {
+      label: "Your Mac",
+      tone: runner.online ? ("pos" as const) : runner.paired ? ("gold" as const) : ("mute" as const),
+      text: runner.online ? `Connected${runner.info ? ` · ${runner.info}` : ""}` : runner.paired ? `Not connected right now · last seen ${runner.lastSeen ? when(runner.lastSeen) : "never"} (between sessions it only checks in every few minutes)` : "Not set up",
+    },
+    {
+      label: "Topstep",
+      tone: runner.accountsAt && Date.now() - Date.parse(runner.accountsAt) < 36 * 3600_000 ? ("pos" as const) : ("mute" as const),
+      text: runner.accountsAt ? `${runner.accounts.length} ${runner.accounts.length === 1 ? "account" : "accounts"} read from your Mac · ${when(runner.accountsAt)}` : "No accounts read yet",
+    },
+  ];
   const sniperCards = on.filter((a) => a.cfg.sniperOn);
   return (
     <>
@@ -63,8 +88,23 @@ export default async function PassPage() {
         meta={<Meta value={p.on ? "On" : "Off"} tone={p.on ? "pos" : null} caption={`${on.length} ${on.length === 1 ? "account" : "accounts"} on · ${live.length} on real orders · Mac ${runner.online ? "connected" : runner.paired ? "not connected" : "not set up"}`} />}
       />
 
+      <ul className="reveal -mt-2 max-w-3xl border-y border-line" aria-label="Is everything ready">
+        {lights.map((l) => (
+          <li key={l.label} className="grid grid-cols-[7.5rem_minmax(0,1fr)] items-baseline gap-x-4 border-b border-line py-2.5 font-mono text-[11px] last:border-b-0 max-sm:grid-cols-1">
+            <span className="flex items-center gap-2.5 text-[9.5px] tracking-[0.24em] text-ink-4 uppercase">
+              <Dot tone={l.tone} pulse={l.tone === "pos"} />
+              {l.label}
+            </span>
+            <span className={l.tone === "pos" ? "text-ink-2" : l.tone === "gold" ? "text-gold" : "text-ink-4"}>{l.text}</span>
+          </li>
+        ))}
+      </ul>
+
       <Section id="switch" n={1} label="The switch" lead={<>On or <em>off</em>.</>}>
         <PassSwitch on={p.on} />
+        <div className="mt-6 max-w-2xl">
+          <ReadyPush initial={p.readyPush} />
+        </div>
         <p className="mt-5 max-w-2xl font-mono text-[10.5px] leading-[1.8] text-ink-4">
           Separate from Autopilot&apos;s switch. Off stops new trades on your accounts; open ones keep their stop and target, are still guarded, and still get their time exit. The track record in the book carries on either way. If Autopilot is also live, keep its cards off the accounts you trade here: one position per account.
         </p>
@@ -99,6 +139,9 @@ export default async function PassPage() {
           </li>
           <li>
             <b className="font-normal text-ink">Delete the alerts on the older scripts</b> (the separate &quot;MNQ Pass C&quot; and SOR scripts). This one alert sends both kinds of trade; two alerts for the same trade would be turned away as repeats here, but there is no reason to keep them.
+          </li>
+          <li>
+            <b className="font-normal text-ink">Heartbeat.</b> Ten minutes before each session the script also sends a small &quot;I&apos;m running&quot; message (the Sniper script: at 09:30 New York). If one doesn&apos;t arrive, your phone is told the alert may have stopped. A script pasted before 15 November has no heartbeat: copy it again to get it.
           </li>
           <li>The script only sends the trade. Size, stop, target and whether an account takes it are all decided here, per card. The &quot;qty 10&quot; in its message is ignored.</li>
         </ol>

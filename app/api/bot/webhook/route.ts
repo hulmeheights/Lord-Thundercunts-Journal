@@ -94,6 +94,14 @@ export async function POST(req: Request) {
     await logEvent("warn", "A health alert came with no PAUSED / LIVE state: nothing changed");
     return NextResponse.json({ ok: true, ignored: true });
   }
+  // The scripts' heartbeat: "this alert is alive". Places nothing.
+  if (ev.event === "heartbeat") {
+    const script = (body as { script?: unknown }).script === "SNIPER" ? "SNIPER" : "C";
+    const sess = (body as { session?: unknown }).session;
+    const session = sess === "ASIA" || sess === "LON" ? sess : "NY";
+    after(() => import("@/lib/pass/server").then((m) => m.passHeartbeat(script, session, received)).catch(() => {}));
+    return NextResponse.json({ ok: true, received: received.toISOString() });
+  }
   // MNQ Sniper [5m]: the day's call (information only), the trade, and its 15:55 exit (the Mac closes on its own clock too).
   if (ev.event === "sniper_day") {
     const dir = (body as { dir?: unknown }).dir;

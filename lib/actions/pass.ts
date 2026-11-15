@@ -46,6 +46,17 @@ export async function setPassNewsMinutes(minutes: number) {
   });
 }
 
+/** One "ready for the session" note on your phone when the main script's heartbeat arrives. */
+export async function setPassReadyPush(on: boolean) {
+  await assertSession();
+  return safely(async () => {
+    const sql = await db();
+    await sql`update pass_settings set ready_push = ${z.boolean().parse(on)} where id = 1`;
+    done();
+    return { ok: true };
+  });
+}
+
 export async function addPassAccount(firm: "topstep" | "lucid") {
   await assertSession();
   return safely(async () => {

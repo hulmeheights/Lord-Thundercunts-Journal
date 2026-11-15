@@ -8,7 +8,7 @@ import { botNotify } from "@/lib/bot/notify";
 import { newsAround } from "@/lib/bot/newsFeed";
 import { SESSION_LABEL, type BotAccount, type Session } from "@/lib/bot/signal";
 import { barTimeOf } from "@/lib/bot/sor";
-import { passClosed, passContext, passListening, passResults, passWaitSeconds } from "@/lib/pass/server";
+import { passClosed, passContext, passHeartbeatCheck, passListening, passResults, passWaitSeconds } from "@/lib/pass/server";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
@@ -75,6 +75,8 @@ export async function GET(req: Request) {
   // watches its target), every 30 while only practice ones are.
   const passWait = (ctx: Awaited<ReturnType<typeof context>>, w: number) =>
     Math.max(0, Math.min(w, ctx.pass.open.some((t) => t.mode === "live") ? 8 : ctx.pass.open.length ? 30 : Infinity, ctx.pass.on || ctx.pass.open.length ? passWaitSeconds() : Infinity));
+  // Every check-in also asks: did a TradingView heartbeat that was due fail to arrive?
+  after(() => passHeartbeatCheck().catch(() => {}));
   // SOR signals come at any minute of London's and NY AM's windows: while a real card trades SOR, the line is held open for them.
   const listening = await passListening();
   if (nap > 0 && !listening) {

@@ -912,4 +912,16 @@ export const MIGRATIONS: { version: number; sql: string }[] = [
       alter table pass_settings add column if not exists sniper_dir text;
     `,
   },
+  {
+    version: 48,
+    sql: /* sql */ `
+      -- Pass plan: the last heartbeat from each TradingView script, and the "ready for the session" push.
+      create table if not exists pass_heartbeats (
+        script text primary key check (script in ('C', 'SNIPER')),
+        session text not null,
+        at timestamptz not null default now()
+      );
+      alter table pass_settings add column if not exists ready_push boolean not null default true;
+    `,
+  },
 ];

@@ -78,6 +78,12 @@ else
     dHi := math.max(dHi, high)
     dLo := math.min(dLo, low)
 
+// ---------------- heartbeat ----------------
+// Every trading day at 09:30 New York (the close of the 09:25 bar) this tells the
+// website the alert is alive. It places nothing.
+if qM == 565 and inAlerts
+    alert("{\"secret\":\"" + inSecret + "\",\"event\":\"heartbeat\",\"script\":\"SNIPER\",\"session\":\"NY\",\"id\":\"HB-" + str.tostring(time) + "\"}", alert.freq_once_per_bar_close)
+
 // ---------------- 09:30 decision (close of the 09:25 bar) ----------------
 if qM == 565
     mv = close - dOpen

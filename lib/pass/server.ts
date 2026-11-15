@@ -3,6 +3,7 @@ import { randomToken } from "../crypto";
 import { zonedToUtc } from "../analytics/time";
 import { logEvent } from "../bot/engine";
 import { newsBlock } from "../bot/news";
+import { HB_NAME, hbAlarm, type HbScript, type HbSession } from "./heartbeat";
 import { newsAround } from "../bot/newsFeed";
 import { botNotify } from "../bot/notify";
 import { accountDone, accountStats, money, passTradingDay, plan, planSniper, planSor, resolve, SESSION_NAME, SESSION_TIMES, SNIPER_EXIT, sniperQty, SOR_EXIT, SOR_SESSIONS, sorValid, type AnySession, type Card, type Firm, type PassSession, type RawSor, type SavedSettings, type Script, type Signal, type Stage, type StageCfg, type Stats, type Strategy } from "./rules";
@@ -426,6 +427,70 @@ export async function sniperDay(dir: "LONG" | "SHORT", now = new Date()) {
   const day = passTradingDay(now);
   const ch = await sql`update pass_settings set sniper_day = ${day}, sniper_dir = ${dir} where id = 1 and (sniper_day is distinct from ${day} or sniper_dir is distinct from ${dir}) returning id`;
   if (ch.length) await logEvent("info", `Pass plan · Sniper day: ${dir} only. A trade follows only if the 09:30-10:00 range breaks that way between 10:00 and 15:00 New York.`);
+}
+
+const ago = (d: Date | null, now: Date) => {
+  if (!d) return "never";
+  const m = Math.round((now.getTime() - d.getTime()) / 60_000);
+  return m < 1 ? "just now" : m < 90 ? `${m} min ago` : `${Math.round(m / 60)} h ago`;
+};
+
+/**
+ * A heartbeat from a TradingView script: the alert is alive. It is written
+ * down, and for the main script (if you want it) your phone gets one "ready"
+ * note for the session: the alert, your Mac, and what each account would do.
+ */
+export async function passHeartbeat(script: HbScript, session: HbSession, now = new Date()) {
+  const sql = await db();
+  await sql`insert into pass_heartbeats (script, session, at) values (${script}, ${session}, ${now}) on conflict (script) do update set session = excluded.session, at = excluded.at`;
+  if (script !== "C") return;
+  const [s] = await sql<{ mode: string; ready_push: boolean }[]>`select mode, ready_push from pass_settings where id = 1`;
+  if (s?.mode !== "on" || !s.ready_push) return;
+  const cards = await sql<PassAccountRow[]>`select * from pass_accounts where enabled order by created_at`;
+  if (!cards.length) return;
+  const [r] = await sql<{ last_seen: Date | null; accounts_at: Date | null }[]>`select last_seen, accounts_at from bot_runner where id = 1`;
+  // Between sessions the Mac only checks in every few minutes, so "connected" here means seen in the last 20.
+  const macOk = !!r?.last_seen && now.getTime() - r.last_seen.getTime() < 20 * 60_000;
+  const live = cards.filter((c) => modeOf(c) === "live");
+  const key = { ASIA: "asia", LON: "lon", NY: "ny" }[session] as "asia" | "lon" | "ny";
+  const lines: string[] = [];
+  for (const a of cards) {
+    const card = toCard(a);
+    if (!card.cfg[key]) {
+      lines.push(`• ${a.label}: ${HB_NAME[session]} is off`);
+      continue;
+    }
+    const p = plan(card, await statsFor(a), { session, tradingDay: "2026-01-05", dir: "LONG", price: 25000, bias: "UP", vah: null, val: null });
+    lines.push(`• ${a.label}${modeOf(a) === "live" ? "" : modeOf(a) === "dry" ? " (dry run)" : " (yours to place)"}: ${p.take ? `${p.qty} MNQ · stop ${p.stopPts} pt · target ${p.targetPts} pt` : `sits out (${p.reason})`}`);
+  }
+  const bad = live.length > 0 && !macOk;
+  await botNotify(
+    `${bad ? `⚠ ${HB_NAME[session]} in 10 min: your Mac isn't connected` : `✓ Ready for ${HB_NAME[session]}`}\nTradingView alive · Mac ${macOk ? "connected" : "NOT connected"} (seen ${ago(r?.last_seen ?? null, now)}) · Topstep accounts read ${ago(r?.accounts_at ?? null, now)}\n${lines.join("\n")}`.slice(0, 900),
+    { push: true, telegram: false, critical: bad, always: true, url: "/pass" },
+  );
+}
+
+/**
+ * Has a heartbeat that was due failed to arrive? Asked whenever your Mac
+ * checks in and by the hourly job. Only for a script that has sent one before
+ * (so an older script on the chart never raises it), and once per missed beat.
+ */
+export async function passHeartbeatCheck(now = new Date()) {
+  const sql = await db();
+  const rows = await sql<{ script: HbScript; at: Date }[]>`select script, at from pass_heartbeats`;
+  for (const row of rows) {
+    const due = hbAlarm(row.script, row.at, now);
+    if (!due) continue;
+    const name = row.script === "C" ? "the main script (C + SOR Safe)" : "the Sniper script";
+    const message = `Pass plan · no heartbeat from ${name} for ${HB_NAME[due.session]} (${due.at.toISOString().slice(0, 16)}Z). Its TradingView alert may have stopped: no trades will fire, and the track record stops too.`;
+    const [seen] = await sql<{ n: number }[]>`select count(*)::int as n from bot_events where message = ${message}`;
+    if (seen?.n) continue;
+    await logEvent("error", message);
+    await botNotify(
+      `⚠ TradingView hasn't checked in\nNo heartbeat from ${name} before ${HB_NAME[due.session]}. Check the alert is still active in TradingView (alerts can expire or be stopped). If the market is shut for a holiday, ignore this.`,
+      { push: true, telegram: false, critical: true, always: true, url: "/pass" },
+    );
+  }
 }
 
 /** The SOR health switch (spec 4.6): PAUSED stops SOR on every account, LIVE allows it again. C is never paused. */

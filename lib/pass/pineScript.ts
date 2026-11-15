@@ -7,6 +7,8 @@ export const PASS_PINE = String.raw`//@version=5
 //  and every SOR SAFE trade ("event":"signal","swing":"3/3","safe_ok":true).
 //  If you use this, DELETE the alerts on the separate C script and SOR script.
 //  It does not send SOR health alerts.
+//  HEARTBEAT (15 Nov 2026): ten minutes before each C signal it also sends a
+//  small {"event":"heartbeat"} message, so the website knows the alert is alive.
 //  Alerts are ON by default ("Send alerts" in the settings). C logic is identical to C v3.
 //  SOR SAFE: London (first 150 min) + NY AM (first 90 min) only. No NY PM, no Asia.
 //  Simulated account: funded trades 7 MNQ with a $1,000 day goal and keeps trading after a payout.
@@ -223,6 +225,14 @@ if cOk and inAlerts
     exitBy = sess == "ASIA" ? "02:59" : sess == "LON" ? "09:39" : "16:09"
     msg = "{\"secret\":\"" + secret + "\",\"event\":\"pass\",\"script\":\"C\",\"session\":\"" + sess + "\",\"trading_day\":\"" + tday + "\",\"dir\":\"" + dir + "\",\"price\":" + str.tostring(close) + ",\"bias\":" + bias + ",\"vah\":" + num(vaH) + ",\"val\":" + num(vaL) + ",\"c_ok\":true" + ",\"qty\":" + str.tostring(inQty) + ",\"stop_pts_eval\":" + str.tostring(stopPtsE) + ",\"stop_pts_funded\":" + str.tostring(stopPtsF) + ",\"stop_pts_prelive\":" + str.tostring(stopPtsP) + ",\"day_cap_topstep\":1640,\"day_cap_lucid_eval\":1200,\"exit_by\":\"" + exitBy + "\",\"id\":\"" + str.tostring(time) + "-" + sess + "\"}"
     alert(msg, alert.freq_once_per_bar_close)
+
+// ---------------- heartbeat ----------------
+// Ten minutes before each C signal (19:50, 03:20, 10:00 New York) this tells the
+// website the alert is alive. It places nothing. If one doesn't arrive, the
+// website warns you that no trades will fire.
+if inAlerts and (at(19, 50) or at(3, 20) or at(10, 0))
+    hbSess = at(19, 50) ? "ASIA" : at(3, 20) ? "LON" : "NY"
+    alert("{\"secret\":\"" + secret + "\",\"event\":\"heartbeat\",\"script\":\"C\",\"session\":\"" + hbSess + "\",\"id\":\"HB-" + str.tostring(time) + "\"}", alert.freq_once_per_bar_close)
 
 // ---------------- the simulated account ----------------
 isLucid = inFirm == "Lucid"
@@ -930,6 +940,12 @@ if newTD
 else
     dHi := math.max(dHi, high)
     dLo := math.min(dLo, low)
+
+// ---------------- heartbeat ----------------
+// Every trading day at 09:30 New York (the close of the 09:25 bar) this tells the
+// website the alert is alive. It places nothing.
+if qM == 565 and inAlerts
+    alert("{\"secret\":\"" + inSecret + "\",\"event\":\"heartbeat\",\"script\":\"SNIPER\",\"session\":\"NY\",\"id\":\"HB-" + str.tostring(time) + "\"}", alert.freq_once_per_bar_close)
 
 // ---------------- 09:30 decision (close of the 09:25 bar) ----------------
 if qM == 565
