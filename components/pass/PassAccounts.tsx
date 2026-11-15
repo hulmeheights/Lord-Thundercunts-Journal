@@ -242,6 +242,25 @@ function Card({ a, options }: { a: PassAccountView; options: { id: number; name:
         <span className="mt-1.5 block font-mono text-[9.5px] leading-[1.6] text-ink-4">Picking one sets its tested contracts, stop, day target and account target. Change the four boxes below; fine-tune anything else under Rules.</span>
       </div>
 
+      {f.stage === "eval" && (
+        <div className="mt-4">
+          <span className={lab}>Strategy on this eval</span>
+          <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label={`${f.label} strategy`}>
+            {(
+              [
+                [true, "C + SOR Safe", "C as normal, plus the session's first safe SOR trade (tested for Topstep evals)"],
+                [false, "C only", `just the plan: ${contracts} MNQ, ${risk} risk, up to 3 trades a day (for firms where SOR tested worse)`],
+              ] as const
+            ).map(([v, name, hint]) => (
+              <button key={name} type="button" role="radio" aria-checked={f.cfg.sorOn === v} disabled={pending} className={chip(f.cfg.sorOn === v)} onClick={() => f.cfg.sorOn !== v && cfg({ sorOn: v })}>
+                <span className="block text-[11px]">{name}</span>
+                <span className="mt-0.5 block text-[9.5px] leading-[1.5] text-ink-4">{hint}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {funded && (
         <div className="mt-4">
           <span className={lab}>Strategy on this funded account</span>
