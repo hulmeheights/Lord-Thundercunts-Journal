@@ -8,7 +8,9 @@ export type LineSeries = { values: number[]; tone?: "pos" | "ink" | "gold"; dash
 
 /**
  * Hairline chart in the Meridian style: a soft-glow jade line, a quiet
- * zero line, optional ghost series (dashed). Scrub to read values.
+ * zero line, optional ghost series (dashed). Scrub to read values: drag a
+ * finger or the mouse across and the marker rides the line under it, while
+ * the page still scrolls up and down as normal.
  */
 export function LineChart({
   series,
@@ -26,7 +28,9 @@ export function LineChart({
   format?: (v: number) => string;
 }) {
   const id = useId().replace(/:/g, "");
-  const [hover, setHover] = useState<number | null>(null);
+  // Where the finger or mouse is along the chart, as a fraction of a point (2.4 = between the 3rd and 4th).
+  const [at, setAt] = useState<number | null>(null);
+  const hover = at === null ? null : Math.round(at);
   const W = 1000;
   const H = 300;
   const { lo, hi, n } = useMemo(() => {
@@ -39,6 +43,17 @@ export function LineChart({
   const path = (vals: number[]) => vals.map((v, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(" ");
   const color = (t?: string) => (t === "ink" ? "var(--ink)" : t === "gold" ? "var(--gold)" : "var(--pos)");
   const main = series[0];
+  const scrub = (e: React.PointerEvent<SVGSVGElement>) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    setAt(Math.max(0, Math.min(n - 1, ((e.clientX - r.left) / r.width) * (n - 1))));
+  };
+  /** A series' value under the marker, read off the line between its two nearest points. */
+  const along = (vals: number[]) => {
+    if (at === null || !vals.length) return null;
+    const a = Math.min(Math.floor(at), vals.length - 1), b = Math.min(a + 1, vals.length - 1);
+    return vals[a]! + (vals[b]! - vals[a]!) * Math.min(1, at - a);
+  };
+  const mainAt = main ? along(main.values) : null;
 
   return (
     <div className={cn("relative", className)} style={{ height }} data-private>
@@ -46,11 +61,16 @@ export function LineChart({
         viewBox={`0 0 ${W} ${H}`}
         preserveAspectRatio="none"
         className="h-full w-full overflow-visible"
-        onPointerMove={(e) => {
-          const r = (e.currentTarget as SVGSVGElement).getBoundingClientRect();
-          setHover(Math.max(0, Math.min(n - 1, Math.round(((e.clientX - r.left) / r.width) * (n - 1)))));
+        style={{ touchAction: "pan-y" }}
+        onPointerDown={(e) => {
+          // Keep following the finger even when it slides off the chart's edge.
+          if (e.pointerType !== "mouse") e.currentTarget.setPointerCapture(e.pointerId);
+          scrub(e);
         }}
-        onPointerLeave={() => setHover(null)}
+        onPointerMove={scrub}
+        onPointerLeave={(e) => e.pointerType === "mouse" && setAt(null)}
+        onPointerUp={(e) => e.pointerType !== "mouse" && setAt(null)}
+        onPointerCancel={() => setAt(null)}
       >
         <defs>
           <linearGradient id={`f${id}`} x1="0" x2="0" y1="0" y2="1">
@@ -71,10 +91,17 @@ export function LineChart({
             <path d={path(s.values)} fill="none" stroke={color(s.tone)} strokeWidth="1.6" strokeDasharray={s.dashed ? "5 6" : undefined} strokeLinejoin="round" vectorEffect="non-scaling-stroke" opacity={s.dashed ? 0.8 : 1} />
           </g>
         ))}
-        {hover !== null && <line x1={x(hover)} x2={x(hover)} y1="0" y2={H} stroke="var(--line-2)" strokeWidth="1" vectorEffect="non-scaling-stroke" />}
+        {at !== null && <line x1={x(at)} x2={x(at)} y1="0" y2={H} stroke="var(--line-2)" strokeWidth="1" vectorEffect="non-scaling-stroke" />}
       </svg>
+      {at !== null && mainAt !== null && (
+        <span
+          aria-hidden
+          className="pointer-events-none absolute h-[9px] w-[9px] -translate-x-1/2 -translate-y-1/2 rounded-full border border-bg"
+          style={{ left: `${(at / (n - 1)) * 100}%`, top: `${(y(mainAt) / H) * 100}%`, background: color(main?.tone), boxShadow: `0 0 10px ${color(main?.tone)}` }}
+        />
+      )}
       {hover !== null && main && (
-        <div className="pointer-events-none absolute top-0 border border-line bg-bg px-2 py-1 font-mono text-[10px] tracking-[0.08em] text-ink-2" style={{ left: `clamp(0px, calc(${(hover / (n - 1)) * 100}% - 40px), calc(100% - 120px))` }}>
+        <div className="pointer-events-none absolute top-0 border border-line bg-bg px-2 py-1 font-mono text-[10px] tracking-[0.08em] text-ink-2" style={{ left: `clamp(0px, calc(${((at ?? hover) / (n - 1)) * 100}% - 60px), calc(100% - 132px))` }}>
           {labels?.[hover] && <span className="mr-2 text-ink-4">{labels[hover]}</span>}
           {series.map((s, k) => (s.values[hover] !== undefined ? <span key={k} className={k ? "ml-2 text-ink-3" : ""}>{format(s.values[hover]!)}</span> : null))}
         </div>
