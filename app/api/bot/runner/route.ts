@@ -221,6 +221,15 @@ export async function POST(req: Request) {
       await logEvent("info", `Ready for the session: ${r.summary}`);
       return NextResponse.json({ ok: true });
     }
+    // Autopilot switched Off or on Paper is your choice, not a fault (the Pass plan may be the one trading):
+    // its readiness problems are written to the log quietly, never pushed to your phone.
+    const [bs] = await sql<{ mode: string }[]>`select mode from bot_settings where id = 1`;
+    if (bs?.mode !== "live") {
+      const message = `Autopilot is ${String(bs?.mode ?? "off").toUpperCase()}: its own pre-session check was skipped (${r.problems.length} ${r.problems.length === 1 ? "note" : "notes"}). The Pass plan is checked separately.`;
+      const [recent] = await sql<{ n: number }[]>`select count(*)::int as n from bot_events where message = ${message} and created_at > now() - interval '12 hours'`;
+      if (!recent?.n) await logEvent("info", message);
+      return NextResponse.json({ ok: true });
+    }
     for (const p of r.problems) {
       const message = `Not ready for the session: ${p}`;
       const [recent] = await sql<{ n: number }[]>`select count(*)::int as n from bot_events where message = ${message} and created_at > now() - interval '3 hours'`;
