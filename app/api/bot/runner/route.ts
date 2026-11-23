@@ -85,7 +85,9 @@ export async function GET(req: Request) {
     return NextResponse.json({ alerts: [], wait: passWait(ctx, ctx.openTrades.length ? Math.min(nap, 30) : nap), context: ctx });
   }
   const [{ mode }] = await sql<{ mode: string }[]>`select mode from bot_settings where id = 1`;
-  const autopilot = nap === 0 && (mode === "live" || mode === "paper");
+  // Held open only when Autopilot has a card switched on: an idle Autopilot mustn't keep the database awake all session.
+  const [{ n: apCards }] = await sql<{ n: number }[]>`select count(*)::int as n from bot_accounts where enabled`;
+  const autopilot = nap === 0 && (mode === "live" || mode === "paper") && apCards > 0;
   if (!autopilot && !listening) {
     const ctx = await context();
     return NextResponse.json({ alerts: [], wait: passWait(ctx, 20), context: ctx });
