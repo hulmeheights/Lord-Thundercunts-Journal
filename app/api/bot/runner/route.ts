@@ -90,8 +90,7 @@ export async function GET(req: Request) {
   const autopilot = nap === 0 && (mode === "live" || mode === "paper") && apCards > 0;
   if (!autopilot && !listening) {
     const ctx = await context();
-    // Nothing to listen for: wake only for the pass plan's own times (entries, exits, heartbeat checks) or an open trade.
-    return NextResponse.json({ alerts: [], wait: passWait(ctx, ctx.openTrades.length ? 30 : 900), context: ctx });
+    return NextResponse.json({ alerts: [], wait: passWait(ctx, 20), context: ctx });
   }
   // A real pass trade open: come back sooner, so the goal guard looks at it every few seconds.
   const [lp] = await sql<{ n: number }[]>`select count(*)::int as n from pass_trades where status = 'open' and mode = 'live'`;
